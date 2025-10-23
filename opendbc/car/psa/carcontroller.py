@@ -36,7 +36,8 @@ class CarController(CarControllerBase):
     self.apply_torque_last = 0
     self.torque_factor_smoothed = 0  # Initialize smoothed value as int
     self.smoothing_alpha = 0.1  # Smoothing factor (0 < alpha < 1, smaller = stronger smoothing)
-
+    self.apply_torque_factor = 100
+    self.apply_torque = 0
     # States
     self.READY  = 2
     self.AUTH   = 3
@@ -46,87 +47,63 @@ class CarController(CarControllerBase):
     can_sends = []
     actuators = CC.actuators
 
+
     # lateral control
-    apply_torque = 0
-    if CC.latActive:
-      # scaled_eps_torque = CS.out.steeringTorqueEps * 100
-      new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
+    # For frames in the middle we still sent
+    if self.frame % CarControllerParams.STEER_STEP == 0:
+      # The torque will be calculated only if the eps is active, if its not active should be sent zero
+      # It could happen that the EPS was engaged and then it disengage even with CC.Latactive True
+      if not CS.eps_active:
+        self.apply_torque = 0
+        self.apply_torque_factor = 0
+      else:
+        temp_new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
 
       # apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
       #                                                 CS.out.steeringTorque, CarControllerParams)
 
-      apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
+        self.apply_torque = apply_driver_steer_torque_limits(temp_new_torque, self.apply_torque_last,
                                                       0, CarControllerParams)
+        # trying to emulate the progressive activation of the EPS, like in the stock LKA
+        if self.apply_torque_factor == 0:
+           self.apply_torque_factor += 5
+        if self.apply_torque_factor > 100:
+            self.apply_torque_factor = 100
 
-    #  emulate driver torque message at 1 Hz
-      if self.frame % 100 == 0:
+      # Openpilot is not activated
+      if not CC.latActive:
+        self.status = 2
+      # elif not CS.eps_active and not CS.out.steeringPressed:
+      # Cycling to activate the EPS
+      elif not CS.eps_active:
+        self.status = 2 if self.status == 4 else self.status + 1
+      # The EPS is already active, no need to cycle for activation
+      else:
+        self.status = 4
+
+      self.apply_torque_last = self.apply_torque
+
+      # LKA can message sent every CarControllerParams.STEER_STEP frames
+      can_sends.append(create_lka_steering(self.packer,self.apply_torque,self.apply_torque_factor,self.status))
+
+
+      #  emulate driver torque message at 1 Hz
+    if self.frame % 100 == 0:
+      if CS.eps_active:
         can_sends.append(create_driver_torque(self.packer, CS.steering))
 
-    # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
-    # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
-    # if not CC.latActive:
-    #   self.status = 2
-    # elif not CS.eps_active and not CS.out.steeringPressed:
-    #   self.status = 2 if self.status == 4 else self.status + 1
-    # else:
-    #   self.status = 4
-
-    if not CC.latActive:
-      self.status = self.READY
-    elif not CS.eps_active and not CS.out.steeringPressed:
-      self.status = self.READY if self.status == self.ACTIVE  else self.status + 1
-    else:
-      self.status = self.ACTIVE
-
-    # if CC.latActive:
-    #   if CS.eps_active:
-    #     # EPS is already active no need to do anything
-    #     self.status = self.ACTIVE
-    #   else:
-    #     # Why should not activate the  EPS if the driver is actively "pressing"
-    #     # on the steering wheel ?
-
-    #     # if not CS.out.steeringPressed:
-    #     # EPS not active and driver not pressing → progress activation sequence (2→3→4)
-    #       self.status = status_cycle(self.status)
-    # else:
-    #   # Lateral control inactive → reset to READY state
-    #   self.status = self.READY
-
-
-    # # Calcolo del TORQUE_FACTOR target in base all'angolo del volante
-    # steering_angle_abs = abs(CS.out.steeringAngleDeg)
-    # if not CC.latActive:
-    #     target_torque_factor = 0
-    # else:
-    #     # Minimum 60, scales linearly to 100 at 30 degrees
-    #     target_torque_factor = min(100, max(60, 60 + (100 - 60) * steering_angle_abs / 15))
-
-    # Applicazione dello smoothing esponenziale
-    # self.torque_factor_smoothed = int(round(
-    #     self.smoothing_alpha * target_torque_factor +
-    #     (1 - self.smoothing_alpha) * self.torque_factor_smoothed
-    # ))
-
-    # can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_torque, self.status))
-    can_sends.append(create_lka_steering(
-        self.packer,
-        CC.latActive,
-        apply_torque,
-        # smooth_torque_factor(apply_torque, self.apply_torque_last, CarControllerParams.STEER_MAX),
-        100,
-        self.status
-    ))
-
     if self.frame % 10 == 0:
-      # send steering wheel hold message at 10 Hz to keep EPS engaged
-      can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+      if CS.eps_active:
+        # send steering wheel hold message at 10 Hz to keep EPS engaged
+        can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
-    self.apply_torque_last = apply_torque
 
+    # The apply torque is calculated every 5 frames ( depending on CarControllerParams.STEER_STEP )
+    # The information for the actuators is sent every frame. It means that we need to sent the last known value
+    # that was sent to the LKA even if its not on the current frame
     new_actuators = actuators.as_builder()
-    new_actuators.torque = apply_torque / CarControllerParams.STEER_MAX
-    new_actuators.torqueOutputCan = apply_torque
+    new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
+    new_actuators.torqueOutputCan = self.apply_torque
 
     # self.frame += 1
     self.frame = (self.frame + 1) % 10000

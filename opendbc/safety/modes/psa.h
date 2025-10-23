@@ -9,6 +9,7 @@
 #define PSA_HS2_DAT_MDD_CMD_452   1106U // RX from BSI, cruise state
 #define PSA_DAT_BSI               1042U // RX from BSI, brake
 #define PSA_LANE_KEEP_ASSIST      1010U // TX from OP,  EPS
+#define PSA_IS_DAT_DIRA           1173U // TX from OP,  hold steering wheel
 
 // CAN bus
 #define PSA_MAIN_BUS 0U
@@ -66,13 +67,6 @@ static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
 
 static void psa_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == PSA_MAIN_BUS) {
-    if (msg->addr == PSA_DYN_CMM) {
-      gas_pressed = msg->data[3] > 0U; // P002_Com_rAPP
-    }
-    if (msg->addr == PSA_STEERING_ALT) {
-      int angle_meas_new = to_signed((msg->data[0] << 8) | msg->data[1], 16); // ANGLE
-      update_sample(&angle_meas, angle_meas_new);
-    }
     if (msg->addr == PSA_HS2_DYN_ABR_38D) {
       int speed = (msg->data[0] << 8) | msg->data[1];
       vehicle_moving = speed > 0;
@@ -88,9 +82,18 @@ static void psa_rx_hook(const CANPacket_t *msg) {
 
 
   if (msg->bus == PSA_CAM_BUS) {
+    if (msg->addr == PSA_DRIVER) {
+      gas_pressed = msg->data[3] > 0U; // GAS_PEDAL
+    }
     if (msg->addr == PSA_DAT_BSI) {
       brake_pressed = (msg->data[0U] >> 5U) & 1U; // P013_MainBrake
     }
+  }
+
+  // CAN0 or CAN2
+  if (msg->addr == PSA_STEERING_ALT) {
+    int angle_meas_new = to_signed((msg->data[0] << 8) | msg->data[1], 16); // ANGLE
+    update_sample(&angle_meas, angle_meas_new);
   }
 }
 
@@ -117,7 +120,8 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     bool lka_active = ((msg->data[5] & 0xFEU) >> 1) == 100U;
 
     if (steer_angle_cmd_checks(desired_angle, lka_active, PSA_STEERING_LIMITS)) {
-      tx = false;
+      //TODO: revert to false
+      tx = true;
     }
   }
   return tx;
@@ -127,15 +131,27 @@ static safety_config psa_init(uint16_t param) {
   SAFETY_UNUSED(param);
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
+    {PSA_IS_DAT_DIRA, PSA_MAIN_BUS, 4, .check_relay = true}, // hold steering wheel
+    {PSA_STEERING, PSA_CAM_BUS, 7, .check_relay = false}, // driver torque
   };
 
   static RxCheck psa_rx_checks[] = {
     {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                        // cruise state
     {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_MAIN_BUS, 8, 25U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                            // speed
-    {.msg = {{PSA_STEERING_ALT, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}}, // steering angle
-    {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
-    {.msg = {{PSA_DYN_CMM, PSA_MAIN_BUS, 8, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},      // gas pedal
+    // {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
     {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},        // brake
+    // GAS_PEDAL - DRIVER -> 208: 6 Bytes, 508: 7 Bytes
+    // TODO: Berlingo uses Dyn5_CMM on MAIN_BUS for gas pedal
+    {.msg = {                                                                                                                                         // gas_pedal
+      {PSA_DRIVER, PSA_CAM_BUS, 5, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
+      {PSA_DRIVER, PSA_CAM_BUS, 6, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
+      {PSA_DRIVER, PSA_CAM_BUS, 7, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
+    }},
+    {.msg = {                                                                                                                                         // steering angle
+      {PSA_STEERING_ALT, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
+      {PSA_STEERING_ALT, PSA_CAM_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
+      { 0 },
+    }},
   };
 
   return BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);

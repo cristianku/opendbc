@@ -5,16 +5,14 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
   checksum = sum((b >> 4) + (b & 0xF) for b in d)
   return (chk_ini - checksum) & 0xF
 
-def create_lka_steering(packer, lat_active: bool, apply_torque: int, torque_factor: int, status: int):
-# def create_lka_steering(packer, lat_active: bool, apply_torque: float, status: int):
+def create_lka_steering(packer, apply_torque: int, torque_factor: int, status: int):
   values = {
-    'TORQUE': apply_torque if lat_active else 0,
+    'TORQUE': apply_torque ,
     # 'LANE_DEPARTURE':0 if not lat_active else 1 if torque>0 else 2,
     # 'DRIVE': 1,
     'STATUS': status,
     # 'LXA_ACTIVATION': 1,
-    'TORQUE_FACTOR': torque_factor if lat_active else 0, #lat_active * 70,
-    # 'TORQUE_FACTOR': torque_factor if lat_active else 0,
+    'TORQUE_FACTOR': torque_factor,
     'SET_ANGLE': 0,
   }
 
