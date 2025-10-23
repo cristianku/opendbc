@@ -7,26 +7,26 @@ from opendbc.car.psa.psacan import create_lka_steering, create_steering_hold, cr
 from opendbc.car.psa.values import CarControllerParams
 import math
 
-def torque_to_factor(torque: int, steer_max: int) -> int:
-    """Converte torque (0–steer_max) in torque factor (0–100) con curva logaritmica."""
-    if steer_max <= 0:
-        return 0
-    t = max(0, min(torque, steer_max))
-    return int(round(100 * math.log(t + 1) / math.log(steer_max + 1)))
+# def torque_to_factor(torque: int, steer_max: int) -> int:
+#     """Converte torque (0–steer_max) in torque factor (0–100) con curva logaritmica."""
+#     if steer_max <= 0:
+#         return 0
+#     t = max(0, min(torque, steer_max))
+#     return int(round(100 * math.log(t + 1) / math.log(steer_max + 1)))
 
-def smooth_torque_factor(curr_torque: int, prev_torque: int, steer_max: int, alpha: float = 0.1) -> int:
-    """Applica smoothing esponenziale sul torque factor calcolato logaritmicamente."""
-    curr_factor = torque_to_factor(curr_torque, steer_max)
-    prev_factor = torque_to_factor(prev_torque, steer_max)
-    return int(round(alpha * curr_factor + (1 - alpha) * prev_factor))
+# def smooth_torque_factor(curr_torque: int, prev_torque: int, steer_max: int, alpha: float = 0.1) -> int:
+#     """Applica smoothing esponenziale sul torque factor calcolato logaritmicamente."""
+#     curr_factor = torque_to_factor(curr_torque, steer_max)
+#     prev_factor = torque_to_factor(prev_torque, steer_max)
+#     return int(round(alpha * curr_factor + (1 - alpha) * prev_factor))
 
 
-def status_cycle(status:int) -> int:
-  new_status = status + 1
-  if new_status == 4:
-    new_status = 2
+# def status_cycle(status:int) -> int:
+#   new_status = status + 1
+#   if new_status == 4:
+#     new_status = 2
 
-  return new_status
+#   return new_status
 
 
 class CarController(CarControllerBase):
@@ -57,7 +57,7 @@ class CarController(CarControllerBase):
       # apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
       #                                                 CS.out.steeringTorque, CarControllerParams)
       apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
-                                                      0, CarControllerParams)
+                                                      CS.out.steeringTorque, CarControllerParams)
 
     #  emulate driver torque message at 1 Hz
       if self.frame % 100 == 0:
@@ -95,26 +95,27 @@ class CarController(CarControllerBase):
     #   self.status = self.READY
 
 
-    # Calcolo del TORQUE_FACTOR target in base all'angolo del volante
-    steering_angle_abs = abs(CS.out.steeringAngleDeg)
-    if not CC.latActive:
-        target_torque_factor = 0
-    else:
-        # Minimum 60, scales linearly to 100 at 30 degrees
-        target_torque_factor = min(100, max(60, 60 + (100 - 60) * steering_angle_abs / 15))
+    # # Calcolo del TORQUE_FACTOR target in base all'angolo del volante
+    # steering_angle_abs = abs(CS.out.steeringAngleDeg)
+    # if not CC.latActive:
+    #     target_torque_factor = 0
+    # else:
+    #     # Minimum 60, scales linearly to 100 at 30 degrees
+    #     target_torque_factor = min(100, max(60, 60 + (100 - 60) * steering_angle_abs / 15))
 
     # Applicazione dello smoothing esponenziale
-    self.torque_factor_smoothed = int(round(
-        self.smoothing_alpha * target_torque_factor +
-        (1 - self.smoothing_alpha) * self.torque_factor_smoothed
-    ))
+    # self.torque_factor_smoothed = int(round(
+    #     self.smoothing_alpha * target_torque_factor +
+    #     (1 - self.smoothing_alpha) * self.torque_factor_smoothed
+    # ))
 
     # can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_torque, self.status))
     can_sends.append(create_lka_steering(
         self.packer,
         CC.latActive,
         apply_torque,
-        smooth_torque_factor(apply_torque, self.apply_torque_last, CarControllerParams.STEER_MAX),
+        # smooth_torque_factor(apply_torque, self.apply_torque_last, CarControllerParams.STEER_MAX),
+        100,
         self.status
     ))
 
