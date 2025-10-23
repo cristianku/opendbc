@@ -3,7 +3,7 @@ from opendbc.car import Bus
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.lateral import apply_meas_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_steering_hold, create_driver_torque
+from opendbc.car.psa.psacan import create_lka_steering, create_steering_hold, create_driver_torque, calculate_apply_torque, calculate_apply_factor, calculate_LKA_status
 from opendbc.car.psa.values import CarControllerParams
 import math
 
@@ -47,39 +47,18 @@ class CarController(CarControllerBase):
     can_sends = []
     actuators = CC.actuators
 
-
+    #############
     # lateral control
+    ######
     # For frames in the middle we still sent
     if self.frame % CarControllerParams.STEER_STEP == 0:
       # The torque will be calculated only if the eps is active, if its not active should be sent zero
       # It could happen that the EPS was engaged and then it disengage even with CC.Latactive True
-      if not CS.eps_active:
-        self.apply_torque = 0
-        self.apply_torque_factor = 0
-      else:
-        temp_new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
-
-      # apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
-      #                                                 CS.out.steeringTorque, CarControllerParams)
-
-        self.apply_torque = apply_driver_steer_torque_limits(temp_new_torque, self.apply_torque_last,
-                                                      0, CarControllerParams)
+      self.apply_torque = calculate_apply_torque(CS.eps_active, CC.actuators.torque, self.apply_torque_last, CarControllerParams.STEER_MAX)
         # trying to emulate the progressive activation of the EPS, like in the stock LKA
-        if self.apply_torque_factor == 0:
-           self.apply_torque_factor += 5
-        if self.apply_torque_factor > 100:
-            self.apply_torque_factor = 100
+      self.apply_torque_factor = calculate_apply_factor(CS.eps_active, self.apply_torque_factor)
 
-      # Openpilot is not activated
-      if not CC.latActive:
-        self.status = 2
-      # elif not CS.eps_active and not CS.out.steeringPressed:
-      # Cycling to activate the EPS
-      elif not CS.eps_active:
-        self.status = 2 if self.status == 4 else self.status + 1
-      # The EPS is already active, no need to cycle for activation
-      else:
-        self.status = 4
+      self.status = calculate_LKA_status(CC.latActive, self.status)
 
       self.apply_torque_last = self.apply_torque
 
@@ -87,25 +66,25 @@ class CarController(CarControllerBase):
       can_sends.append(create_lka_steering(self.packer,self.apply_torque,self.apply_torque_factor,self.status))
 
 
-      #  emulate driver torque message at 1 Hz
-    if self.frame % 100 == 0:
-      if CS.eps_active:
-        can_sends.append(create_driver_torque(self.packer, CS.steering))
+    #  emulate driver torque message at 1 Hz
+  if self.frame % 100 == 0:
+    if CS.eps_active:
+      can_sends.append(create_driver_torque(self.packer, CS.steering))
 
-    if self.frame % 10 == 0:
-      if CS.eps_active:
-        # send steering wheel hold message at 10 Hz to keep EPS engaged
-        can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+  if self.frame % 10 == 0:
+    if CS.eps_active:
+      # send steering wheel hold message at 10 Hz to keep EPS engaged
+      can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
 
-    # The apply torque is calculated every 5 frames ( depending on CarControllerParams.STEER_STEP )
-    # The information for the actuators is sent every frame. It means that we need to sent the last known value
-    # that was sent to the LKA even if its not on the current frame
-    new_actuators = actuators.as_builder()
-    new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
-    new_actuators.torqueOutputCan = self.apply_torque
+  # The apply torque is calculated every 5 frames ( depending on CarControllerParams.STEER_STEP )
+  # The information for the actuators is sent every frame. It means that we need to sent the last known value
+  # that was sent to the LKA even if its not on the current frame
+  new_actuators = actuators.as_builder()
+  new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
+  new_actuators.torqueOutputCan = self.apply_torque
 
-    # self.frame += 1
-    self.frame = (self.frame + 1) % 10000
+  # self.frame += 1
+  self.frame = (self.frame + 1) % 10000
 
-    return new_actuators, can_sends
+  return new_actuators, can_sends

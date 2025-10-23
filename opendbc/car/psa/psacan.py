@@ -1,3 +1,5 @@
+from opendbc.car.lateral import apply_driver_steer_torque_limits
+
 def psa_checksum(address: int, sig, d: bytearray) -> int:
   chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
   byte = sig.start_bit // 8
@@ -18,6 +20,44 @@ def create_lka_steering(packer, apply_torque: int, torque_factor: int, status: i
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
 
+def calculate_apply_torque(eps_active: bool, actuators_torque, apply_torque_last, CarControllerParams):
+  apply_torque = 0
+  if not eps_active:
+    apply_torque = 0
+  else:
+    temp_new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
+
+  # apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
+  #                                                 CS.out.steeringTorque, CarControllerParams)
+
+    apply_torque = apply_driver_steer_torque_limits(temp_new_torque, apply_torque_last,
+                                                  0, CarControllerParams
+
+  return apply_torque
+
+def calculate_apply_factor(eps_active: bool, previous_factor):
+  apply_torque_factor = 0
+  if not eps_active:
+    return apply_torque_factor = 0
+  else:
+      if previous_factor == 0:
+          apply_torque_factor += 5
+      if apply_torque_factor > 100:
+          apply_torque_factor = 100
+
+  return apply_torque_factor
+
+def calculate_LKA_status(lat_active:bool, actual_status):
+    # Openpilot is not activated
+    if not lat_active:
+      return 2
+    # elif not CS.eps_active and not CS.out.steeringPressed:
+    # Cycling to activate the EPS
+    elif not CS.eps_active:
+      return = 2 if actual_status == 4 else return actual_status + 1
+    # The EPS is already active, no need to cycle for activation
+    else:
+      return 4
 
 def create_driver_torque(packer, steering):
   # abs(driver_torque) > 10 to keep EPS engaged
