@@ -60,17 +60,19 @@ class CarState(CarStateBase):
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
     ret.steeringAngleDeg = bus['STEERING_ALT']['ANGLE'] # EPS
     ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1) # convert [0,1] to [-1,1] EPS: rot. speed * rot. sign
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-        # Save the raw steering torque value (note: Peugeot 3008 has a jittery sensor)
-        raw_steering_torque = cp.vl['STEERING']['DRIVER_TORQUE']
-        # Apply exponential filter to smooth out jitter
-        ret.steeringTorque = self.alpha * raw_steering_torque + (1 - self.alpha) * self.prev_steering_torque
-        self.prev_steering_torque = ret.steeringTorque  # Update the previous filtered value
-    else:
-        # Use raw steering torque for other models without jitter issues
-        ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
 
-    ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      # In the electric power steering (EPS) system of the Peugeot 3008,
+      # the torque sensor is mounted on the steering column, not inside the assist motor.
+      # Therefore, it's not possible to obtain the actual assist (motor) torque separately.
+      # Instead, we can use the smoothed EPS_TORQUE value from IS_DAT_DIRA as the driver torque,
+      # since it doesn’t appear to include the LKA-commanded torque from the CarController.
+        ret.steeringTorque = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
+        ret.steeringTorqueEps = 0
+    else:
+        ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
+        ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
+
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
