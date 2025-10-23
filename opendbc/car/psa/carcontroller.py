@@ -52,12 +52,11 @@ class CarController(CarControllerBase):
       # scaled_eps_torque = CS.out.steeringTorqueEps * 100
       new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
 
-      # apply_torque = apply_meas_steer_torque_limits(new_torque, self.apply_torque_last,
-      #                                                 scaled_eps_torque, CarControllerParams)
       # apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
       #                                                 CS.out.steeringTorque, CarControllerParams)
+
       apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
-                                                      CS.out.steeringTorque, CarControllerParams)
+                                                      0, CarControllerParams)
 
     #  emulate driver torque message at 1 Hz
       if self.frame % 100 == 0:
