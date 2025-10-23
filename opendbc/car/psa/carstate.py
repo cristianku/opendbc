@@ -14,6 +14,10 @@ class CarState(CarStateBase):
     super().__init__(CP)
     self.is_dat_dira = None
     self.steering = None
+    # These parameters are for Peugeot 3008 driver torque jittery sensor
+    self.prev_steering_torque = 0.0  # Initialize the previous torque value to 0
+    self.alpha = 0.1                # Smoothing factor (adjust between 0 and 1)
+
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
     cp_adas = can_parsers[Bus.adas]
@@ -56,7 +60,16 @@ class CarState(CarStateBase):
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
     ret.steeringAngleDeg = bus['STEERING_ALT']['ANGLE'] # EPS
     ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1) # convert [0,1] to [-1,1] EPS: rot. speed * rot. sign
-    ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+        # Save the raw steering torque value (note: Peugeot 3008 has a jittery sensor)
+        raw_steering_torque = cp.vl['STEERING']['DRIVER_TORQUE']
+        # Apply exponential filter to smooth out jitter
+        ret.steeringTorque = self.alpha * raw_steering_torque + (1 - self.alpha) * self.prev_steering_torque
+        self.prev_steering_torque = ret.steeringTorque  # Update the previous filtered value
+    else:
+        # Use raw steering torque for other models without jitter issues
+        ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
+
     ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
