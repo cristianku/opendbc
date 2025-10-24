@@ -34,6 +34,7 @@ class CarController(CarControllerBase):
         self.status = 2
 
       else:
+
         if not CS.eps_active:
           # Openpilot is not activated
           if self.status == 4:
@@ -42,15 +43,14 @@ class CarController(CarControllerBase):
             self.status += 1
             if self.status > 4:
               self.status = 4
-
-        else:
-          self.status = 4
-
           # Progressive activation of the Torque Factor
           self.apply_torque_factor += 5
-
           if self.apply_torque_factor > 100:
               self.apply_torque_factor = 100
+
+        else:
+          self.apply_torque_factor = 100
+          self.status = 4
 
           # Torque
           temp_new_torque = int(round(CC.actuators.torque * max(1 , CarControllerParams.STEER_MAX) ))
