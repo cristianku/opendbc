@@ -1,7 +1,6 @@
 from opendbc.can.packer import CANPacker
 from opendbc.car import Bus
 from opendbc.car.lateral import apply_driver_steer_torque_limits
-from opendbc.car.lateral import apply_meas_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_steering_hold, create_driver_torque, calculate_apply_torque, calculate_apply_factor, calculate_LKA_status
 from opendbc.car.psa.values import CarControllerParams
@@ -83,7 +82,12 @@ class CarController(CarControllerBase):
         can_sends.append(create_lka_steering(self.packer,self.apply_torque,self.apply_torque_factor,self.status))
         # last sent value
         self.apply_torque_last = self.apply_torque
-
+    else:
+      # OpenPilot is not active  → cleaning the variables
+      self.apply_torque = 0
+      self.apply_torque_last = 0
+      self.apply_torque_factor = 0
+      self.status = self.READY
 
     # The apply torque is calculated every 5 frames ( depending on CarControllerParams.STEER_STEP )
     # The information for the actuators is sent every frame. It means that we need to sent the last known value

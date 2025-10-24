@@ -26,11 +26,11 @@ def calculate_apply_torque( actuators_torque, driver_torque, apply_torque_last, 
   # apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
   #                                                 CS.out.steeringTorque, CarControllerParams)
 
-  # return apply_driver_steer_torque_limits(temp_new_torque, apply_torque_last,
-  #                                                 driver_torque, CarControllerParams )
-
   return apply_driver_steer_torque_limits(temp_new_torque, apply_torque_last,
-                                                  0, params )
+                                                  driver_torque, params )
+
+  # return apply_driver_steer_torque_limits(temp_new_torque, apply_torque_last,
+  #                                                 0, params )
 
 def calculate_apply_factor(previous_factor):
   apply_torque_factor = previous_factor + 5
