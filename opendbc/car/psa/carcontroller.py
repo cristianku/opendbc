@@ -52,14 +52,14 @@ class CarController(CarControllerBase):
     ######
     if CC.latActive:
         #  emulate driver torque message at 1 Hz
-      if self.frame % 100 == 0:
-        if CS.eps_active:
-          can_sends.append(create_driver_torque(self.packer, CS.steering))
+      # if self.frame % 100 == 0:
+      #   if CS.eps_active:
+      #     can_sends.append(create_driver_torque(self.packer, CS.steering))
 
-      if self.frame % 10 == 0:
-        if CS.eps_active:
-          # send steering wheel hold message at 10 Hz to keep EPS engaged
-          can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+      # if self.frame % 10 == 0:
+      #   if CS.eps_active:
+      #     # send steering wheel hold message at 10 Hz to keep EPS engaged
+      #     can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
       if self.frame % CarControllerParams.STEER_STEP == 0:
         if CS.eps_active:
