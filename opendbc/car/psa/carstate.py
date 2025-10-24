@@ -1,4 +1,3 @@
-import copy
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
@@ -12,11 +11,6 @@ TransmissionType = structs.CarParams.TransmissionType
 class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
-    self.is_dat_dira = None
-    self.steering = None
-    # These parameters are for Peugeot 3008 driver torque jittery sensor
-    self.prev_steering_torque = 0.0  # Initialize the previous torque value to 0
-    self.alpha = 0.1                # Smoothing factor (adjust between 0 and 1)
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
