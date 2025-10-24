@@ -20,7 +20,7 @@ class CarControllerParams:
 
   STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
   STEER_DRIVER_FACTOR = 2  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
-  STEER_DRIVER_ALLOWANCE = 10  # Deadband (in Nm) where driver input does not affect steering assist (prevents interference)
+  STEER_DRIVER_ALLOWANCE = 20  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
 
   def __init__(self, CP):
     pass
