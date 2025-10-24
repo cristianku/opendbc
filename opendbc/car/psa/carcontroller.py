@@ -38,6 +38,7 @@ class CarController(CarControllerBase):
     self.smoothing_alpha = 0.1  # Smoothing factor (0 < alpha < 1, smaller = stronger smoothing)
     self.apply_torque_factor = 100
     self.apply_torque = 0
+    self.status = 2
     # States
     self.READY  = 2
     self.AUTH   = 3
@@ -50,41 +51,47 @@ class CarController(CarControllerBase):
     #############
     # lateral control
     ######
-    # For frames in the middle we still sent
     if self.frame % CarControllerParams.STEER_STEP == 0:
-      # The torque will be calculated only if the eps is active, if its not active should be sent zero
-      # It could happen that the EPS was engaged and then it disengage even with CC.Latactive True
-      self.apply_torque = calculate_apply_torque(CS.eps_active, CC.actuators.torque, self.apply_torque_last, CarControllerParams.STEER_MAX)
-        # trying to emulate the progressive activation of the EPS, like in the stock LKA
-      self.apply_torque_factor = calculate_apply_factor(CS.eps_active, self.apply_torque_factor)
+      if CS.eps_active:
+        # The torque will be calculated only if the eps is active, if its not active should be sent zero
+        # It could happen that the EPS was engaged and then it disengage even with CC.Latactive True
+        self.apply_torque = calculate_apply_torque(CC.actuators.torque, CS.out.steeringTorque,self.apply_torque_last, CarControllerParams)
+          # trying to emulate the progressive activation of the EPS, like in the stock LKA
+        self.apply_torque_factor = calculate_apply_factor(self.apply_torque_factor)
 
-      self.status = calculate_LKA_status(CC.latActive, self.status)
+        self.status = calculate_LKA_status(CC.latActive, CS.eps_active, self.status)
 
-      self.apply_torque_last = self.apply_torque
+      else:
+        self.apply_torque = 0
+        self.apply_torque_factor = 0
+        self.status = self.READY
+
 
       # LKA can message sent every CarControllerParams.STEER_STEP frames
       can_sends.append(create_lka_steering(self.packer,self.apply_torque,self.apply_torque_factor,self.status))
+      # last sent value
+      self.apply_torque_last = self.apply_torque
 
 
-    #  emulate driver torque message at 1 Hz
-  if self.frame % 100 == 0:
-    if CS.eps_active:
-      can_sends.append(create_driver_torque(self.packer, CS.steering))
+      #  emulate driver torque message at 1 Hz
+    if self.frame % 100 == 0:
+      if CS.eps_active:
+        can_sends.append(create_driver_torque(self.packer, CS.steering))
 
-  if self.frame % 10 == 0:
-    if CS.eps_active:
-      # send steering wheel hold message at 10 Hz to keep EPS engaged
-      can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+    if self.frame % 10 == 0:
+      if CS.eps_active:
+        # send steering wheel hold message at 10 Hz to keep EPS engaged
+        can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
 
-  # The apply torque is calculated every 5 frames ( depending on CarControllerParams.STEER_STEP )
-  # The information for the actuators is sent every frame. It means that we need to sent the last known value
-  # that was sent to the LKA even if its not on the current frame
-  new_actuators = actuators.as_builder()
-  new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
-  new_actuators.torqueOutputCan = self.apply_torque
+    # The apply torque is calculated every 5 frames ( depending on CarControllerParams.STEER_STEP )
+    # The information for the actuators is sent every frame. It means that we need to sent the last known value
+    # that was sent to the LKA even if its not on the current frame
+    new_actuators = actuators.as_builder()
+    new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
+    new_actuators.torqueOutputCan = self.apply_torque
 
-  # self.frame += 1
-  self.frame = (self.frame + 1) % 10000
+    # self.frame += 1
+    self.frame = (self.frame + 1) % 10000
 
-  return new_actuators, can_sends
+    return new_actuators, can_sends
