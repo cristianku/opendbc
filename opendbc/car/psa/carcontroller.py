@@ -100,8 +100,8 @@ class CarController(CarControllerBase):
         if self.apply_torque_factor > 100:
           self.apply_torque_factor = 100
       else:
-        # EPS become active. Now the self.apply_torque_last is 0 either because its the first activation
-        # or because it happened a disengaging ( example speed below 54 km/h)
+        # EPS become active. THe first time we enter here the self.apply_torque_last is 0 either because its the first activation
+        # or because a disengaging has happened( example speed drop below 54 km/h)
         self.status = 4
         self.apply_torque_factor = 100
         new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
