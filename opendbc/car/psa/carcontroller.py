@@ -11,15 +11,9 @@ class CarController(CarControllerBase):
     super().__init__(dbc_names, CP)
     self.packer = CANPacker(dbc_names[Bus.main])
     self.apply_torque_last = 0
-    self.torque_factor_smoothed = 0  # Initialize smoothed value as int
-    self.smoothing_alpha = 0.1  # Smoothing factor (0 < alpha < 1, smaller = stronger smoothing)
     self.apply_torque_factor = 0
     self.apply_torque = 0
     self.status = 2
-    # States
-    self.READY  = 2
-    self.AUTH   = 3
-    self.ACTIVE = 4
 
   # def update(self, CC, CS, now_nanos):
   #   can_sends = []
@@ -94,8 +88,12 @@ class CarController(CarControllerBase):
         self.status = 2
       elif not CS.eps_active and not CS.out.steeringPressed:
         self.status = 2 if self.status == 4 else self.status + 1
+        self.apply_torque_factor += 5
+        if self.apply_torque_factor > 100:
+          self.apply_torque_factor = 100
       else:
         self.status = 4
+        self.apply_torque_factor = 100
 
       can_sends.append(create_lka_steering(self.packer, CC.latActive, self.apply_torque, self.status))
 
