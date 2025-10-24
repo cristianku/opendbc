@@ -97,7 +97,7 @@ class CarController(CarControllerBase):
         self.status = 4
         self.apply_torque_factor = 100
 
-      can_sends.append(create_lka_steering(self.packer, CC.latActive, self.apply_torque, self.status))
+      can_sends.append(create_lka_steering(self.packer, CC.latActive, self.apply_torque, self.apply_torque_factor, self.status))
 
       self.apply_torque_last = self.apply_torque
 
