@@ -6,28 +6,6 @@ from opendbc.car.psa.psacan import create_lka_steering, create_steering_hold, cr
 from opendbc.car.psa.values import CarControllerParams
 import math
 
-# def torque_to_factor(torque: int, steer_max: int) -> int:
-#     """Converte torque (0–steer_max) in torque factor (0–100) con curva logaritmica."""
-#     if steer_max <= 0:
-#         return 0
-#     t = max(0, min(torque, steer_max))
-#     return int(round(100 * math.log(t + 1) / math.log(steer_max + 1)))
-
-# def smooth_torque_factor(curr_torque: int, prev_torque: int, steer_max: int, alpha: float = 0.1) -> int:
-#     """Applica smoothing esponenziale sul torque factor calcolato logaritmicamente."""
-#     curr_factor = torque_to_factor(curr_torque, steer_max)
-#     prev_factor = torque_to_factor(prev_torque, steer_max)
-#     return int(round(alpha * curr_factor + (1 - alpha) * prev_factor))
-
-
-# def status_cycle(status:int) -> int:
-#   new_status = status + 1
-#   if new_status == 4:
-#     new_status = 2
-
-#   return new_status
-
-
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP):
     super().__init__(dbc_names, CP)
