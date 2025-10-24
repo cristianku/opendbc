@@ -20,44 +20,6 @@ def create_lka_steering(packer, apply_torque: int, torque_factor: int, status: i
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
 
-def calculate_apply_torque( actuators_torque, driver_torque, apply_torque_last, params):
-  temp_new_torque = int(round(actuators_torque * max(1 , params.STEER_MAX) ))
-
-  # apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
-  #                                                 CS.out.steeringTorque, CarControllerParams)
-
-  return apply_driver_steer_torque_limits(temp_new_torque, apply_torque_last,
-                                                  driver_torque, params )
-
-  # return apply_driver_steer_torque_limits(temp_new_torque, apply_torque_last,
-  #                                                 0, params )
-
-def calculate_apply_factor(previous_factor):
-  apply_torque_factor = previous_factor + 5
-
-  if apply_torque_factor > 100:
-      apply_torque_factor = 100
-
-  return apply_torque_factor
-
-def calculate_LKA_status(lat_active:bool, eps_active:bool, actual_status):
-    new_status = actual_status
-    # Openpilot is not activated
-    if not lat_active:
-      new_status =  2
-    # elif not CS.eps_active and not CS.out.steeringPressed:
-    # Cycling to activate the EPS
-    elif not eps_active:
-      if actual_status == 4:
-        new_status = 2
-      else:
-        new_status += 1
-    # The EPS is already active, no need to cycle for activation
-    else:
-      new_status =  4
-
-    return new_status
-
 
 def create_driver_torque(packer, steering):
   # abs(driver_torque) > 10 to keep EPS engaged
