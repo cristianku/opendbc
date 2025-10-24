@@ -86,6 +86,8 @@ class CarController(CarControllerBase):
       # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
       if not CC.latActive:
         self.status = 2
+        self.apply_torque_factor = 0
+
       elif not CS.eps_active and not CS.out.steeringPressed:
         self.status = 2 if self.status == 4 else self.status + 1
         self.apply_torque_factor += 5
