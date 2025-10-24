@@ -20,7 +20,7 @@ class CarInterface(CarInterfaceBase):
     ret.dashcamOnly = False
 
     ret.steerActuatorDelay = 0.1
-    ret.steerLimitTimer = 0.1
+    ret.steerLimitTimer = 1
     ret.steerAtStandstill = True
 
     CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
