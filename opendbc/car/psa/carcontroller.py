@@ -86,13 +86,13 @@ class CarController(CarControllerBase):
       self.apply_torque_last = self.apply_torque
 
     #  emulate driver torque message at 1 Hz
-    if self.frame % 100 == 0 and CS.eps_active:
-        can_sends.append(create_driver_torque(self.packer, CS.steering))
+    # if self.frame % 100 == 0 and CS.eps_active:
+    #     can_sends.append(create_driver_torque(self.packer, CS.steering))
 
 
-    if self.frame % 10 == 0 and CS.eps_active:
-        # send steering wheel hold message at 10 Hz to keep EPS engaged
-        can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+    # if self.frame % 10 == 0 and CS.eps_active:
+    #     # send steering wheel hold message at 10 Hz to keep EPS engaged
+    #     can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
     # The apply torque is calculated every 5 frames ( depending on CarControllerParams.STEER_STEP )
     # The information for the actuators is sent every frame. It means that we need to sent the last known value
