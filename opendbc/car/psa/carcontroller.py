@@ -62,6 +62,8 @@ class CarController(CarControllerBase):
             self.status = 2
           else:
             self.status += 1
+            if self.status > 4:
+              self.status = 4
 
         else:
           # Progressive activation of the Torque Factor
