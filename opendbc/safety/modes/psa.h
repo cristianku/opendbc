@@ -5,7 +5,7 @@
 #define PSA_STEERING              757U  // RX from XXX, driver torque
 #define PSA_STEERING_ALT          773U  // RX from EPS, steering angle
 #define PSA_DRIVER                1390U // RX from XXX, gas pedal
-#define PSA_DYN5_CMM              552U  // RX from CMM, gas pedal
+// #define PSA_DYN5_CMM              552U  // RX from CMM, gas pedal
 #define PSA_HS2_DYN_ABR_38D       909U  // RX from UC_FREIN, speed
 #define PSA_HS2_DAT_MDD_CMD_452   1106U // RX from BSI, cruise state
 #define PSA_DAT_BSI               1042U // RX from BSI, brake
@@ -87,10 +87,10 @@ static void psa_rx_hook(const CANPacket_t *msg) {
       gas_pressed = msg->data[3] > 0U; // GAS_PEDAL
     }
 
-    // Peugeot 3008
-    if (msg->addr == PSA_DYN5_CMM) {
-      gas_pressed = msg->data[2] > 0U; // P334_ACCped_Position (byte 2, start_bit 16)
-    }
+    // // Peugeot 3008
+    // if (msg->addr == PSA_DYN5_CMM) {
+    //   gas_pressed = msg->data[2] > 0U; // P334_ACCped_Position (byte 2, start_bit 16)
+    // }
 
     if (msg->addr == PSA_DAT_BSI) {
       brake_pressed = (msg->data[0U] >> 5U) & 1U; // P013_MainBrake
@@ -155,11 +155,11 @@ static safety_config psa_init(uint16_t param) {
     }},
     // TODO: Berlingo uses Dyn5_CMM on MAIN_BUS for gas pedal
     // GAS_PEDAL - PSA_DYN5_CMM on CAM bus (DLC=5 bytes used, ~100 Hz)
-    { .msg = {
-        {PSA_DYN5_CMM, PSA_CAM_BUS, 5, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
-        {0},
-        {0},
-    }},
+    // { .msg = {
+    //     {PSA_DYN5_CMM, PSA_CAM_BUS, 5, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
+    //     {0},
+    //     {0},
+    // }},
     {.msg = {                                                                                                                                         // steering angle
       {PSA_STEERING_ALT, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
       {PSA_STEERING_ALT, PSA_CAM_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
