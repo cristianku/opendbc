@@ -4,7 +4,8 @@
 
 #define PSA_STEERING              757U  // RX from XXX, driver torque
 #define PSA_STEERING_ALT          773U  // RX from EPS, steering angle
-#define PSA_DYN_CMM               520U  // RX from CMM, gas pedal
+#define PSA_DRIVER                1390U // RX from XXX, gas pedal
+#define PSA_DYN5_CMM              552U  // RX from CMM, gas pedal
 #define PSA_HS2_DYN_ABR_38D       909U  // RX from UC_FREIN, speed
 #define PSA_HS2_DAT_MDD_CMD_452   1106U // RX from BSI, cruise state
 #define PSA_DAT_BSI               1042U // RX from BSI, brake
@@ -85,6 +86,12 @@ static void psa_rx_hook(const CANPacket_t *msg) {
     if (msg->addr == PSA_DRIVER) {
       gas_pressed = msg->data[3] > 0U; // GAS_PEDAL
     }
+
+    // Peugeot 3008
+    if (msg->addr == PSA_DYN5_CMM) {
+      gas_pressed = msg->data[2] > 0U; // P334_ACCped_Position (byte 2, start_bit 16)
+    }
+
     if (msg->addr == PSA_DAT_BSI) {
       brake_pressed = (msg->data[0U] >> 5U) & 1U; // P013_MainBrake
     }
