@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_steering_hold, create_driver_torque, calculate_apply_torque, calculate_apply_factor, calculate_LKA_status
+from opendbc.car.psa.psacan import create_lka_steering
 from opendbc.car.psa.values import CarControllerParams
 import math
 
