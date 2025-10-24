@@ -45,7 +45,6 @@ class CarController(CarControllerBase):
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
-    actuators = CC.actuators
 
     #############
     # lateral control
@@ -77,24 +76,6 @@ class CarController(CarControllerBase):
           self.apply_torque = apply_driver_steer_torque_limits(temp_new_torque, self.apply_torque_last,
                                                           CS.out.steeringTorque, CarControllerParams )
 
-          # Openpilot is not activated
-          if not lat_active:
-            new_status =  2
-          # elif not CS.eps_active and not CS.out.steeringPressed:
-          # Cycling to activate the EPS
-          elif not eps_active:
-            if actual_status == 4:
-              new_status = 2
-            else:
-              new_status += 1
-          # The EPS is already active, no need to cycle for activation
-          else:
-            new_status =  4
-
-
-        #  emulate driver torque message at 1 Hz
-          if self.frame % 100 == 0:
-              can_sends.append(create_driver_torque(self.packer, CS.steering))
 
 
       # Message sent every CarControllerParams.STEER_STEP frames
@@ -102,15 +83,19 @@ class CarController(CarControllerBase):
       # last sent value
       self.apply_torque_last = self.apply_torque
 
+    #  emulate driver torque message at 1 Hz
+    if self.frame % 100 == 0 and CS.eps_active:
+        can_sends.append(create_driver_torque(self.packer, CS.steering))
 
-    if self.frame % 10 == 0:
+
+    if self.frame % 10 == 0 and CS.eps_active:
         # send steering wheel hold message at 10 Hz to keep EPS engaged
         can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
     # The apply torque is calculated every 5 frames ( depending on CarControllerParams.STEER_STEP )
     # The information for the actuators is sent every frame. It means that we need to sent the last known value
     # that was sent to the LKA even if its not on the current frame
-    new_actuators = actuators.as_builder()
+    new_actuators = CC.actuators.as_builder()
     new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
     new_actuators.torqueOutputCan = self.apply_torque
 
