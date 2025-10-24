@@ -59,13 +59,7 @@ class CarState(CarStateBase):
     }
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
     ret.steeringAngleDeg = bus['STEERING_ALT']['ANGLE'] # EPS
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-      # the rate sign on Peugeot 3008 is completely nonsense
-      sign = (bus['STEERING_ALT']['ANGLE'] > 0) - (bus['STEERING_ALT']['ANGLE'] < 0)
-      ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * sign
-
-    else:
-      ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1) # convert [0,1] to [-1,1] EPS: rot. speed * rot. sign
+    ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1) # convert [0,1] to [-1,1] EPS: rot. speed * rot. sign
 
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
       # In the electric power steering (EPS) system of the Peugeot 3008,
