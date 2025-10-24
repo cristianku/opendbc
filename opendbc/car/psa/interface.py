@@ -16,9 +16,10 @@ class CarInterface(CarInterfaceBase):
 
     ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.psa)]
 
+    #
     ret.dashcamOnly = False
 
-    ret.steerActuatorDelay = 0.3
+    ret.steerActuatorDelay = 0.35
     ret.steerLimitTimer = 0.1
     ret.steerAtStandstill = True
 
