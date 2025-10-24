@@ -154,9 +154,9 @@ static safety_config psa_init(uint16_t param) {
       {PSA_DRIVER, PSA_CAM_BUS, 7, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
     }},
     // TODO: Berlingo uses Dyn5_CMM on MAIN_BUS for gas pedal
-    // GAS_PEDAL - PSA_DYN5_CMM on CAM bus (DLC=5, ~10 Hz)
+    // GAS_PEDAL - PSA_DYN5_CMM on CAM bus (DLC=5 bytes used, ~100 Hz)
     { .msg = {
-        {PSA_DYN5_CMM, PSA_CAM_BUS, 5, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
+        {PSA_DYN5_CMM, PSA_CAM_BUS, 5, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
         {0},
         {0},
     }},
