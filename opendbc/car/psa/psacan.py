@@ -20,17 +20,17 @@ def create_lka_steering(packer, apply_torque: int, torque_factor: int, status: i
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
 
-def calculate_apply_torque( actuators_torque, driver_torque, apply_torque_last, CarControllerParams):
-  temp_new_torque = int(round(actuators_torque * CarControllerParams.STEER_MAX))
+def calculate_apply_torque( actuators_torque, driver_torque, apply_torque_last, params):
+  temp_new_torque = int(round(actuators_torque * max(1 , params.STEER_MAX) ))
 
   # apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
   #                                                 CS.out.steeringTorque, CarControllerParams)
 
-  return apply_driver_steer_torque_limits(temp_new_torque, apply_torque_last,
-                                                  driver_torque, CarControllerParams )
+  # return apply_driver_steer_torque_limits(temp_new_torque, apply_torque_last,
+  #                                                 driver_torque, CarControllerParams )
 
   return apply_driver_steer_torque_limits(temp_new_torque, apply_torque_last,
-                                                  0, CarControllerParams )
+                                                  0, params )
 
 def calculate_apply_factor(previous_factor):
   apply_torque_factor = previous_factor + 5
