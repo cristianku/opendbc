@@ -4,6 +4,10 @@ from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams
 from opendbc.car.interfaces import CarStateBase
 import copy
+from openpilot.common.filter_simple import FirstOrderFilter
+from opendbc.car import DT_CTRL
+from collections import deque
+
 
 GearShifter = structs.CarState.GearShifter
 TransmissionType = structs.CarParams.TransmissionType
@@ -12,6 +16,9 @@ TransmissionType = structs.CarParams.TransmissionType
 class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
+    self._drv_torque_lp = FirstOrderFilter(0.0, rc=0.10, dt=DT_CTRL)
+    self._med3 = deque(maxlen=3)
+
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
@@ -57,13 +64,21 @@ class CarState(CarStateBase):
     ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1) # convert [0,1] to [-1,1] EPS: rot. speed * rot. sign
 
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-      # In the electric power steering (EPS) system of the Peugeot 3008,
-      # the torque sensor is mounted on the steering column, not inside the assist motor.
-      # Therefore, it's not possible to obtain the actual assist (motor) torque separately.
-      # Instead, we can use the smoothed EPS_TORQUE value from IS_DAT_DIRA as the driver torque,
-      # since it doesn’t appear to include the LKA-commanded torque from the CarController.
-        ret.steeringTorque = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
-        ret.steeringTorqueEps = 0
+      # PSA 3008: smooth driver torque (Nm)
+      raw_drv = float(cp.vl['STEERING']['DRIVER_TORQUE'])
+      self._med3.append(raw_drv)
+      raw_drv = sorted(self._med3)[len(self._med3)//2]  # median(≤3)
+
+      # deadband + zero-snap (optionally add hysteresis as above)
+      if abs(raw_drv) < 0.3:
+        raw_drv = 0.0
+        if abs(self._drv_torque_lp.x) < 0.5:   # don’t snap if user is actually torquing
+          self._drv_torque_lp.x = 0.0
+
+      self.steeringTorqueRaw = raw_drv  # internal debug
+      ret.steeringTorque     = self._drv_torque_lp.update(raw_drv)
+      ret.steeringTorqueEps  = 0
+
     else:
         ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
         ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
