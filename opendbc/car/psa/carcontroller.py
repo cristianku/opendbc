@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering
+from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold
 from opendbc.car.psa.values import CarControllerParams
 import math
 
@@ -14,63 +14,6 @@ class CarController(CarControllerBase):
     self.apply_torque_factor = 0
     self.apply_torque = 0
     self.status = 2
-
-  # def update(self, CC, CS, now_nanos):
-  #   can_sends = []
-
-    ### cristian
-    # #############
-    # # lateral control
-    # ######
-    # if self.frame % CarControllerParams.STEER_STEP == 0:
-    #   if not CC.latActive:
-    #     self.apply_torque = 0
-    #     self.apply_torque_factor = 0
-    #     self.status = 2
-
-    #   else:
-
-    #     if not CS.eps_active:
-    #       # Openpilot is not activated
-    #       if self.status == 4:
-    #         self.status = 2
-    #       else:
-    #         self.status += 1
-    #         if self.status > 4:
-    #           self.status = 4
-    #       # Progressive activation of the Torque Factor
-    #       self.apply_torque_factor += 5
-    #       if self.apply_torque_factor > 100:
-    #           self.apply_torque_factor = 100
-
-    #     else:
-    #       self.apply_torque_factor = 100
-    #       self.status = 4
-
-    #       # Torque
-    #       temp_new_torque = int(round(CC.actuators.torque * max(1 , CarControllerParams.STEER_MAX) ))
-
-    #       self.apply_torque = apply_driver_steer_torque_limits(temp_new_torque, self.apply_torque_last,
-    #                                                       CS.out.steeringTorque, CarControllerParams )
-
-
-    #   # Message sent every CarControllerParams.STEER_STEP frames
-    #   can_sends.append(create_lka_steering(self.packer,self.apply_torque,self.apply_torque_factor,self.status))
-    #   # last sent value
-    #   self.apply_torque_last = self.apply_torque
-    ### end cristian
-
-
-    # new_actuators = CC.actuators.as_builder()
-    # new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
-    # new_actuators.torqueOutputCan = self.apply_torque
-
-    # # self.frame += 1
-    # self.frame = (self.frame + 1) % 10000
-
-    # return new_actuators, can_sends
-
-
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
@@ -108,9 +51,18 @@ class CarController(CarControllerBase):
         self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
                                                         CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
 
+      # emulate driver torque message at 1 Hz
+      if self.frame % 100 == 0:
+        can_sends.append(create_driver_torque(self.packer, CS.steering))
+
       can_sends.append(create_lka_steering(self.packer, CC.latActive, self.apply_torque, self.apply_torque_factor, self.status))
 
+
       self.apply_torque_last = self.apply_torque
+
+    if self.frame % 10 == 0:
+      # send steering wheel hold message at 10 Hz to keep EPS engaged
+      can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
     new_actuators = actuators.as_builder()
     new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX

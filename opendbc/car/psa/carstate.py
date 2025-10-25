@@ -3,6 +3,7 @@ from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams
 from opendbc.car.interfaces import CarStateBase
+import copy
 
 GearShifter = structs.CarState.GearShifter
 TransmissionType = structs.CarParams.TransmissionType
@@ -69,8 +70,8 @@ class CarState(CarStateBase):
 
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
-    # self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
-    # self.steering = copy.copy(cp.vl['STEERING'])
+    self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
+    self.steering = copy.copy(cp.vl['STEERING'])
 
     # cruise
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed
