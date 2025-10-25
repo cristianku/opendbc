@@ -54,17 +54,17 @@ class CarController(CarControllerBase):
                                                         0, CarControllerParams, CarControllerParams.STEER_MAX)
 
       # emulate driver torque message at 1 Hz
-      if self.frame % 100 == 0:
-        can_sends.append(create_driver_torque(self.packer, CS.steering))
+      # if self.frame % 100 == 0:
+      #   can_sends.append(create_driver_torque(self.packer, CS.steering))
 
       can_sends.append(create_lka_steering(self.packer, CC.latActive, self.apply_torque, self.apply_torque_factor, self.status))
 
 
       self.apply_torque_last = self.apply_torque
 
-    if self.frame % 10 == 0:
-      # send steering wheel hold message at 10 Hz to keep EPS engaged
-      can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+    # if self.frame % 10 == 0:
+    #   # send steering wheel hold message at 10 Hz to keep EPS engaged
+    #   can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
     # Keep last torque between 20 Hz LKA updates, EPS holds value longer than 50 ms.
     new_actuators = actuators.as_builder()
