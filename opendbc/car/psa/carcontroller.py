@@ -29,7 +29,7 @@ class CarController(CarControllerBase):
         self.apply_torque = 0
         self.apply_torque_last = 0
 
-      elif not CS.eps_active and not CS.out.steeringPressed:
+      elif not CS.eps_active: # and not CS.out.steeringPressed:
         # eps can become inactive under 54km/h
         # we need to follow the activation sequence
         self.status = 2 if self.status == 4 else self.status + 1
@@ -48,8 +48,10 @@ class CarController(CarControllerBase):
         self.status = 4
         self.apply_torque_factor = 100
         new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
+        # self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
+        #                                                 CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
         self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
-                                                        CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
+                                                        0, CarControllerParams, CarControllerParams.STEER_MAX)
 
       # emulate driver torque message at 1 Hz
       if self.frame % 100 == 0:
@@ -64,6 +66,7 @@ class CarController(CarControllerBase):
       # send steering wheel hold message at 10 Hz to keep EPS engaged
       can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
+    # Keep last torque between 20 Hz LKA updates, EPS holds value longer than 50 ms.
     new_actuators = actuators.as_builder()
     new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
     new_actuators.torqueOutputCan = self.apply_torque

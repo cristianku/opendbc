@@ -16,9 +16,13 @@ TransmissionType = structs.CarParams.TransmissionType
 class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
-    self._drv_torque_lp = FirstOrderFilter(0.0, rc=0.10, dt=DT_CTRL)
-    self._med3 = deque(maxlen=3)
-
+    # --- driver torque filtering state (Toyota-style) ---
+    self._drv_lp = FirstOrderFilter(0.0, DT_CTRL, 0.25)  # tau=0.25 s
+    self._drv_deadband = 0.3                             # Nm, snap-to-zero
+    self._drv_press_thr = 1.0                            # Nm, pressed threshold
+    self._drv_press_ms = 200                             # ms, debounce
+    self._drv_press_frames = max(1, int(self._drv_press_ms / (DT_CTRL * 1000)))
+    self._drv_press_cnt = 0
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
@@ -61,23 +65,39 @@ class CarState(CarStateBase):
     }
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
     ret.steeringAngleDeg = bus['STEERING_ALT']['ANGLE'] # EPS
-    ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1) # convert [0,1] to [-1,1] EPS: rot. speed * rot. sign
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      # PSA EPS encodes the steering rotation direction bit inverted from the driver's perspective:
+      #   RATE_SIGN = 0 → clockwise (right turn)
+      #   RATE_SIGN = 1 → anticlockwise (left turn)
+      # Invert the sign to match OpenPilot's convention: right = positive, left = negative.
+      ret.steeringRateDeg = bus['STEERING_ALT']['RATE'] * (1 - 2 * bus['STEERING_ALT']['RATE_SIGN'])
+    else:
+      # Convert EPS direction bit [0,1] to signed multiplier [-1,+1]
+      # Standard convention: 0 → left (negative), 1 → right (positive)
+      ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1)
 
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-      # PSA 3008: smooth driver torque (Nm)
-      raw_drv = float(cp.vl['STEERING']['DRIVER_TORQUE'])
-      self._med3.append(raw_drv)
-      raw_drv = sorted(self._med3)[len(self._med3)//2]  # median(≤3)
+      # --- choose ONE source (confirm which is driver-only on your 3008) ---
+      raw_drv = float(cp.vl['STEERING']['DRIVER_TORQUE'])            # Option A: classic driver torque
+      # raw_drv = float(cp.vl['IS_DAT_DIRA']['EPS_TORQUE']) * 10.0   # Option B: if confirmed "driver only"
 
-      # deadband + zero-snap (optionally add hysteresis as above)
-      if abs(raw_drv) < 0.3:
-        raw_drv = 0.0
-        if abs(self._drv_torque_lp.x) < 0.5:   # don’t snap if user is actually torquing
-          self._drv_torque_lp.x = 0.0
+      # 1) first-order low-pass (Toyota-style)
+      lp = self._drv_lp.update(raw_drv)
 
-      self.steeringTorqueRaw = raw_drv  # internal debug
-      ret.steeringTorque     = self._drv_torque_lp.update(raw_drv)
-      ret.steeringTorqueEps  = 0
+      # 2) deadband (snap to zero near 0)
+      if abs(lp) < self._drv_deadband:
+        lp = 0.0
+
+      # 3) pressed debounce (hold > threshold for _drv_press_ms)
+      if abs(lp) > self._drv_press_thr:
+        self._drv_press_cnt = min(self._drv_press_frames, self._drv_press_cnt + 1)
+      else:
+        self._drv_press_cnt = max(0, self._drv_press_cnt - 1)
+
+      # 4) export
+      ret.steeringTorqueRaw = raw_drv      # for logging/debug in Cabana
+      ret.steeringTorque    = float(lp)    # filtered value used by OP
+      ret.steeringTorqueEps = 0.0
 
     else:
       ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
