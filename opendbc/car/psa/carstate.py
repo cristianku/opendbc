@@ -4,9 +4,9 @@ from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams
 from opendbc.car.interfaces import CarStateBase
 import copy
-from openpilot.common.filter_simple import FirstOrderFilter
-from opendbc.car import DT_CTRL
-from collections import deque
+# from openpilot.common.filter_simple import FirstOrderFilter
+# from opendbc.car import DT_CTRL
+# from collections import deque
 
 
 GearShifter = structs.CarState.GearShifter
@@ -17,12 +17,12 @@ class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
     # --- driver torque filtering state (Toyota-style) ---
-    self._drv_lp = FirstOrderFilter(0.0, DT_CTRL, 0.25)  # tau=0.25 s
-    self._drv_deadband = 0.3                             # Nm, snap-to-zero
-    self._drv_press_thr = 1.0                            # Nm, pressed threshold
-    self._drv_press_ms = 200                             # ms, debounce
-    self._drv_press_frames = max(1, int(self._drv_press_ms / (DT_CTRL * 1000)))
-    self._drv_press_cnt = 0
+    # self._drv_lp = FirstOrderFilter(0.0, DT_CTRL, 0.25)  # tau=0.25 s
+    # self._drv_deadband = 0.3                             # Nm, snap-to-zero
+    # self._drv_press_thr = 1.0                            # Nm, pressed threshold
+    # self._drv_press_ms = 200                             # ms, debounce
+    # self._drv_press_frames = max(1, int(self._drv_press_ms / (DT_CTRL * 1000)))
+    # self._drv_press_cnt = 0
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
@@ -77,33 +77,36 @@ class CarState(CarStateBase):
       ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1)
 
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-      # --- choose ONE source (confirm which is driver-only on your 3008) ---
-      raw_drv = float(cp.vl['STEERING']['DRIVER_TORQUE'])            # Option A: classic driver torque
-      # raw_drv = float(cp.vl['IS_DAT_DIRA']['EPS_TORQUE']) * 10.0   # Option B: if confirmed "driver only"
+      # # --- choose ONE source (confirm which is driver-only on your 3008) ---
+      # raw_drv = float(cp.vl['STEERING']['DRIVER_TORQUE'])            # Option A: classic driver torque
+      # # raw_drv = float(cp.vl['IS_DAT_DIRA']['EPS_TORQUE']) * 10.0   # Option B: if confirmed "driver only"
 
-      # 1) first-order low-pass (Toyota-style)
-      lp = self._drv_lp.update(raw_drv)
+      # # 1) first-order low-pass (Toyota-style)
+      # lp = self._drv_lp.update(raw_drv)
 
-      # 2) deadband (snap to zero near 0)
-      if abs(lp) < self._drv_deadband:
-        lp = 0.0
+      # # 2) deadband (snap to zero near 0)
+      # if abs(lp) < self._drv_deadband:
+      #   lp = 0.0
 
-      # 3) pressed debounce (hold > threshold for _drv_press_ms)
-      if abs(lp) > self._drv_press_thr:
-        self._drv_press_cnt = min(self._drv_press_frames, self._drv_press_cnt + 1)
-      else:
-        self._drv_press_cnt = max(0, self._drv_press_cnt - 1)
+      # # 3) pressed debounce (hold > threshold for _drv_press_ms)
+      # if abs(lp) > self._drv_press_thr:
+      #   self._drv_press_cnt = min(self._drv_press_frames, self._drv_press_cnt + 1)
+      # else:
+      #   self._drv_press_cnt = max(0, self._drv_press_cnt - 1)
 
-      # 4) export
-      ret.steeringTorqueRaw = raw_drv      # for logging/debug in Cabana
-      ret.steeringTorque    = float(lp)    # filtered value used by OP
+      # # 4) export
+      # ret.steeringTorqueRaw = raw_drv      # for logging/debug in Cabana
+      # ret.steeringTorque    = float(lp)    # filtered value used by OP
+      ret.steeringTorque  = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
       ret.steeringTorqueEps = 0.0
+      # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
 
     else:
       ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
       ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
 
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
+
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
     self.steering = copy.copy(cp.vl['STEERING'])
