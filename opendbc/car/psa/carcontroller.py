@@ -20,7 +20,7 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
 
     # lateral control
-    if self.frame % 5 == 0:
+    if self.frame % CarControllerParams.STEER_STEP == 0:
       # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
       # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
       if not CC.latActive:
