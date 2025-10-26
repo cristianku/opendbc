@@ -22,7 +22,7 @@ class CarInterface(CarInterfaceBase):
     #
     ret.dashcamOnly = False
 
-    ret.steerActuatorDelay = 0.1
+    ret.steerActuatorDelay = 0.25
     ret.steerLimitTimer = 1
     # if candidate == CAR.PSA_PEUGEOT_3008_II_PHASE1:
     CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
