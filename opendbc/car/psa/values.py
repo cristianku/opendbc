@@ -14,7 +14,7 @@ class CarControllerParams:
   # trying with higher STEER_MAX and lower torque
   STEER_MAX = 200
 
-  STEER_STEP = 1  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
+  STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
   STEER_DELTA_UP = 5  # Maximum allowed torque increase per control frame (prevents sudden jumps)
   STEER_DELTA_DOWN = 10  # Maximum allowed torque decrease per control frame (can be faster for quick release)
