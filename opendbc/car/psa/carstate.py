@@ -65,7 +65,7 @@ class CarState(CarStateBase):
       CAR.PSA_PEUGEOT_3008_II_PHASE1: cp.vl,
     }
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
-    ret.steeringAngleDeg = bus['STEERING_ALT']['ANGLE'] # EPS
+    ret.steeringAngleDeg = bus[' ']['ANGLE'] # EPS
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       # PSA EPS encodes the steering rotation direction bit inverted from the driver's perspective:
       #   RATE_SIGN = 0 → clockwise (right turn)
