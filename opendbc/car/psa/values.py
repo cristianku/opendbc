@@ -12,15 +12,15 @@ class CarControllerParams:
   # Steering torque limits and dynamics for the EPS controller
   # STEER_MAX = 100  # Maximum steering torque command that can be applied (unitless scaling factor)
   # trying with higher STEER_MAX and lower torque
-  STEER_MAX = 200
+  STEER_MAX = 100
 
-  STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
+  STEER_STEP = 1  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
   STEER_DELTA_UP = 5  # Maximum allowed torque increase per control frame (prevents sudden jumps)
   STEER_DELTA_DOWN = 10  # Maximum allowed torque decrease per control frame (can be faster for quick release)
 
   STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
-  STEER_DRIVER_FACTOR = 2  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
+  STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
   STEER_DRIVER_ALLOWANCE = 20  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
 
   # Increasing STEER_MAX increases resolution (number of torque steps).
@@ -34,7 +34,7 @@ class CarControllerParams:
   #      400     |        25         |        ±100         |   ±400
   #   -------------------------------------------------------------
   # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
-  MAX_TORQUE_FACTOR = 50
+  MAX_TORQUE_FACTOR = 100
 
   def __init__(self, CP):
     pass
@@ -65,7 +65,7 @@ class CAR(Platforms):
   PSA_PEUGEOT_3008_II_PHASE1 = PSAPlatformConfig(
     [PSACarDocs("PEUGEOT 3008 II PHASE 1 2016-29")],
     # https://www.auto-data.net/en/peugeot-3008-ii-phase-i-2016-1.6-puretech-180hp-automatic-s-s-34446#google_vignette
-    CarSpecs(mass=1577, wheelbase=2.675, steerRatio=17.28, tireStiffnessFactor=0.989 ), # TODO: set steerRatio
+    CarSpecs(mass=1577, wheelbase=2.675, steerRatio=17.581394, tireStiffnessFactor=0.999846 ), # TODO: set steerRatio
   )
 
 
