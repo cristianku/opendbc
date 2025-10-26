@@ -80,11 +80,13 @@ class CarState(CarStateBase):
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       self.steerDyn = int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"])
       self.sportMode = (self.steerDyn == 1)  # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
+      ret.genericToggle = self.sportMode
       ret.steeringTorque  = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
       ret.steeringTorqueEps = 0.0
       # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
 
     else:
+      ret.genericToggle = 0
       ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
       ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
 
