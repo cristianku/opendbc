@@ -39,7 +39,7 @@ class CarController(CarControllerBase):
 
         #need to set to zero because the steering wheel is free or force
         # otherwise we would sent to the controller a wrong value, a value before the disengaging
-        self.apply_torque_factor += 5
+        self.apply_torque_factor += 10
         if self.apply_torque_factor >  CarControllerParams.MAX_TORQUE_FACTOR:
           self.apply_torque_factor =  CarControllerParams.MAX_TORQUE_FACTOR
 
