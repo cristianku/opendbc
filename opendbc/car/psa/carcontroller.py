@@ -4,7 +4,7 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold
 from opendbc.car.psa.values import CarControllerParams
-from openpilot.common.numpy_fast import clip
+import numpy as np
 
 import math
 
@@ -51,7 +51,7 @@ class CarController(CarControllerBase):
         self.status = 4
         self.apply_torque_factor = 100
         # --- Smoothed torque command (EMA filter) ---
-        raw = clip(CC.actuators.torque, -1.0, 1.0) * CarControllerParams.STEER_MAX
+        raw = np.clip(CC.actuators.torque, -1.0, 1.0) * CarControllerParams.STEER_MAX
         self.cmd_ema = 0.25 * raw + 0.75 * getattr(self, "cmd_ema", 0.0)   # exponential response filte
         new_torque = int(round(self.cmd_ema))
         # new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
@@ -73,7 +73,7 @@ class CarController(CarControllerBase):
     #   # send steering wheel hold message at 10 Hz to keep EPS engaged
     #   can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
-    # Keep last torque between 20 Hz LKA updates, EPS holds value longer than 50 ms.
+    # Keep last torque between LKA updates, EPS holds value longer than 50 ms.
     new_actuators = actuators.as_builder()
     new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
     new_actuators.torqueOutputCan = self.apply_torque
