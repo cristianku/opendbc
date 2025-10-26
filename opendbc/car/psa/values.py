@@ -14,10 +14,10 @@ class CarControllerParams:
   # trying with higher STEER_MAX and lower torque
   STEER_MAX = 100
 
-  STEER_STEP = 1  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
+  STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
   STEER_DELTA_UP = 1  # Maximum allowed torque increase per control frame (prevents sudden jumps)
-  STEER_DELTA_DOWN = 5  # Maximum allowed torque decrease per control frame (can be faster for quick release)
+  STEER_DELTA_DOWN = 2  # Maximum allowed torque decrease per control frame (can be faster for quick release)
 
   STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
   STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
@@ -65,7 +65,7 @@ class CAR(Platforms):
   PSA_PEUGEOT_3008_II_PHASE1 = PSAPlatformConfig(
     [PSACarDocs("PEUGEOT 3008 II PHASE 1 2016-29")],
     # https://www.auto-data.net/en/peugeot-3008-ii-phase-i-2016-1.6-puretech-180hp-automatic-s-s-34446#google_vignette
-    CarSpecs(mass=1577, wheelbase=2.675, steerRatio=17.581394, tireStiffnessFactor=0.999846 ), # TODO: set steerRatio
+    CarSpecs(mass=1577, wheelbase=2.675, steerRatio=17.6, tireStiffnessFactor=0.997232 ), # TODO: set steerRatio
   )
 
 
