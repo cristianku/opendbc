@@ -55,10 +55,10 @@ class CarController(CarControllerBase):
         # cmd = np.clip(self.cmd_ema, -CarControllerParams.STEER_MAX, CarControllerParams.STEER_MAX)
         # new_torque = int(round(cmd))
         new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
-        # self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
-        #                                                 CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
         self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
-                                                        0, CarControllerParams, CarControllerParams.STEER_MAX)
+                                                        CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
+        # self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
+        #                                                 0, CarControllerParams, CarControllerParams.STEER_MAX)
 
       # emulate driver torque message at 1 Hz
       # if self.frame % 100 == 0:
