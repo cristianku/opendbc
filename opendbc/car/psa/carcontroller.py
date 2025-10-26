@@ -52,9 +52,9 @@ class CarController(CarControllerBase):
         self.apply_torque_factor = 100
         # --- Smoothed torque command (EMA filter) ---
         raw = clip(CC.actuators.torque, -1.0, 1.0) * CarControllerParams.STEER_MAX
-        self.cmd_ema = 0.25 * raw + 0.75 * getattr(self, "cmd_ema", 0.0)   # filtro a risposta esponenziale
+        self.cmd_ema = 0.25 * raw + 0.75 * getattr(self, "cmd_ema", 0.0)   # exponential response filte
         new_torque = int(round(self.cmd_ema))
-        new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
+        # new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
         # self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
         #                                                 CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
         self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
