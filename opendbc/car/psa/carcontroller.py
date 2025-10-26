@@ -21,6 +21,7 @@ class CarController(CarControllerBase):
 
     # lateral control
     if self.frame % 5 == 0:
+    # if self.frame % CarControllerParams.STEER_STEP == 0:
       # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
       # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
       apply_torque = 0
@@ -37,13 +38,13 @@ class CarController(CarControllerBase):
         #need to set to zero because the steering wheel is free or force
         # otherwise we would sent to the controller a wrong value, a value before the disengaging
         self.apply_torque_factor += 5
-        if self.apply_torque_factor > 100:
-          self.apply_torque_factor = 100
+        if self.apply_torque_factor > 50:
+          self.apply_torque_factor = 50
       else:
         # EPS become active. THe first time we enter here the self.apply_torque_last is 0 either because its the first activation
         # or because a disengaging has happened( example speed drop below 54 km/h)
         self.status = 4
-        self.apply_torque_factor = 100
+        self.apply_torque_factor = 50
         new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
         apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
                                                         CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
