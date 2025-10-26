@@ -22,7 +22,10 @@ class CarInterface(CarInterfaceBase):
     #
     ret.dashcamOnly = False
 
-    ret.steerActuatorDelay = 0.25
+    # The step resolution of this value depends on the update rate of the lateral control loop.
+    # If torque commands are sent every 5 frames (20 Hz), each actuation occurs every 50 ms.
+    # Therefore, the effective precision of this parameter is about 0.05 s.
+    ret.steerActuatorDelay = 0.22
     ret.steerLimitTimer = 1
     # if candidate == CAR.PSA_PEUGEOT_3008_II_PHASE1:
     CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
