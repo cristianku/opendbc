@@ -24,7 +24,6 @@ class CarInterface(CarInterfaceBase):
 
     ret.steerActuatorDelay = 0.1
     ret.steerLimitTimer = 1
-    ret.steerAtStandstill = True
 
     CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
@@ -36,5 +35,8 @@ class CarInterface(CarInterfaceBase):
     if candidate == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
       ret.minEnableSpeed = LKAS_LIMITS.ENABLE_SPEED * CV.KPH_TO_MS
+    else:
+      ret.steerAtStandstill = True
+
 
     return ret
