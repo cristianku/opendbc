@@ -4,6 +4,8 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold
 from opendbc.car.psa.values import CarControllerParams
+from openpilot.common.numpy_fast import clip
+
 import math
 
 class CarController(CarControllerBase):
@@ -28,6 +30,7 @@ class CarController(CarControllerBase):
         self.apply_torque_factor = 0
         self.apply_torque = 0
         self.apply_torque_last = 0
+        self.cmd_ema = 0.0
 
       elif not CS.eps_active: # and not CS.out.steeringPressed:
         # eps can become inactive under 54km/h
@@ -47,6 +50,10 @@ class CarController(CarControllerBase):
         # or because a disengaging has happened( example speed drop below 54 km/h)
         self.status = 4
         self.apply_torque_factor = 100
+        # --- Smoothed torque command (EMA filter) ---
+        raw = clip(CC.actuators.torque, -1.0, 1.0) * CarControllerParams.STEER_MAX
+        self.cmd_ema = 0.25 * raw + 0.75 * getattr(self, "cmd_ema", 0.0)   # filtro a risposta esponenziale
+        new_torque = int(round(self.cmd_ema))
         new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
         # self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
         #                                                 CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
