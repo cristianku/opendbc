@@ -50,7 +50,8 @@ class CAR(Platforms):
   )
   PSA_PEUGEOT_3008 = PSAPlatformConfig(
     [PSACarDocs("PEUGEOT 3008 2016-29")],
-    CarSpecs(mass=1577, wheelbase=2.73, steerRatio=17.28), # TODO: set steerRatio
+    # https://www.auto-data.net/en/peugeot-3008-ii-phase-i-2016-1.6-puretech-180hp-automatic-s-s-34446#google_vignette
+    CarSpecs(mass=1577, wheelbase=2.675, steerRatio=17.28), # TODO: set steerRatio
   )
 
 
