@@ -2,6 +2,9 @@ from opendbc.car import structs, get_safety_config
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.carstate import CarState
+from opendbc.car.psa.values import CAR, LKAS_LIMITS
+from opendbc.car.common.conversions import Conversions as CV
+
 
 TransmissionType = structs.CarParams.TransmissionType
 
@@ -29,5 +32,9 @@ class CarInterface(CarInterfaceBase):
     ret.radarUnavailable = True
 
     ret.alphaLongitudinalAvailable = False
+
+    if candidate == CAR.PSA_PEUGEOT_3008:
+      ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
+      ret.minEnableSpeed = LKAS_LIMITS.ENABLE_SPEED * CV.KPH_TO_MS
 
     return ret

@@ -1,7 +1,7 @@
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.psa.values import CAR, DBC, CarControllerParams
+from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 import copy
 # from openpilot.common.filter_simple import FirstOrderFilter
@@ -105,7 +105,14 @@ class CarState(CarStateBase):
       ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
       ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
 
-    ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      # Peugeot 3008: EPS_TORQUE represents only driver-applied torque (no motor assist).
+      # The signal is already smoothed by the EPS ECU, so update_steering_pressed is unnecessary.
+      ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
+    else:
+      # update_steering_pressed --> Applies filtering on steering pressed for noisy driver torque signals
+      ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
+
 
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
