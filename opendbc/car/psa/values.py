@@ -13,7 +13,6 @@ class CarControllerParams:
   # STEER_MAX = 100  # Maximum steering torque command that can be applied (unitless scaling factor)
   # trying with higher STEER_MAX and lower torque
   STEER_MAX = 200
-  # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
 
   STEER_STEP = 1  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
