@@ -12,7 +12,7 @@ class CarControllerParams:
   # Steering torque limits and dynamics for the EPS controller
   # STEER_MAX = 100  # Maximum steering torque command that can be applied (unitless scaling factor)
   # trying with higher STEER_MAX and lower torque
-  STEER_MAX = 100
+  STEER_MAX = 140
 
   STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
@@ -34,7 +34,7 @@ class CarControllerParams:
   #      400     |        25         |        ±100         |   ±400
   #   -------------------------------------------------------------
   # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
-  MAX_TORQUE_FACTOR = 100
+  MAX_TORQUE_FACTOR = 25
 
   def __init__(self, CP):
     pass
