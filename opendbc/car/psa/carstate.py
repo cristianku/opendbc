@@ -23,6 +23,7 @@ class CarState(CarStateBase):
     # self._drv_press_ms = 200                             # ms, debounce
     # self._drv_press_frames = max(1, int(self._drv_press_ms / (DT_CTRL * 1000)))
     # self._drv_press_cnt = 0
+    self.sportMode = 0
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
@@ -77,26 +78,8 @@ class CarState(CarStateBase):
       ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1)
 
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
-      # # --- choose ONE source (confirm which is driver-only on your 3008) ---
-      # raw_drv = float(cp.vl['STEERING']['DRIVER_TORQUE'])            # Option A: classic driver torque
-      # # raw_drv = float(cp.vl['IS_DAT_DIRA']['EPS_TORQUE']) * 10.0   # Option B: if confirmed "driver only"
-
-      # # 1) first-order low-pass (Toyota-style)
-      # lp = self._drv_lp.update(raw_drv)
-
-      # # 2) deadband (snap to zero near 0)
-      # if abs(lp) < self._drv_deadband:
-      #   lp = 0.0
-
-      # # 3) pressed debounce (hold > threshold for _drv_press_ms)
-      # if abs(lp) > self._drv_press_thr:
-      #   self._drv_press_cnt = min(self._drv_press_frames, self._drv_press_cnt + 1)
-      # else:
-      #   self._drv_press_cnt = max(0, self._drv_press_cnt - 1)
-
-      # # 4) export
-      # ret.steeringTorqueRaw = raw_drv      # for logging/debug in Cabana
-      # ret.steeringTorque    = float(lp)    # filtered value used by OP
+      self.steerDyn = int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"])
+      self.sportMode = (self.steerDyn == 1)  # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
       ret.steeringTorque  = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
       ret.steeringTorqueEps = 0.0
       # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
