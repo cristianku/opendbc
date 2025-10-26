@@ -15,7 +15,7 @@ class CarControllerParams:
   STEER_MAX = 200
   # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
 
-  STEER_STEP = 2  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
+  STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
   STEER_DELTA_UP = 3  # Maximum allowed torque increase per control frame (prevents sudden jumps)
   STEER_DELTA_DOWN = 4  # Maximum allowed torque decrease per control frame (can be faster for quick release)
