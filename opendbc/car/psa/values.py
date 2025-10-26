@@ -24,6 +24,20 @@ class CarControllerParams:
   STEER_DRIVER_FACTOR = 2  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
   STEER_DRIVER_ALLOWANCE = 20  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
 
+  # Increasing STEER_MAX increases resolution (number of torque steps).
+  # MAX_TORQUE_FACTOR limits the effective range (percent of STEER_MAX).
+  # Example of total available steps:
+  #   -----------------------------------------------
+  #   STEER_MAX | MAX_TORQUE_FACTOR | Effective Range | Steps
+  #   -----------+-------------------+----------------+-------
+  #      100     |       100         |     ±100       |  201
+  #      200     |       100         |     ±200       |  401
+  #      200     |        70         |     ±140       |  281
+  #      300     |        70         |     ±210       |  421
+  #      400     |        50         |     ±200       |  401
+  #   -----------------------------------------------
+  # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
+
   MAX_TORQUE_FACTOR = 70
 
   def __init__(self, CP):
