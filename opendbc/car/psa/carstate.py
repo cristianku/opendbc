@@ -41,7 +41,7 @@ class CarState(CarStateBase):
     ret.standstill = cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'] < 0.1
 
     # gas
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       ret.gasPressed = cp.vl['Dyn5_CMM']['P334_ACCPed_Position'] > 0
     else:
       ret.gasPressed = cp_cam.vl['DRIVER']['GAS_PEDAL'] > 0
@@ -50,7 +50,7 @@ class CarState(CarStateBase):
     ret.brakePressed = bool(cp_cam.vl['Dat_BSI']['P013_MainBrake'])
 
     # brake pressure
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       raw = cp.vl["Dyn2_FRE"]["BRAKE_PRESSURE"]
       ret.brake = max(0.0, float(raw) - 550.0)  # clamp a 0
 
@@ -61,11 +61,11 @@ class CarState(CarStateBase):
     STEERING_ALT_BUS = {
       CAR.PSA_PEUGEOT_208: cp.vl,
       CAR.PSA_PEUGEOT_508: cp_cam.vl,
-      CAR.PSA_PEUGEOT_3008: cp.vl,
+      CAR.PSA_PEUGEOT_3008_II_PHASE1: cp.vl,
     }
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
     ret.steeringAngleDeg = bus['STEERING_ALT']['ANGLE'] # EPS
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       # PSA EPS encodes the steering rotation direction bit inverted from the driver's perspective:
       #   RATE_SIGN = 0 → clockwise (right turn)
       #   RATE_SIGN = 1 → anticlockwise (left turn)
@@ -76,7 +76,7 @@ class CarState(CarStateBase):
       # Standard convention: 0 → left (negative), 1 → right (positive)
       ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1)
 
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       # # --- choose ONE source (confirm which is driver-only on your 3008) ---
       # raw_drv = float(cp.vl['STEERING']['DRIVER_TORQUE'])            # Option A: classic driver torque
       # # raw_drv = float(cp.vl['IS_DAT_DIRA']['EPS_TORQUE']) * 10.0   # Option B: if confirmed "driver only"
@@ -105,7 +105,7 @@ class CarState(CarStateBase):
       ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
       ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
 
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       # Peugeot 3008: EPS_TORQUE represents only driver-applied torque (no motor assist).
       # The signal is already smoothed by the EPS ECU, so update_steering_pressed is unnecessary.
       ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
@@ -134,7 +134,7 @@ class CarState(CarStateBase):
 
     # blinkers
     blinker = cp_cam.vl['HS2_DAT7_BSI_612']['CDE_CLG_ET_HDC']
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       ret.leftBlinker = blinker == 2
       ret.rightBlinker = blinker == 1
     else:
@@ -142,12 +142,12 @@ class CarState(CarStateBase):
       ret.rightBlinker = blinker == 2
 
     # Blind sensor ( there is not left and right )
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       ret.leftBlindspot = cp_adas.vl["HS2_DYN_MDD_ETAT_2F6"]["BLIND_SENSOR"] != 0
       ret.rightBlindspot = cp_adas.vl["HS2_DYN_MDD_ETAT_2F6"]["BLIND_SENSOR"] != 0
 
     # Auto Braking in progress
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       ret.stockAeb = cp_adas.vl["HS2_DYN1_MDD_ETAT_2B6"]["AUTO_BRAKING_STATUS"] == 1
 
     # lock info

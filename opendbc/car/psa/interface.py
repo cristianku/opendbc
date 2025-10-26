@@ -33,7 +33,7 @@ class CarInterface(CarInterfaceBase):
 
     ret.alphaLongitudinalAvailable = False
 
-    if candidate == CAR.PSA_PEUGEOT_3008:
+    if candidate == CAR.PSA_PEUGEOT_3008_II_PHASE1:
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
       ret.minEnableSpeed = LKAS_LIMITS.ENABLE_SPEED * CV.KPH_TO_MS
 
