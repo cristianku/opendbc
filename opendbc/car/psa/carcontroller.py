@@ -42,18 +42,18 @@ class CarController(CarControllerBase):
         self.apply_torque = 0
         self.apply_torque_last = 0
 
-        self.apply_torque_factor += 5
-        if self.apply_torque_factor > 100:
-          self.apply_torque_factor = 100
+        self.apply_torque_factor = min(self.apply_torque_factor + 5, CarControllerParams.MAX_TORQUE_FACTOR)
+
       else:
         # EPS become active. THe first time we enter here the self.apply_torque_last is 0 either because its the first activation
         # or because a disengaging has happened( example speed drop below 54 km/h)
         self.status = 4
-        self.apply_torque_factor = 100
+        self.apply_torque_factor = CarControllerParams.MAX_TORQUE_FACTOR
         # --- Smoothed torque command (EMA filter) ---
         raw = np.clip(CC.actuators.torque, -1.0, 1.0) * CarControllerParams.STEER_MAX
         self.cmd_ema = 0.25 * raw + 0.75 * getattr(self, "cmd_ema", 0.0)   # exponential response filte
-        new_torque = int(round(self.cmd_ema))
+        cmd = np.clip(self.cmd_ema, -CarControllerParams.STEER_MAX, CarControllerParams.STEER_MAX)
+        new_torque = int(round(cmd))
         # new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
         # self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
         #                                                 CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
