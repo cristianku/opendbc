@@ -82,9 +82,9 @@ class CarController(CarControllerBase):
 
         self.apply_torque_last = apply_new_torque
 
-      # if self.frame % 10 == 0:
-      #   # send steering wheel hold message at 10 Hz to keep EPS engaged
-      #   can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+        # if self.frame % 20 == 0:
+        #   # send steering wheel hold message
+        #   can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
     # Actuators output
     new_actuators = actuators.as_builder()
