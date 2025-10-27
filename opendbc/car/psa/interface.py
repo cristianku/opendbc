@@ -2,6 +2,8 @@ from opendbc.car import structs, get_safety_config
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.carstate import CarState
+from opendbc.car.psa.values import CAR
+
 
 TransmissionType = structs.CarParams.TransmissionType
 
@@ -23,9 +25,10 @@ class CarInterface(CarInterfaceBase):
     ret.steerLimitTimer = 1
     ret.steerAtStandstill = True
 
-    CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+    if candidate in (CAR.PSA_PEUGEOT_3008,):
+      CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+      ret.steerControlType = structs.CarParams.SteerControlType.torque
 
-    ret.steerControlType = structs.CarParams.SteerControlType.torque
     ret.radarUnavailable = True
 
     ret.alphaLongitudinalAvailable = False
