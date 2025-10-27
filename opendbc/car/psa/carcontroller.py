@@ -39,20 +39,35 @@ class CarController(CarControllerBase):
 
           #need to set to zero because the steering wheel is free or force
           # otherwise we would sent to the controller a wrong value, a value before the disengaging
-          self.apply_torque_factor += 10
-          if self.apply_torque_factor >  CarControllerParams.MAX_TORQUE_FACTOR:
-            self.apply_torque_factor =  CarControllerParams.MAX_TORQUE_FACTOR
+          # if self.apply_torque_factor < CarControllerParams.MAX_TORQUE_FACTOR:
+          #   self.apply_torque_factor += CarControllerParams.MAX_TORQUE_FACTOR
+          # else:
+          #   self.apply_torque_factor += 10
+
+          # if self.apply_torque_factor >  CarControllerParams.MAX_TORQUE_FACTOR:
+          #   self.apply_torque_factor =  CarControllerParams.MAX_TORQUE_FACTOR
+          if self.apply_torque_factor < CarControllerParams.MAX_TORQUE_FACTOR:
+            self.apply_torque_factor += 10
+          self.apply_torque_factor = min(self.apply_torque_factor, CarControllerParams.MAX_TORQUE_FACTOR)
+
 
         else:
           # EPS become active. THe first time we enter here the self.apply_torque_last is 0 either because its the first activation
           # or because a disengaging has happened( example speed drop below 54 km/h)
 
           self.status = 4
-          self.apply_torque_factor = CarControllerParams.MAX_TORQUE_FACTOR
 
           temp_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
           apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
                                                           CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
+
+          # self.apply_torque_factor = CarControllerParams.MAX_TORQUE_FACTOR
+          # Linearly increase torque factor near STEER_MAX to gain higher resolution (more steps) at high torque.
+          ratio = min(1.0, abs(apply_new_torque) / float(CarControllerParams.STEER_MAX))
+          target_tf = int((CarControllerParams.MIN_TORQUE_FACTOR
+                      + ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR)))
+          self.apply_torque_factor = min( target_tf, CarControllerParams.MAX_TORQUE_FACTOR)
+
           # self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
           #                                                 0, CarControllerParams, CarControllerParams.STEER_MAX)
 
