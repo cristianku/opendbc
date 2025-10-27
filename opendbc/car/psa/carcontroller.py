@@ -16,6 +16,7 @@ class CarController(CarControllerBase):
     self.apply_torque_factor = 0
     self.apply_torque = 0
     self.status = 2
+    self.takeover_req_sent = False
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
@@ -36,8 +37,8 @@ class CarController(CarControllerBase):
           # eps can become inactive under 54km/h
           # we need to follow the activation sequence
 
-          if not takeover_req_sent and self.frame % 2 == 0: # 50 Hz
-            can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+          if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
+            # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
             self.takeover_req_sent = True
           self.status = 2 if self.status == 4 else self.status + 1
 
