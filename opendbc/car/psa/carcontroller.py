@@ -63,10 +63,13 @@ class CarController(CarControllerBase):
 
           # self.apply_torque_factor = CarControllerParams.MAX_TORQUE_FACTOR
           # Linearly increase torque factor near STEER_MAX to gain higher resolution (more steps) at high torque.
-          ratio = min(1.0, abs(apply_new_torque) / float(CarControllerParams.STEER_MAX))
-          target_tf = int((CarControllerParams.MIN_TORQUE_FACTOR
-                      + ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR)))
-          self.apply_torque_factor = min( target_tf, CarControllerParams.MAX_TORQUE_FACTOR)
+          # Higher torque -> lower torque factor (less resolution needed)
+          ratio = min(1.0, abs(self.apply_torque) / float(CarControllerParams.STEER_MAX))
+          target_tf = int(
+              CarControllerParams.MAX_TORQUE_FACTOR
+              - ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR)
+          )
+          self.apply_torque_factor = max(CarControllerParams.MIN_TORQUE_FACTOR, target_tf)
 
           # self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
           #                                                 0, CarControllerParams, CarControllerParams.STEER_MAX)
