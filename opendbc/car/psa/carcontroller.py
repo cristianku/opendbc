@@ -14,8 +14,8 @@ class CarController(CarControllerBase):
     self.apply_torque_factor = 0
     self.apply_torque = 0
     self.status = 2
-    self.apply_gas = 0
-    self.apply_brake = 0
+    # self.apply_gas = 0
+    # self.apply_brake = 0
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
