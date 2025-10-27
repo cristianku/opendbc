@@ -68,8 +68,11 @@ class CarController(CarControllerBase):
       #   # send steering wheel hold message at 10 Hz to keep EPS engaged
       #   can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
-      # Keep last torque between 20 Hz LKA updates, EPS holds value longer than 50 ms.
-      new_actuators = actuators.as_builder()
+    # Actuators output
+    new_actuators = actuators.as_builder()
+    if self.CP.steerControlType == SteerControlType.torque:
+      # Keep last applied torque between 20 Hz LKA updates.
+      # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
       new_actuators.torque = self.apply_torque_last / CarControllerParams.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
 
