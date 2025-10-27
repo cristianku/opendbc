@@ -18,7 +18,7 @@ class CarController(CarControllerBase):
   def update(self, CC, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
-
+    #
     # lateral control
     if self.frame % 5 == 0:
       # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
