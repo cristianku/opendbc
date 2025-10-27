@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold
+from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover
 from opendbc.car.psa.values import CarControllerParams
 import math
 
@@ -30,11 +30,15 @@ class CarController(CarControllerBase):
         if not CC.latActive:
           self.status = 2
           self.apply_torque_factor = 0
+          self.takeover_req_sent = False
 
         elif not CS.eps_active: # and not CS.out.steeringPressed:
           # eps can become inactive under 54km/h
           # we need to follow the activation sequence
 
+          if not takeover_req_sent and self.frame % 2 == 0: # 50 Hz
+            can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+            self.takeover_req_sent = True
           self.status = 2 if self.status == 4 else self.status + 1
 
           #need to set to zero because the steering wheel is free or force
@@ -55,7 +59,7 @@ class CarController(CarControllerBase):
         else:
           # EPS become active. THe first time we enter here the self.apply_torque_last is 0 either because its the first activation
           # or because a disengaging has happened( example speed drop below 54 km/h)
-
+          self.takeover_req_sent = False
           self.status = 4
 
           temp_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))

@@ -40,7 +40,6 @@ class CarControllerParams:
     pass
 
 
-
 @dataclass
 class PSACarDocs(CarDocs):
   package: str = "Adaptive Cruise Control (ACC) & Lane Assist"
