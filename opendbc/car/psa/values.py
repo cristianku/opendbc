@@ -10,7 +10,7 @@ Ecu = CarParams.Ecu
 
 class CarControllerParams:
   # Steering torque limits and dynamics for the EPS controller
-  STEER_MAX = 200  # Maximum steering torque command that can be applied (unitless scaling factor)
+  STEER_MAX = 400  # Maximum steering torque command that can be applied (unitless scaling factor)
   # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
 
   STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
