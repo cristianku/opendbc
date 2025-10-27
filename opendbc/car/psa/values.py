@@ -16,11 +16,11 @@ class CarControllerParams:
   STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
   STEER_DELTA_UP = 15  # Maximum allowed torque increase per control frame (prevents sudden jumps)
-  STEER_DELTA_DOWN = 15  # Maximum allowed torque decrease per control frame (can be faster for quick release)
+  STEER_DELTA_DOWN = 25  # Maximum allowed torque decrease per control frame (can be faster for quick release)
 
   STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
   STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
-  STEER_DRIVER_ALLOWANCE = 20  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
+  STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
 
   # Increasing STEER_MAX increases resolution (number of torque steps).
   # MAX_TORQUE_FACTOR limits the effective range (percent of STEER_MAX).
@@ -86,8 +86,8 @@ class LKAS_LIMITS:
   # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
   # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
   STEER_THRESHOLD = 5
-  DISABLE_SPEED = 55    # kph
-  ENABLE_SPEED = 60     # kph
+  DISABLE_SPEED = 5    # kph
+  ENABLE_SPEED = 50     # kph
 
 FW_QUERY_CONFIG = FwQueryConfig(
   requests=[request for bus in (0, 1, 2) for request in [
