@@ -10,18 +10,30 @@ Ecu = CarParams.Ecu
 
 class CarControllerParams:
   # Steering torque limits and dynamics for the EPS controller
-  STEER_MAX = 100  # Maximum steering torque command that can be applied (unitless scaling factor)
+  STEER_MAX = 400  # Maximum steering torque command that can be applied (unitless scaling factor)
   # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
 
   STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
-  STEER_DELTA_UP = 1  # Maximum allowed torque increase per control frame (prevents sudden jumps)
-  STEER_DELTA_DOWN = 2  # Maximum allowed torque decrease per control frame (can be faster for quick release)
+  STEER_DELTA_UP = 5  # Maximum allowed torque increase per control frame (prevents sudden jumps)
+  STEER_DELTA_DOWN = 10  # Maximum allowed torque decrease per control frame (can be faster for quick release)
 
   STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
-  STEER_DRIVER_FACTOR = 2  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
+  STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
   STEER_DRIVER_ALLOWANCE = 20  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
 
+  # Increasing STEER_MAX increases resolution (number of torque steps).
+  # MAX_TORQUE_FACTOR limits the effective range (percent of STEER_MAX).
+  # Example of total available steps:
+ #   -------------------------------------------------------------
+  #   STEER_MAX | MAX_TORQUE_FACTOR | Effective Range (±R) | Steps (±)
+  #   -----------+-------------------+---------------------+------------
+  #      100     |       100         |        ±100         |   ±100
+  #      200     |        50         |        ±100         |   ±200
+  #      400     |        25         |        ±100         |   ±400
+  #   -------------------------------------------------------------
+  # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
+  MAX_TORQUE_FACTOR = 25
   def __init__(self, CP):
     pass
 
