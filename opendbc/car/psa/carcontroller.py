@@ -70,6 +70,8 @@ class CarController(CarControllerBase):
             self._activate_eps( CS.eps_active)
 
           else:
+            ##########
+            ### START EPS ACTIVE
             ######
             # EPS is active, proceed with lateral control
             self.lat_activation_frame = 0
@@ -100,6 +102,8 @@ class CarController(CarControllerBase):
         can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
         # last sent value to the EPS
         self.apply_torque_last = apply_new_torque
+        ### END EPS ACTIVE
+        ##########
 
 
     # Actuators output
