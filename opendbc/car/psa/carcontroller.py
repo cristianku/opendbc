@@ -75,7 +75,7 @@ class CarController(CarControllerBase):
             # apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
             #                                                 CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
 
-            apply_new_torque = get_apply_torque(CC.actuators.torque , CS, CarControllerParams)
+            apply_new_torque = get_apply_torque(CC.actuators.torque , CS, CarControllerParams, self.apply_torque_last)
             # Linearly increase torque factor
             # ratio = min(1.0, abs(apply_new_torque) / float(CarControllerParams.STEER_MAX))
             # target_tf = int(

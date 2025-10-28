@@ -68,9 +68,9 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
   # Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
   # Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
 
-def get_apply_torque(torque, CS, parms):
+def get_apply_torque(torque, CS, parms, apply_torque_last):
     temp_torque = int(round(torque * parms.STEER_MAX))
-    apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
+    apply_new_torque = apply_driver_steer_torque_limits(temp_torque, apply_torque_last,
                                                     CS.out.steeringTorque, parms, parms.STEER_MAX)
     return apply_new_torque
 
