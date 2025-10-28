@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover
+from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover, get_apply_torque, get_torque_factor
 from opendbc.car.psa.values import CarControllerParams
 import math
 
@@ -23,6 +23,7 @@ class CarController(CarControllerBase):
   def update(self, CC, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
+    apply_new_torque = 0
 
     # Need to save when the latActive button push has happen
     if CC.latActive and self.lat_activation_frame == 0:
@@ -40,7 +41,6 @@ class CarController(CarControllerBase):
 
       else:
         if self.frame % CarControllerParams.STEER_STEP == 0:
-          apply_new_torque = 0
 
           if CC.latActive and not CS.eps_active: # and not CS.out.steeringPressed:
             #######
@@ -72,19 +72,20 @@ class CarController(CarControllerBase):
             # TORQUE CALCULATION
             #####
             # Torque calculation and normalizaiton
-            temp_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
-            apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
-                                                            CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
+            # temp_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
+            # apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
+            #                                                 CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
 
+            apply_new_torque = get_apply_torque(CC.actuators.torque , CS, CarControllerParams)
             # Linearly increase torque factor
-            ratio = min(1.0, abs(self.apply_torque) / float(CarControllerParams.STEER_MAX))
-            target_tf = int(
-                CarControllerParams.MAX_TORQUE_FACTOR
-                - ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR)
-            )
-            self.apply_torque_factor = max(CarControllerParams.MIN_TORQUE_FACTOR, target_tf)
+            # ratio = min(1.0, abs(apply_new_torque) / float(CarControllerParams.STEER_MAX))
+            # target_tf = int(
+            #     CarControllerParams.MAX_TORQUE_FACTOR
+            #     - ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR)
+            # )
+            # self.apply_torque_factor = max(CarControllerParams.MIN_TORQUE_FACTOR, target_tf)
 
-
+            self.apply_torque_factor = get_torque_factor(apply_new_torque, CarControllerParams)
           # emulate driver torque message at 1 Hz
           # if self.frame % 100 == 0:
           #   can_sends.append(create_driver_torque(self.packer, CS.steering))
