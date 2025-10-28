@@ -21,6 +21,7 @@ class CarController(CarControllerBase):
     # this is the frame when the latactive is being pressed
     self.lat_activation_frame  = 0
     self.car_fingerprint = CP.carFingerprint
+    self.params = CarControllerParams(CP)
 
 
   def _reset_lat_state(self):
@@ -54,8 +55,7 @@ class CarController(CarControllerBase):
       self.status = 2 if self.status == 4 else self.status + 1
       # EPS likes a progressive activation of the Torque Factor
       self.apply_torque_factor += 10
-      self.apply_torque_factor = min( self.apply_torque_factor, CarControllerParams.MAX_TORQUE_FACTOR)
-      self.apply_new_torque = 0
+      self.apply_torque_factor = min( self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
@@ -65,7 +65,7 @@ class CarController(CarControllerBase):
 
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
-      if self.frame % CarControllerParams.STEER_STEP == 0:
+      if self.frame % self.params.STEER_STEP == 0:
         if not CC.latActive:
           self._reset_lat_state()
         else:
@@ -82,13 +82,15 @@ class CarController(CarControllerBase):
 
             ######
             # TORQUE CALCULATION
-            temp_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
+            temp_torque = int(round(CC.actuators.torque * self.params.STEER_MAX))
             apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
-                                                            CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
+                                                            CS.out.steeringTorque, self.params, self.params.STEER_MAX)
 
             # Linearly increase torque factor
-            ratio = min(1.0, abs(apply_new_torque) / float(CarControllerParams.STEER_MAX)*1.1)
-            self.apply_torque_factor = int(CarControllerParams.MIN_TORQUE_FACTOR + ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR))
+            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.1)
+
+            self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
+            self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
 
 
         # emulate driver torque message at 1 Hz
@@ -116,7 +118,7 @@ class CarController(CarControllerBase):
     if self.CP.steerControlType == SteerControlType.torque:
       # Keep last applied torque between 20 Hz LKA updates.
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
-      new_actuators.torque = self.apply_torque_last / CarControllerParams.STEER_MAX
+      new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
 
     self.frame += 1
