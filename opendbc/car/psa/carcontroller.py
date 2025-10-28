@@ -20,6 +20,39 @@ class CarController(CarControllerBase):
     # this is the frame when the latactive is being pressed
     self.lat_activation_frame  = 0
 
+  def _reset_lat_state(self):
+    self.status = 2
+    self.apply_torque_factor = 0
+    self.takeover_req_sent = False
+    self.lat_activation_frame = 0
+
+  def _activate_eps(self, eps_active):
+    # Save the frame number when the LKA (steering assist) button is first pressed on the car
+    if self.lat_activation_frame == 0:
+      # first frame the EPS activate or re activate is sent
+      self.lat_activation_frame = self.frame
+      self.takeover_req_sent = False
+
+
+    if not eps_active: # and not CS.out.steeringPressed:
+      #######
+      # Alarm - Takeover request
+      # EPS works from 50km/h - Takeover Request if speed is slower than 50
+      ######
+      if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
+        if (self.frame - self.lat_activation_frame) > 10:
+        # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+          self.takeover_req_sent = True
+
+      ######
+      # EPS activation sequence 2->3->4 to re-engage
+      # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
+      ######
+      self.status = 2 if self.status == 4 else self.status + 1
+      # EPS likes a progressive activation of the Torque Factor
+      self.apply_torque_factor += 10
+      self.apply_torque_factor = min( self.apply_torque_factor, CarControllerParams.MAX_TORQUE_FACTOR)
+      self.apply_new_torque = 0
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
@@ -29,51 +62,21 @@ class CarController(CarControllerBase):
 
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
-
       if self.frame % CarControllerParams.STEER_STEP == 0:
-
         if not CC.latActive:
-          self.status = 2
-          self.apply_torque_factor = 0
-          self.takeover_req_sent = False
-          self.lat_activation_frame = 0
-
+          self._reset_lat_state()
         else:
-          # Save the frame number when the LKA (steering assist) button is first pressed on the car
-          if self.lat_activation_frame == 0:
-            self.lat_activation_frame = self.frame
-
           if not CS.eps_active: # and not CS.out.steeringPressed:
-            #######
-            # Alarm - Takeover request
-            # EPS works from 50km/h - Takeover Request if speed is slower than 50
-            ######
-            if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
-              if (self.frame - self.lat_activation_frame) > 10:
-              # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-                self.takeover_req_sent = True
-
-            ######
-            # EPS activation sequence 2->3->4 to re-engage
-            # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
-            ######
-            self.status = 2 if self.status == 4 else self.status + 1
-            # EPS likes a progressive activation of the Torque Factor
-            self.apply_torque_factor += 10
-            self.apply_torque_factor = min( self.apply_torque_factor, CarControllerParams.MAX_TORQUE_FACTOR)
-            self.apply_new_torque = 0
+            self._activate_eps( CS.eps_active)
 
           else:
             ######
             # EPS is active, proceed with lateral control
-            ######
-            self.takeover_req_sent = False
+            self.lat_activation_frame = 0
             self.status = 4 # 4: EPS ACTIVE
 
             ######
             # TORQUE CALCULATION
-            #####
-            # Torque calculation and normalizaiton
             temp_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
             apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
                                                             CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
