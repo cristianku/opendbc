@@ -25,13 +25,6 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     apply_new_torque = 0
 
-    # Need to save when the latActive button push has happen
-    if CC.latActive:
-      if self.lat_activation_frame == 0:
-        self.lat_activation_frame = self.frame
-    else:
-      self.lat_activation_frame = 0
-
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
 
@@ -39,8 +32,13 @@ class CarController(CarControllerBase):
         self.status = 2
         self.apply_torque_factor = 0
         self.takeover_req_sent = False
+        self.lat_activation_frame = 0
 
       else:
+        # Save the frame number when the LKA (steering assist) button is first pressed on the car
+        if self.lat_activation_frame == 0:
+          self.lat_activation_frame = self.frame
+
         if self.frame % CarControllerParams.STEER_STEP == 0:
 
           if not CS.eps_active: # and not CS.out.steeringPressed:
