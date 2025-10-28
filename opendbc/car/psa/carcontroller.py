@@ -28,9 +28,10 @@ class CarController(CarControllerBase):
     self.driver_torque_gen = DriverTorqueGenerator()
     self.dt_active = False
     self.dt_step = 0
-    self.DT_PERIOD_FRAMES = 500   # 5 s @ 100 Hz
-    self.DT_BURST_LEN = 200       # 200 frame (Gaussian Curve ~2 s)
-    self._last_driver_torque = 0  # for IS_DAT_DIRA
+    self.DT_PERIOD_FRAMES = 500   # interval between driver torque bursts (5 s @100 Hz)
+    self.DT_BURST_LEN = 200       # duration of each Gaussian torque curve (200 frames ≈ 2 s)
+    self._last_driver_torque = 0  # last torque value sent, used for IS_DAT_DIRA updates
+
 
   def _reset_lat_state(self):
     self.status = 2
