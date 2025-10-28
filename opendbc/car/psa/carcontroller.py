@@ -76,6 +76,9 @@ class CarController(CarControllerBase):
       if self.frame % self.params.STEER_STEP == 0:
         if not CC.latActive:
           self._reset_lat_state()
+          self.dt_active = False
+          self.dt_step = 0
+
         else:
           if not CS.eps_active: # and not CS.out.steeringPressed:
             self._activate_eps( CS.eps_active)
@@ -120,6 +123,7 @@ class CarController(CarControllerBase):
 
 
     # update Driver Torque
+
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
 
       # 1) every  5s start the Gaussian of 200 frames
