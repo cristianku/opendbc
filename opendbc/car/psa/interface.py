@@ -24,7 +24,7 @@ class CarInterface(CarInterfaceBase):
     if candidate in (CAR.PSA_PEUGEOT_3008,):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
       ret.steerControlType = structs.CarParams.SteerControlType.torque
-      ret.steerActuatorDelay = 0.1
+      ret.steerActuatorDelay = 0.3
       ret.steerLimitTimer = 1
       ret.steerAtStandstill = False
     else:
