@@ -26,8 +26,9 @@ class CarController(CarControllerBase):
     apply_new_torque = 0
 
     # Need to save when the latActive button push has happen
-    if CC.latActive and self.lat_activation_frame == 0:
-      self.lat_activation_frame = self.frame
+    if CC.latActive:
+      if self.lat_activation_frame == 0:
+        self.lat_activation_frame = self.frame
     else:
       self.lat_activation_frame = 0
 
@@ -42,7 +43,7 @@ class CarController(CarControllerBase):
       else:
         if self.frame % CarControllerParams.STEER_STEP == 0:
 
-          if CC.latActive and not CS.eps_active: # and not CS.out.steeringPressed:
+          if not CS.eps_active: # and not CS.out.steeringPressed:
             #######
             # Alarm - Takeover request
             # EPS works from 50km/h - Takeover Request if speed is slower than 50
