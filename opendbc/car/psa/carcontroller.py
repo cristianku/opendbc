@@ -3,7 +3,8 @@ from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover
-from opendbc.car.psa.values import CarControllerParams
+from opendbc.car.psa.values import CarControllerParams, CAR
+
 import math
 
 SteerControlType = structs.CarParams.SteerControlType
@@ -19,6 +20,8 @@ class CarController(CarControllerBase):
     self.takeover_req_sent = False
     # this is the frame when the latactive is being pressed
     self.lat_activation_frame  = 0
+    self.car_fingerprint = CP.carFingerprint
+
 
   def _reset_lat_state(self):
     self.status = 2
@@ -87,9 +90,6 @@ class CarController(CarControllerBase):
             ratio = min(1.0, abs(apply_new_torque) / float(CarControllerParams.STEER_MAX)*1.1)
             self.apply_torque_factor = int(CarControllerParams.MIN_TORQUE_FACTOR + ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR))
 
-            if self.frame % 10 == 0:
-              # send steering wheel hold message
-              can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
         # emulate driver torque message at 1 Hz
         # if self.frame % 100 == 0:
@@ -104,6 +104,11 @@ class CarController(CarControllerBase):
         self.apply_torque_last = apply_new_torque
         ### END EPS ACTIVE
         ##########
+
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
+      if self.frame % 10 == 0:
+        # send steering wheel hold message
+        can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
 
     # Actuators output
