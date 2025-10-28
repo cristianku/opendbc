@@ -1,3 +1,5 @@
+import random
+
 def psa_checksum(address: int, sig, d: bytearray) -> int:
   chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
   byte = sig.start_bit // 8
@@ -34,14 +36,23 @@ def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_fa
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
 
 
+# def create_driver_torque(packer, steering):
+#   # abs(driver_torque) > 10 to keep EPS engaged
+#   torque = steering['DRIVER_TORQUE']
+
+#   if abs(torque) < 10:
+#     steering['DRIVER_TORQUE'] = 10 if torque > 0 else -10
+
+#   return packer.make_can_msg('STEERING', 0, steering)
+
 def create_driver_torque(packer, steering):
-  # abs(driver_torque) > 10 to keep EPS engaged
-  torque = steering['DRIVER_TORQUE']
-
-  if abs(torque) < 10:
-    steering['DRIVER_TORQUE'] = 10 if torque > 0 else -10
-
+  t = int(steering.get('DRIVER_TORQUE', 0))
+  if abs(t) < 10:
+    t = random.randint(10, 12)
+  t = max(0, min(20, t))
+  steering['DRIVER_TORQUE'] = t
   return packer.make_can_msg('STEERING', 0, steering)
+
 
 
 def create_steering_hold(packer, lat_active: bool, is_dat_dira):

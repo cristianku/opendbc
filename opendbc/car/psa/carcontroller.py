@@ -4,7 +4,7 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover
 from opendbc.car.psa.values import CarControllerParams, CAR
-
+import random
 import math
 
 SteerControlType = structs.CarParams.SteerControlType
@@ -22,7 +22,10 @@ class CarController(CarControllerBase):
     self.lat_activation_frame  = 0
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
-
+    self.steering_hold_counter = 0
+    self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
+    self.driver_torque_counter = 0
+    self.next_driver_torque = random.randint(500, 800)  # 5–8 s @100 Hz
 
   def _reset_lat_state(self):
     self.status = 2
@@ -40,7 +43,7 @@ class CarController(CarControllerBase):
 
     if not eps_active: # and not CS.out.steeringPressed:
       #######
-      # Alarm - Takeover request
+      # Alarm - Takeover request!
       # EPS works from 50km/h - Takeover Request if speed is slower than 50
       ######
       if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
@@ -87,15 +90,12 @@ class CarController(CarControllerBase):
                                                             CS.out.steeringTorque, self.params, self.params.STEER_MAX)
 
             # Linearly increase torque factor
-            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.1)
+            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0)
 
             self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
             self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
 
 
-        # emulate driver torque message at 1 Hz
-        # if self.frame % 100 == 0:
-        #   can_sends.append(create_driver_torque(self.packer, CS.steering))
         #
         #####
         # CAN MESSAGE needs to be sent every 5 frames
@@ -107,11 +107,30 @@ class CarController(CarControllerBase):
         ### END EPS ACTIVE
         ##########
 
-    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
-      if self.frame % 10 == 0:
-        # send steering wheel hold message
-        can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
+    #   if self.frame % 10 == 0:
+    #     # send steering wheel hold message
+    #     can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
+
+
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
+      if not CC.latActive:
+        self.driver_torque_counter = 0
+        self.next_driver_torque = random.randint(500, 800)
+      else:
+        # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
+        self.steering_hold_counter += 1
+        if self.steering_hold_counter >= self.next_steering_hold:
+          can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+          self.steering_hold_counter = 0
+          self.next_steering_hold = random.randint(8, 12)
+        # --- DRIVER TORQUE (ogni 5–8 s) ---
+        self.driver_torque_counter += 1
+        if self.driver_torque_counter >= self.next_driver_torque:
+          can_sends.append(create_driver_torque(self.packer, CS.steering))
+          self.driver_torque_counter = 0
+          self.next_driver_torque = random.randint(500, 800)
 
     # Actuators output
     new_actuators = actuators.as_builder()

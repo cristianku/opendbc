@@ -1,8 +1,9 @@
 from opendbc.car import structs, get_safety_config
+from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.carstate import CarState
-from opendbc.car.psa.values import CAR
+from opendbc.car.psa.values import CAR, LKAS_LIMITS
 
 
 TransmissionType = structs.CarParams.TransmissionType
@@ -24,7 +25,8 @@ class CarInterface(CarInterfaceBase):
     if candidate in (CAR.PSA_PEUGEOT_3008,):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
       ret.steerControlType = structs.CarParams.SteerControlType.torque
-      ret.steerActuatorDelay = 0.3
+      ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
+      ret.steerActuatorDelay = 0.376803
       ret.steerLimitTimer = 1
       ret.steerAtStandstill = False
     else:
