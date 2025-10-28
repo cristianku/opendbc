@@ -50,7 +50,6 @@ class CarController(CarControllerBase):
             self.apply_torque_factor += 10
           self.apply_torque_factor = min(self.apply_torque_factor, CarControllerParams.MAX_TORQUE_FACTOR)
 
-
         else:
           # EPS become active. THe first time we enter here the self.apply_torque_last is 0 either because its the first activation
           # or because a disengaging has happened( example speed drop below 54 km/h)
