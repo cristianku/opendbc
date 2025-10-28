@@ -43,7 +43,7 @@ class CarController(CarControllerBase):
 
     if not eps_active: # and not CS.out.steeringPressed:
       #######
-      # Alarm - Takeover request
+      # Alarm - Takeover request!
       # EPS works from 50km/h - Takeover Request if speed is slower than 50
       ######
       if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
