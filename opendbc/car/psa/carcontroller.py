@@ -89,12 +89,15 @@ class CarController(CarControllerBase):
           # if self.frame % 100 == 0:
           #   can_sends.append(create_driver_torque(self.packer, CS.steering))
 
-        #####
-        # CAN MESSAGE FOR LANE KEEP ASSIST SENT ALWAYS IF LATACTIVE
-        ####
-        can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
-
-        self.apply_torque_last = apply_new_torque
+    #####
+    # CAN MESSAGE needs to be sent always since :
+    #  - psa.h  check_relay is set for PSA_LANE_KEEP_ASSIST
+    ####
+    if self.CP.steerControlType == SteerControlType.torque:
+      can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
+      self.apply_torque_last = apply_new_torque
+    # else:
+      ## TODO ANGLE CONGROL
 
     # if self.frame % 10 == 0:
     #   # send steering wheel hold message

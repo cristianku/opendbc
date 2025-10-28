@@ -103,8 +103,10 @@ class CarState(CarStateBase):
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed
     ret.cruiseState.enabled = cp_adas.vl['HS2_DAT_MDD_CMD_452']['RVV_ACC_ACTIVATION_REQ'] == 1
     ret.cruiseState.available = True # not available for CC-only
-    # ret.cruiseState.nonAdaptive = False # not available for CC-only
-    ret.cruiseState.nonAdaptive = cp_adas.vl['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'] != 3
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      ret.cruiseState.nonAdaptive = cp_adas.vl['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'] != 3
+    else:
+      ret.cruiseState.nonAdaptive = False # not available for CC-only
 
     ret.cruiseState.standstill = False # not available for CC-only
     ret.accFaulted = False # not available for CC-only
