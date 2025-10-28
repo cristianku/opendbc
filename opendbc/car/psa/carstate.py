@@ -3,6 +3,7 @@ from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
+from opendbc.car.psa.psacan import driver_torque_from_eps
 import copy
 # from openpilot.common.filter_simple import FirstOrderFilter
 # from opendbc.car import DT_CTRL
@@ -79,7 +80,7 @@ class CarState(CarStateBase):
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
       ret.genericToggle = (int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"]) == 1) # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
 
-      ret.steeringTorque  = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
+      ret.steeringTorque  = driver_torque_from_eps(cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] )
       ret.steeringTorqueEps = 0.0
       # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
 

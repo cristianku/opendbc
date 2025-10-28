@@ -9,6 +9,9 @@ Ecu = CarParams.Ecu
 
 
 class CarControllerParams:
+  # default value
+  STEER_DRIVER_ALLOWANCE = 5
+
   def __init__(self, CP):
     if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,):
         # Steering torque limits and dynamics for the EPS controller
@@ -37,6 +40,7 @@ class CarControllerParams:
         # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
         self.MAX_TORQUE_FACTOR = 100
         self.MIN_TORQUE_FACTOR = 25
+
 
 
 

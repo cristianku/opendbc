@@ -45,20 +45,28 @@ def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_fa
 
 #   return packer.make_can_msg('STEERING', 0, steering)
 
-def create_driver_torque(packer, steering):
+def driver_torque_from_eps(eps: float) -> int:
+    # eps quantizzato a 0.25
+    return round(9.6 * eps)
+
+def convert_driver_torque_to_eps(driver_torque: int) -> float:
+    return round(0.25 * round(driver_torque / 2.4), 2)
+
+def create_fake_driver_torque(steering):
   t = int(steering.get('DRIVER_TORQUE', 0))
   if abs(t) < 10:
     t = random.randint(10, 12)
   t = max(0, min(20, t))
-  steering['DRIVER_TORQUE'] = t
+  return t
+
+def create_driver_torque(packer, steering, driver_torque):
+  steering['DRIVER_TORQUE'] = driver_torque
   return packer.make_can_msg('STEERING', 0, steering)
 
 
-
-def create_steering_hold(packer, lat_active: bool, is_dat_dira):
-  # set STEERWHL_HOLD_BY_DRV to keep EPS engaged when lat active
-  if lat_active:
-    is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1
+def create_steering_hold(packer, is_dat_dira,driver_torque):
+  is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1
+  is_dat_dira['EPS_TORQUE'] = convert_driver_torque_to_eps(driver_torque)
   return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
 
 def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
