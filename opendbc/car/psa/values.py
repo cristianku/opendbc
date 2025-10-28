@@ -34,7 +34,7 @@ class CarControllerParams:
   #   -------------------------------------------------------------
   # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
   MAX_TORQUE_FACTOR = 100
-  MIN_TORQUE_FACTOR = 30
+  MIN_TORQUE_FACTOR = 35
 
   def __init__(self, CP):
     pass
