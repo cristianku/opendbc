@@ -29,13 +29,16 @@ class CarController(CarControllerBase):
     self.dt_active = False
     self.dt_step = 0
     self.DT_PERIOD_FRAMES = 500   # 5 s @ 100 Hz
-    self.DT_BURST_LEN = 200       # 200 frame (curva gaussiana ~2 s)
-    self._last_driver_torque = 0  # utile per IS_DAT_DIRA
+    self.DT_BURST_LEN = 200       # 200 frame (Gaussian Curve ~2 s)
+    self._last_driver_torque = 0  # for IS_DAT_DIRA
 
   def _reset_lat_state(self):
     self.status = 2
     self.apply_torque_factor = 0
-    self.takeover_req_sent = False
+    self.lat_activation_frame = 0
+
+  def _set_lat_state_active(self):
+    self.status = 4
     self.lat_activation_frame = 0
 
   def _activate_eps(self, eps_active):
@@ -51,10 +54,11 @@ class CarController(CarControllerBase):
       # Alarm - Takeover request!
       # EPS works from 50km/h - Takeover Request if speed is slower than 50
       ######
-      if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
-        if (self.frame - self.lat_activation_frame) > 10:
-        # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-          self.takeover_req_sent = True
+      if self.frame % 2 == 0: # 50 Hz
+        if not self.takeover_req_sent:
+          if (self.frame - self.lat_activation_frame ) > 10:
+          # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+            self.takeover_req_sent = True
 
       ######
       # EPS activation sequence 2->3->4 to re-engage
@@ -84,12 +88,8 @@ class CarController(CarControllerBase):
             self._activate_eps( CS.eps_active)
 
           else:
-            ##########
             ### START EPS ACTIVE
-            ######
-            # EPS is active, proceed with lateral control
-            self.lat_activation_frame = 0
-            self.status = 4 # 4: EPS ACTIVE
+            self._set_lat_state_active()
 
             ######
             # TORQUE CALCULATION
@@ -115,36 +115,30 @@ class CarController(CarControllerBase):
         ### END EPS ACTIVE
         ##########
 
-    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
-    #   if self.frame % 10 == 0:
-    #     # send steering wheel hold message
-    #     can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
-
-
 
     # update Driver Torque
 
-    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
+      if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
 
-      # 1) every  5s start the Gaussian of 200 frames
-      if (self.frame % self.DT_PERIOD_FRAMES) == 0:
-        self.driver_torque_gen.reset()   # ← restart from the begin of Gaussian Curve
-        self.dt_active = True
-        self.dt_step = 0
+        # 1) every  5s start the Gaussian of 200 frames
+        if (self.frame % self.DT_PERIOD_FRAMES) == 0:
+          self.driver_torque_gen.reset()   # ← restart from the begin of Gaussian Curve
+          self.dt_active = True
+          self.dt_step = 0
 
-      # 2) during the Gaussian send DRIVER_TORQUE at 100 Hz (un Guassian point per )
-      if self.dt_active:
-        driver_torque = self.driver_torque_gen.next_value()
-        can_sends.append(create_driver_torque(self.packer, CS.steering, driver_torque))
-        self._last_driver_torque = driver_torque
+        # 2) during the Gaussian send DRIVER_TORQUE at 100 Hz (un Guassian point per )
+        if self.dt_active:
+          driver_torque = self.driver_torque_gen.next_value()
+          can_sends.append(create_driver_torque(self.packer, CS.steering, driver_torque))
+          self._last_driver_torque = driver_torque
 
-        self.dt_step += 1
-        if self.dt_step >= self.DT_BURST_LEN:
-          self.dt_active = False
+          self.dt_step += 1
+          if self.dt_step >= self.DT_BURST_LEN:
+            self.dt_active = False
 
-      # 3) IS_DAT_DIRA at 10 Hz
-      if (self.frame % 10) == 0 and self.dt_active:
-        can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, self._last_driver_torque))
+        # 3) IS_DAT_DIRA at 10 Hz
+        if (self.frame % 10) == 0 and self.dt_active:
+          can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, self._last_driver_torque))
 
 
     # Actuators output
