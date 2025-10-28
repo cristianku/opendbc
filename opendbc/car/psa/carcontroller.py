@@ -20,26 +20,28 @@ class CarController(CarControllerBase):
     # this is the frame when the latactive is being pressed
     self.lat_activation_frame  = 0
 
+
   def update(self, CC, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
+    self.apply_new_torque = 0
     apply_new_torque = 0
 
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
 
-      if not CC.latActive:
-        self.status = 2
-        self.apply_torque_factor = 0
-        self.takeover_req_sent = False
-        self.lat_activation_frame = 0
+      if self.frame % CarControllerParams.STEER_STEP == 0:
 
-      else:
-        # Save the frame number when the LKA (steering assist) button is first pressed on the car
-        if self.lat_activation_frame == 0:
-          self.lat_activation_frame = self.frame
+        if not CC.latActive:
+          self.status = 2
+          self.apply_torque_factor = 0
+          self.takeover_req_sent = False
+          self.lat_activation_frame = 0
 
-        if self.frame % CarControllerParams.STEER_STEP == 0:
+        else:
+          # Save the frame number when the LKA (steering assist) button is first pressed on the car
+          if self.lat_activation_frame == 0:
+            self.lat_activation_frame = self.frame
 
           if not CS.eps_active: # and not CS.out.steeringPressed:
             #######
@@ -59,10 +61,11 @@ class CarController(CarControllerBase):
             # EPS likes a progressive activation of the Torque Factor
             self.apply_torque_factor += 10
             self.apply_torque_factor = min( self.apply_torque_factor, CarControllerParams.MAX_TORQUE_FACTOR)
+            self.apply_new_torque = 0
 
           else:
             ######
-            # EPS activate
+            # EPS is active, proceed with lateral control
             ######
             self.takeover_req_sent = False
             self.status = 4 # 4: EPS ACTIVE
@@ -71,37 +74,30 @@ class CarController(CarControllerBase):
             # TORQUE CALCULATION
             #####
             # Torque calculation and normalizaiton
-            # temp_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
-            # apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
-            #                                                 CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
+            temp_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
+            apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
+                                                            CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
 
-            apply_new_torque = get_apply_torque(CC.actuators.torque , CS, CarControllerParams, self.apply_torque_last)
             # Linearly increase torque factor
-            # ratio = min(1.0, abs(apply_new_torque) / float(CarControllerParams.STEER_MAX))
-            # target_tf = int(
-            #     CarControllerParams.MAX_TORQUE_FACTOR
-            #     - ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR)
-            # )
-            # self.apply_torque_factor = max(CarControllerParams.MIN_TORQUE_FACTOR, target_tf)
+            ratio = min(1.0, abs(apply_new_torque) / float(CarControllerParams.STEER_MAX)*1.1)
+            self.apply_torque_factor = int(CarControllerParams.MIN_TORQUE_FACTOR + ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR))
 
-            self.apply_torque_factor = get_torque_factor(apply_new_torque, CarControllerParams)
-          # emulate driver torque message at 1 Hz
-          # if self.frame % 100 == 0:
-          #   can_sends.append(create_driver_torque(self.packer, CS.steering))
+            if self.frame % 10 == 0:
+              # send steering wheel hold message
+              can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
-    #####
-    # CAN MESSAGE needs to be sent always since :
-    #  - psa.h  check_relay is set for PSA_LANE_KEEP_ASSIST
-    ####
-    if self.CP.steerControlType == SteerControlType.torque:
-      can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
-      self.apply_torque_last = apply_new_torque
-    # else:
-      ## TODO ANGLE CONGROL
+        # emulate driver torque message at 1 Hz
+        # if self.frame % 100 == 0:
+        #   can_sends.append(create_driver_torque(self.packer, CS.steering))
 
-    # if self.frame % 10 == 0:
-    #   # send steering wheel hold message
-    #   can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+        #####
+        # CAN MESSAGE needs to be sent every 5 frames
+        #  - psa.h  check_relay is set for PSA_LANE_KEEP_ASSIST
+        ####
+        can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
+        # last sent value to the EPS
+        self.apply_torque_last = apply_new_torque
+
 
     # Actuators output
     new_actuators = actuators.as_builder()

@@ -1,14 +1,8 @@
-from opendbc.car.lateral import apply_driver_steer_torque_limits
-
 def psa_checksum(address: int, sig, d: bytearray) -> int:
   chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
   byte = sig.start_bit // 8
   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
   checksum = sum((b >> 4) + (b & 0xF) for b in d)
-  return (chk_ini - checksum) & 0xF
-
-def calculate_checksum(dat: bytearray, chk_ini: int) -> int:
-  checksum = sum((b >> 4) + (b & 0xF) for b in dat)
   return (chk_ini - checksum) & 0xF
 
 
@@ -67,16 +61,4 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
   # Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
   # Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
   # Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
-
-def get_apply_torque(torque, CS, parms, apply_torque_last):
-    temp_torque = int(round(torque * parms.STEER_MAX))
-    apply_new_torque = apply_driver_steer_torque_limits(temp_torque, apply_torque_last,
-                                                    CS.out.steeringTorque, parms, parms.STEER_MAX)
-    return apply_new_torque
-
-def get_torque_factor(apply_new_torque, params):
-    # assume apply_new_torque è clampato a ±params.STEER_MAX
-    ratio = min(1.0, abs(apply_new_torque) / float(params.STEER_MAX)*1.1)
-    return int(params.MIN_TORQUE_FACTOR + ratio * (params.MAX_TORQUE_FACTOR - params.MIN_TORQUE_FACTOR))
-
 
