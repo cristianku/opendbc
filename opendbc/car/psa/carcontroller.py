@@ -36,21 +36,21 @@ class CarController(CarControllerBase):
 
 
   def _reset_lat_state(self):
-    # """Reset lateral control state."""
+    """Reset lateral control state."""
     self.status = 2
     self.apply_torque_factor = 0
     self.lat_activation_frame = 0
 
   def _set_lat_state_active(self):
-    # """Set EPS state as active."""
+    """Set EPS state as active."""
     self.status = 4
     self.lat_activation_frame = 0
 
   def _activate_eps(self, eps_active):
-    # """
-    # Handle EPS activation sequence and takeover request.
-    # STATUS transitions: 2 → 3 → 4 (READY → AUTHORIZED → ACTIVE)
-    # """
+    """
+    Handle EPS activation sequence and takeover request.
+    STATUS transitions: 2 → 3 → 4 (READY → AUTHORIZED → ACTIVE)
+    """
 
     # Save frame number when EPS first activates or re-activates
     if self.lat_activation_frame == 0:
