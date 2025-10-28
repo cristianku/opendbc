@@ -17,70 +17,81 @@ class CarController(CarControllerBase):
     self.apply_torque = 0
     self.status = 2
     self.takeover_req_sent = False
+    # this is the frame when the latactive is being pressed
+    self.lat_activation_frame  = 0
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
 
+    # Need to save when the latActive button push has happen
+    if CC.latActive and self.lat_activation_frame == 0:
+      self.lat_activation_frame = self.frame
+    else:
+      self.lat_activation_frame = 0
+
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
-      if self.frame % 5 == 0:
-        apply_new_torque = 0
-        # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
-        # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
-        if not CC.latActive:
-          self.status = 2
-          self.apply_torque_factor = 0
-          self.takeover_req_sent = False
 
-        elif not CS.eps_active: # and not CS.out.steeringPressed:
-          # eps can become inactive under 54km/h
-          # we need to follow the activation sequence
+      if not CC.latActive:
+        self.status = 2
+        self.apply_torque_factor = 0
+        self.takeover_req_sent = False
 
-          if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
-            # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-            self.takeover_req_sent = True
-          self.status = 2 if self.status == 4 else self.status + 1
+      else:
+        if self.frame % CarControllerParams.STEER_STEP == 0:
+          apply_new_torque = 0
 
-          # EPS likes a progressive activation of the Torque Factor
-          self.apply_torque_factor += 10
-          self.apply_torque_factor = min( self.apply_torque_factor, CarControllerParams.MAX_TORQUE_FACTOR)
+          if CC.latActive and not CS.eps_active: # and not CS.out.steeringPressed:
+            #######
+            # Alarm - Takeover request
+            # EPS works from 50km/h - Takeover Request if speed is slower than 50
+            ######
+            if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
+              if (self.frame - self.lat_activation_frame) > 10:
+              # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+                self.takeover_req_sent = True
 
-          # if self.apply_torque_factor >  CarControllerParams.MAX_TORQUE_FACTOR:
-          #   self.apply_torque_factor =  CarControllerParams.MAX_TORQUE_FACTOR
-          # self.apply_torque_factor = 0
-          # if self.apply_torque_factor < CarControllerParams.MAX_TORQUE_FACTOR:
-          #   self.apply_torque_factor += 10
-          # self.apply_torque_factor = min(self.apply_torque_factor, CarControllerParams.MAX_TORQUE_FACTOR)
+            ######
+            # EPS activation sequence 2->3->4 to re-engage
+            # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
+            ######
+            self.status = 2 if self.status == 4 else self.status + 1
+            # EPS likes a progressive activation of the Torque Factor
+            self.apply_torque_factor += 10
+            self.apply_torque_factor = min( self.apply_torque_factor, CarControllerParams.MAX_TORQUE_FACTOR)
+
+          else:
+            ######
+            # EPS activate
+            ######
+            self.takeover_req_sent = False
+            self.status = 4 # 4: EPS ACTIVE
+
+            ######
+            # TORQUE CALCULATION
+            #####
+            # Torque calculation and normalizaiton
+            temp_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
+            apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
+                                                            CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
+
+            # Linearly increase torque factor
+            ratio = min(1.0, abs(self.apply_torque) / float(CarControllerParams.STEER_MAX))
+            target_tf = int(
+                CarControllerParams.MAX_TORQUE_FACTOR
+                - ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR)
+            )
+            self.apply_torque_factor = max(CarControllerParams.MIN_TORQUE_FACTOR, target_tf)
 
 
-        else:
-          # EPS become active. THe first time we enter here the self.apply_torque_last is 0 either because its the first activation
-          # or because a disengaging has happened( example speed drop below 54 km/h)
-          self.takeover_req_sent = False
-          self.status = 4
+          # emulate driver torque message at 1 Hz
+          # if self.frame % 100 == 0:
+          #   can_sends.append(create_driver_torque(self.packer, CS.steering))
 
-          temp_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
-          apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
-                                                          CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
-
-          # self.apply_torque_factor = CarControllerParams.MAX_TORQUE_FACTOR
-          # Linearly increase torque factor near STEER_MAX to gain higher resolution (more steps) at high torque.
-          # Higher torque -> lower torque factor (less resolution needed)
-          ratio = min(1.0, abs(self.apply_torque) / float(CarControllerParams.STEER_MAX))
-          target_tf = int(
-              CarControllerParams.MAX_TORQUE_FACTOR
-              - ratio * (CarControllerParams.MAX_TORQUE_FACTOR - CarControllerParams.MIN_TORQUE_FACTOR)
-          )
-          self.apply_torque_factor = max(CarControllerParams.MIN_TORQUE_FACTOR, target_tf)
-
-          # self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
-          #                                                 0, CarControllerParams, CarControllerParams.STEER_MAX)
-
-        # emulate driver torque message at 1 Hz
-        # if self.frame % 100 == 0:
-        #   can_sends.append(create_driver_torque(self.packer, CS.steering))
-
+        #####
+        # CAN MESSAGE FOR LANE KEEP ASSIST SENT ALWAYS IF LATACTIVE
+        ####
         can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
 
         self.apply_torque_last = apply_new_torque
