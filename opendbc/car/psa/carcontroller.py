@@ -113,24 +113,24 @@ class CarController(CarControllerBase):
     #     can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
 
-    # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
-    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
-      self.steering_hold_counter += 1
-      if self.steering_hold_counter >= self.next_steering_hold:
-        can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
-        self.steering_hold_counter = 0
-        self.next_steering_hold = random.randint(8, 12)
 
-    # --- DRIVER TORQUE (ogni 5–8 s) ---
-    if not CC.latActive:
-      self.driver_torque_counter = 0
-      self.next_driver_torque = random.randint(500, 800)
-    else:
-      self.driver_torque_counter += 1
-      if self.driver_torque_counter >= self.next_driver_torque:
-        can_sends.append(create_driver_torque(self.packer, CS.steering))
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
+      if not CC.latActive:
         self.driver_torque_counter = 0
         self.next_driver_torque = random.randint(500, 800)
+      else:
+        # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
+        self.steering_hold_counter += 1
+        if self.steering_hold_counter >= self.next_steering_hold:
+          can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+          self.steering_hold_counter = 0
+          self.next_steering_hold = random.randint(8, 12)
+        # --- DRIVER TORQUE (ogni 5–8 s) ---
+        self.driver_torque_counter += 1
+        if self.driver_torque_counter >= self.next_driver_torque:
+          can_sends.append(create_driver_torque(self.packer, CS.steering))
+          self.driver_torque_counter = 0
+          self.next_driver_torque = random.randint(500, 800)
 
     # Actuators output
     new_actuators = actuators.as_builder()
