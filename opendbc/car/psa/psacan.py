@@ -74,11 +74,8 @@ def get_apply_torque(torque, CS, parms, apply_torque_last):
                                                     CS.out.steeringTorque, parms, parms.STEER_MAX)
     return apply_new_torque
 
-def get_torque_factor(apply_new_torque, parms):
-    ratio = min(1.0, abs(apply_new_torque) / float(parms.STEER_MAX))
-    target_tf = int(
-        parms.MAX_TORQUE_FACTOR
-        - ratio * (parms.MAX_TORQUE_FACTOR - parms.MIN_TORQUE_FACTOR)
-    )
+def get_torque_factor_linear(apply_new_torque, params):
+    # assume apply_new_torque è clampato a ±params.STEER_MAX
+    ratio = min(1.0, abs(apply_new_torque) / float(params.STEER_MAX))
+    return int(params.MIN_TORQUE_FACTOR + ratio * (params.MAX_TORQUE_FACTOR - params.MIN_TORQUE_FACTOR))
 
-    return max(parms.MIN_TORQUE_FACTOR, target_tf)
