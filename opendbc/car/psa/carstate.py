@@ -96,8 +96,10 @@ class CarState(CarStateBase):
       ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
 
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
-    self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
-    self.steering = copy.copy(cp.vl['STEERING'])
+    # self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
+    # self.steering = copy.copy(cp.vl['STEERING'])
+    self.is_dat_dira = dict(cp.vl['IS_DAT_DIRA'])
+    self.steering = dict(cp.vl['STEERING'])
     self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
 
     # cruise
