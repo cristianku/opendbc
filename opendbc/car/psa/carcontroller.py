@@ -207,6 +207,7 @@ class CarController(CarControllerBase):
     #   # No burst active: relay original STEERING message to prevent Panda forwarding
     #   can_sends.append(relay_driver_torque(self.packer, CS.steering))
 
+    can_sends.append(create_driver_torque(self.packer, CS.steering, random.randint(3, 20)))
 
 
     # --- Actuator outputs ---
