@@ -220,9 +220,15 @@ class CarController(CarControllerBase):
     # elif self.current_torque <= 0:
     #     self.current_torque = random.randint(3, 20)
     #     self.torque_direction = 1
+    torque = random.randint(3, 20)
+    if torque > 3:
+      hold_active = True
+    else:
+      hold_active = False
 
-    can_sends.append(create_driver_torque(self.packer, CS.steering, random.randint(3, 20)))
-
+    can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
+    if self.frame % 10 == 0:
+      can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, torque,hold_active ))
     # --- Actuator outputs ---
     new_actuators = actuators.as_builder()
     if self.CP.steerControlType == SteerControlType.torque:
