@@ -5,6 +5,7 @@ from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold, create_request_takeover, relay_driver_torque
 from opendbc.car.psa.values import CarControllerParams, CAR
 from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
+import random
 
 SteerControlType = structs.CarParams.SteerControlType
 
@@ -21,6 +22,8 @@ class CarController(CarControllerBase):
     self.lat_activation_frame  = 0
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
+    self.current_torque = random.randint(3, 20)
+
 
     # Driver torque generator with configurable parameters
     self.driver_torque_gen = DriverTorqueGenerator(
@@ -207,8 +210,18 @@ class CarController(CarControllerBase):
     #   # No burst active: relay original STEERING message to prevent Panda forwarding
     #   can_sends.append(relay_driver_torque(self.packer, CS.steering))
 
-    can_sends.append(create_driver_torque(self.packer, CS.steering, random.randint(3, 20)))
+    # self.start_random = random.randint(3, 20)
+    # can_sends.append(create_driver_torque(self.packer, CS.steering, self.current_torque))
+    # # Aggiorna il valore per il prossimo frame
+    # self.current_torque += self.torque_direction
+    # # Cambia direzione quando raggiungi i limiti
+    # if self.current_torque >= 20:
+    #     self.torque_direction = -1
+    # elif self.current_torque <= 0:
+    #     self.current_torque = random.randint(3, 20)
+    #     self.torque_direction = 1
 
+    can_sends.append(create_driver_torque(self.packer, CS.steering, random.randint(3, 20)))
 
     # --- Actuator outputs ---
     new_actuators = actuators.as_builder()
