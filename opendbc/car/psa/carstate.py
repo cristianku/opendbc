@@ -28,6 +28,8 @@ class CarState(CarStateBase):
     # self._drv_press_cnt = 0
     # Deque driver torque filtering
     self.driver_torque_buffer = deque(maxlen=10)
+    self.is_dat_dira = dict()
+    self.steering = dict()
 
   def _smooth_driver_torque(self, raw_torque):
     """Smooth driver torque with deque (automatic FIFO )."""

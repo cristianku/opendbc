@@ -49,9 +49,6 @@ def driver_torque_from_eps(eps: float) -> int:
     # eps quantizzato a 0.25
     return round(9.6 * eps)
 
-def convert_driver_torque_to_eps(driver_torque: int) -> float:
-    return round(0.25 * round(driver_torque / 2.4), 2)
-
 
 def create_driver_torque(packer, steering, driver_torque):
   steering['DRIVER_TORQUE'] = driver_torque
@@ -62,8 +59,18 @@ def relay_driver_torque(packer, steering):
   return packer.make_can_msg('STEERING', 0, steering)
 
 
-def create_steering_hold(packer, is_dat_dira,driver_torque):
-  eps_torque = convert_driver_torque_to_eps(driver_torque)
+def create_steering_hold(packer, is_dat_dira, eps_torque):
+  """
+  Crea messaggio IS_DAT_DIRA con EPS_TORQUE e STEERWHL_HOLD_BY_DRV.
+
+  Args:
+      packer: CANPacker instance
+      is_dat_dira: dict con i valori base di IS_DAT_DIRA
+      eps_torque: EPS torque già filtrato e convertito (da EPSTorqueFilter)
+
+  Returns:
+      CAN message per IS_DAT_DIRA
+  """
   # Activate HOLD only if EPS_TORQUE >= 0.5
   hold_active = eps_torque >= 0.5
 
