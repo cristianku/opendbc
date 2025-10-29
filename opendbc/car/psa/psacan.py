@@ -57,6 +57,10 @@ def create_driver_torque(packer, steering, driver_torque):
   steering['DRIVER_TORQUE'] = driver_torque
   return packer.make_can_msg('STEERING', 0, steering)
 
+def relay_driver_torque(packer, steering):
+  """Relay DRIVER_TORQUE unchanged (passthrough to prevent Panda forwarding)."""
+  return packer.make_can_msg('STEERING', 0, steering)
+
 
 def create_steering_hold(packer, is_dat_dira,driver_torque,hold_active: bool):
   is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1 if hold_active else 0

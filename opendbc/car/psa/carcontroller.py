@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold, create_request_takeover
+from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold, create_request_takeover, relay_driver_torque
 from opendbc.car.psa.values import CarControllerParams, CAR
 from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
 
@@ -176,6 +176,7 @@ class CarController(CarControllerBase):
         can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
         self.apply_torque_last = apply_new_torque
 
+    is_dat_dira_overwritten = False
     # --- Driver torque generation (simulated torque input) ---
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
 
@@ -194,18 +195,11 @@ class CarController(CarControllerBase):
         driver_torque = int(round(driver_torque_float))
 
         can_sends.append(create_driver_torque(self.packer, CS.steering, driver_torque))
+        is_dat_dira_overwritten = True
         self._last_driver_torque = driver_torque
 
-        # Gestione HOLD_BY_DRV con persistenza
-        if abs(driver_torque) > 8:  # Soglia per attivare HOLD
-          self.hold_by_drv_active = True
-          self.hold_by_drv_frames_remaining = self.HOLD_PERSISTENCE_FRAMES
-        elif self.hold_by_drv_frames_remaining > 0:
-          self.hold_by_drv_frames_remaining -= 1
-          if self.hold_by_drv_frames_remaining == 0:
-            self.hold_by_drv_active = False
-        else:
-          self.hold_by_drv_active = False
+        # HOLD sempre attivo durante il burst
+        self.hold_by_drv_active = True
 
         self.dt_step += 1
 
@@ -220,6 +214,10 @@ class CarController(CarControllerBase):
                                                 CS.is_dat_dira,
                                                 self._last_driver_torque,
                                                 self.hold_by_drv_active))
+    if not is_dat_dira_overwritten:
+      # No burst active: relay original STEERING message to prevent Panda forwarding
+      can_sends.append(relay_driver_torque(self.packer, CS.steering))
+
 
 
     # --- Actuator outputs ---
