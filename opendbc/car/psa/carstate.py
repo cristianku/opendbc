@@ -4,6 +4,8 @@ from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 from opendbc.car.psa.psacan import driver_torque_from_eps
+from collections import deque
+
 # import copy
 # from openpilot.common.filter_simple import FirstOrderFilter
 # from opendbc.car import DT_CTRL
@@ -24,6 +26,13 @@ class CarState(CarStateBase):
     # self._drv_press_ms = 200                             # ms, debounce
     # self._drv_press_frames = max(1, int(self._drv_press_ms / (DT_CTRL * 1000)))
     # self._drv_press_cnt = 0
+    # Deque driver torque filtering
+    self.driver_torque_buffer = deque(maxlen=10)
+
+  def _smooth_driver_torque(self, raw_torque):
+    """Smooth driver torque with deque (automatic FIFO )."""
+    self.driver_torque_buffer.append(raw_torque)
+    return sum(self.driver_torque_buffer) / len(self.driver_torque_buffer)
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
@@ -81,7 +90,12 @@ class CarState(CarStateBase):
       ret.genericToggle = (int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"]) == 1) # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
 
       ret.steeringTorque  = driver_torque_from_eps(cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] )
-      ret.steeringTorqueEps = 0.0
+      ## Temporaly testing the smoothing of driver torque that is really disturbe signal
+      ## if the smoothing is correct then this value should be sent to ret.steeringTorque  and  ret.steeringTorqueEp back to 0
+      # ret.steeringTorqueEps = 0.0
+      raw_driver_torque = cp.vl['STEERING']['DRIVER_TORQUE']
+      ret.steeringTorqueEps = self._smooth_driver_torque(raw_driver_torque)
+
       # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
 
     else:
