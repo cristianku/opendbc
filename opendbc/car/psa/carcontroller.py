@@ -176,47 +176,48 @@ class CarController(CarControllerBase):
         can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
         self.apply_torque_last = apply_new_torque
 
-    is_dat_dira_overwritten = False
-    # --- Driver torque generation (simulated torque input) ---
-    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
+    # steering_overwritten = False
+    # # --- Driver torque generation (simulated torque input) ---
+    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
 
-      # 1) Every 15s start a new Gaussian curve with dynamic parameters
-      if (self.frame % self.DT_PERIOD_FRAMES) == 0:
-        # Adjust parameters based on current driving conditions
-        params = self._adjust_torque_params(CS.out.vEgo, CS.out.steeringAngleDeg)
-        self.driver_torque_gen.reset(**params)
-        self.dt_active = True
-        self.dt_step = 0
+    #   # 1) Every 15s start a new Gaussian curve with dynamic parameters
+    #   if (self.frame % self.DT_PERIOD_FRAMES) == 0:
+    #     # Adjust parameters based on current driving conditions
+    #     params = self._adjust_torque_params(CS.out.vEgo, CS.out.steeringAngleDeg)
+    #     self.driver_torque_gen.reset(**params)
+    #     self.dt_active = True
+    #     self.dt_step = 0
 
-      # 2) During active burst: send DRIVER_TORQUE each frame (100 Hz)
-      if self.dt_active:
-        driver_torque_float = self.driver_torque_gen.next_value()
-        # Cast a int solo qui per il CAN message
-        driver_torque = int(round(driver_torque_float))
+    #   # 2) During active burst: send DRIVER_TORQUE each frame (100 Hz)
+    #   if self.dt_active:
+    #     driver_torque_float = self.driver_torque_gen.next_value()
+    #     # Cast a int solo qui per il CAN message
+    #     driver_torque = int(round(driver_torque_float))
 
-        can_sends.append(create_driver_torque(self.packer, CS.steering, driver_torque))
-        is_dat_dira_overwritten = True
-        self._last_driver_torque = driver_torque
+    #     can_sends.append(create_driver_torque(self.packer, CS.steering, driver_torque))
+    #     steering_overwritten = True
+    #     self._last_driver_torque = driver_torque
 
-        # HOLD sempre attivo durante il burst
-        self.hold_by_drv_active = True
+    #     # HOLD sempre attivo durante il burst
+    #     self.hold_by_drv_active = True
 
-        self.dt_step += 1
+    #     self.dt_step += 1
 
-        # Fine del burst quando la sequenza è completa
-        if self.driver_torque_gen.is_done():
-          self.dt_active = False
-          self.hold_by_drv_active = False
+    #     # Fine del burst quando la sequenza è completa
+    #     if self.driver_torque_gen.is_done():
+    #       self.dt_active = False
+    #       self.hold_by_drv_active = False
 
-      # 3) Send IS_DAT_DIRA every frame (100 Hz) while burst is active OR hold persists
-      if self.dt_active or self.hold_by_drv_active:
-          can_sends.append(create_steering_hold(self.packer,
-                                                CS.is_dat_dira,
-                                                self._last_driver_torque,
-                                                self.hold_by_drv_active))
-    if not is_dat_dira_overwritten:
-      # No burst active: relay original STEERING message to prevent Panda forwarding
-      can_sends.append(relay_driver_torque(self.packer, CS.steering))
+    #   # 3) Send IS_DAT_DIRA every frame (100 Hz) while burst is active OR hold persists
+    #   if self.dt_active or self.hold_by_drv_active:
+    #       can_sends.append(create_steering_hold(self.packer,
+    #                                             CS.is_dat_dira,
+    #                                             self._last_driver_torque,
+    #                                             self.hold_by_drv_active))
+
+    # if not steering_overwritten:
+    #   # No burst active: relay original STEERING message to prevent Panda forwarding
+    #   can_sends.append(relay_driver_torque(self.packer, CS.steering))
 
 
 
