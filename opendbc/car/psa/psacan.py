@@ -62,9 +62,13 @@ def relay_driver_torque(packer, steering):
   return packer.make_can_msg('STEERING', 0, steering)
 
 
-def create_steering_hold(packer, is_dat_dira,driver_torque,hold_active: bool):
-  is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1 if hold_active else 0
-  is_dat_dira['EPS_TORQUE'] = convert_driver_torque_to_eps(driver_torque)
+def create_steering_hold(packer, is_dat_dira,driver_torque):
+  eps_torque = convert_driver_torque_to_eps(driver_torque)
+  # Activate HOLD only if EPS_TORQUE >= 0.5
+  hold_active = eps_torque >= 0.5
+
+  is_dat_dira['STEERWHL_HOLD_BY_DRV'] = hold_active
+  is_dat_dira['EPS_TORQUE'] = eps_torque
   return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
 
 def relay_is_dat_dira(packer, is_dat_dira,driver_torque):
