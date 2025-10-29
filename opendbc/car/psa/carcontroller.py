@@ -21,6 +21,8 @@ class CarController(CarControllerBase):
     self.lat_activation_frame  = 0
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
+    self.lka_relay_ready = False
+    self.lka_relay_wait_frames = 100  # Wait 1 second (100 frames @ 100Hz)
 
     # Driver torque generator with configurable parameters
     self.driver_torque_gen = DriverTorqueGenerator(
@@ -129,6 +131,16 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     self.apply_new_torque = 0
     apply_new_torque = 0
+    # Wait for relay to be ready before sending LKA messages
+    if not self.lka_relay_ready:
+      if self.frame > self.lka_relay_wait_frames:
+        self.lka_relay_ready = True
+      else:
+        # Don't send LANE_KEEP_ASSIST yet - relay not ready
+        new_actuators = actuators.as_builder()
+        self.frame += 1
+        return new_actuators, can_sends
+
 
     # --- Lateral control logic ---
     if self.CP.steerControlType == SteerControlType.torque:
