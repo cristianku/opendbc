@@ -4,7 +4,7 @@ from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 from opendbc.car.psa.psacan import driver_torque_from_eps
-import copy
+# import copy
 # from openpilot.common.filter_simple import FirstOrderFilter
 # from opendbc.car import DT_CTRL
 # from collections import deque
@@ -98,9 +98,12 @@ class CarState(CarStateBase):
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
     # self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
     # self.steering = copy.copy(cp.vl['STEERING'])
+    # self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
+
     self.is_dat_dira = dict(cp.vl['IS_DAT_DIRA'])
-    self.steering = dict(cp.vl['STEERING'])
-    self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
+    self.steering    = dict(cp.vl['STEERING'])
+    self.HS2_DYN_MDD_ETAT_2F6 = dict(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
+
 
     # cruise
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed
