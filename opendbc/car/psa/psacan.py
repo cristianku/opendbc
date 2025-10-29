@@ -52,12 +52,6 @@ def driver_torque_from_eps(eps: float) -> int:
 def convert_driver_torque_to_eps(driver_torque: int) -> float:
     return round(0.25 * round(driver_torque / 2.4), 2)
 
-def create_fake_driver_torque(steering):
-  t = int(steering.get('DRIVER_TORQUE', 0))
-  if abs(t) < 10:
-    t = random.randint(10, 12)
-  t = max(0, min(20, t))
-  return t
 
 def create_driver_torque(packer, steering, driver_torque):
   steering['DRIVER_TORQUE'] = driver_torque
