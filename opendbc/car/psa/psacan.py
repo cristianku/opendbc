@@ -64,9 +64,12 @@ def create_driver_torque(packer, steering, driver_torque):
   return packer.make_can_msg('STEERING', 0, steering)
 
 
-def create_steering_hold(packer, is_dat_dira,driver_torque):
-  is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1
+def create_steering_hold(packer, is_dat_dira,driver_torque,hold_active: bool):
+  is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1 if hold_active else 0
   is_dat_dira['EPS_TORQUE'] = convert_driver_torque_to_eps(driver_torque)
+  return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
+
+def relay_is_dat_dira(packer, is_dat_dira,driver_torque):
   return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
 
 def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):

@@ -23,14 +23,69 @@ class CarController(CarControllerBase):
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
 
-    # driver torque generator (Gaussian burst)
-    self.driver_torque_gen = DriverTorqueGenerator()
+    # Driver torque generator with configurable parameters
+    self.driver_torque_gen = DriverTorqueGenerator(
+        duration_range=(600, 800),
+        std_divisor=4,
+        peak_torque_range=(12, 18),
+        opposite_probability=0.2,
+        rate_hz=100,        # ← AGGIUNGI
+        eps_max=20          # ← AGGIUNGI
+    )
+    self._last_driver_torque = 0  # last torque value sent, used for IS_DAT_DIRA updates
     self.dt_active = False
     self.dt_step = 0
-    self.DT_PERIOD_FRAMES = 500   # interval between driver torque bursts (5 s @100 Hz)
-    self.DT_BURST_LEN = 200       # duration of each Gaussian torque curve (200 frames ≈ 2 s)
-    self._last_driver_torque = 0  # last torque value sent, used for IS_DAT_DIRA updates
+    self.DT_PERIOD_FRAMES = 1500  # intervallo tra burst: 15s @100Hz
 
+    # Logica di persistenza per STEERWHL_HOLD_BY_DRV
+    self.hold_by_drv_active = False
+    self.hold_by_drv_frames_remaining = 0
+    self.HOLD_PERSISTENCE_FRAMES = 50  # Mantiene HOLD attivo per 0.5s
+
+
+  def _adjust_torque_params(self, speed, steering_angle):
+      """
+      Dynamically adjust driver torque generation parameters based on driving conditions.
+
+      Args:
+          speed: vehicle speed in m/s
+          steering_angle: current steering angle in degrees
+
+      Returns:
+          dict with updated parameters for the torque generator
+      """
+      # Default values
+      duration_range = (600, 800)
+      std_divisor = 4
+      peak_torque_range = (12, 18)
+      opposite_probability = 0.2
+
+      # Adjust based on speed
+      if speed > 25:  # >90 km/h
+          duration_range = (800, 1000)
+          std_divisor = 5  # più stretta e precisa
+          peak_torque_range = (10, 15)
+      elif speed > 15:  # >54 km/h
+          duration_range = (600, 800)
+          std_divisor = 4
+          peak_torque_range = (12, 18)
+      else:  # Low speed
+          duration_range = (400, 600)
+          std_divisor = 3.5  # più larga
+          peak_torque_range = (15, 20)
+
+      # Adjust based on steering angle
+      if abs(steering_angle) > 45:
+          duration_range = tuple(int(d * 0.7) for d in duration_range)
+          peak_torque_range = tuple(int(p * 0.8) for p in peak_torque_range)
+          opposite_probability = 0.1  # Meno variabilità in curva
+
+      return {
+          'duration_range': duration_range,
+          'std_divisor': std_divisor,
+          'peak_torque_range': peak_torque_range,
+          'opposite_probability': opposite_probability
+      }
 
   def _reset_lat_state(self):
     """Reset lateral control state."""
@@ -110,29 +165,50 @@ class CarController(CarControllerBase):
         can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
         self.apply_torque_last = apply_new_torque
 
+    # --- Driver torque generation (simulated torque input) ---
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
 
-      # --- Driver torque generation (simulated torque input) ---
-      if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
+      # 1) Every 15s start a new Gaussian curve with dynamic parameters
+      if (self.frame % self.DT_PERIOD_FRAMES) == 0:
+        # Adjust parameters based on current driving conditions
+        params = self._adjust_torque_params(CS.out.vEgo, CS.out.steeringAngleDeg)
+        self.driver_torque_gen.reset(**params)
+        self.dt_active = True
+        self.dt_step = 0
 
-        # 1) Every 5 s start a new Gaussian curve of 200 frames
-        if (self.frame % self.DT_PERIOD_FRAMES) == 0:
-          self.driver_torque_gen.reset()   # ← restart from the begin of Gaussian Curve
-          self.dt_active = True
-          self.dt_step = 0
+      # 2) During active burst: send DRIVER_TORQUE each frame (100 Hz)
+      if self.dt_active:
+        driver_torque_float = self.driver_torque_gen.next_value()
+        # Cast a int solo qui per il CAN message
+        driver_torque = int(round(driver_torque_float))
 
-        # 2) During active burst: send DRIVER_TORQUE each frame (100 Hz)
-        if self.dt_active:
-          driver_torque = self.driver_torque_gen.next_value()
-          can_sends.append(create_driver_torque(self.packer, CS.steering, driver_torque))
-          self._last_driver_torque = driver_torque
+        can_sends.append(create_driver_torque(self.packer, CS.steering, driver_torque))
+        self._last_driver_torque = driver_torque
 
-          self.dt_step += 1
-          if self.dt_step >= self.DT_BURST_LEN:
-            self.dt_active = False
+        # Gestione HOLD_BY_DRV con persistenza
+        if abs(driver_torque) > 8:  # Soglia per attivare HOLD
+          self.hold_by_drv_active = True
+          self.hold_by_drv_frames_remaining = self.HOLD_PERSISTENCE_FRAMES
+        elif self.hold_by_drv_frames_remaining > 0:
+          self.hold_by_drv_frames_remaining -= 1
+          if self.hold_by_drv_frames_remaining == 0:
+            self.hold_by_drv_active = False
+        else:
+          self.hold_by_drv_active = False
 
-        # 3) Send IS_DAT_DIRA at 10 Hz while Gaussian burst is active
-        if (self.frame % 10) == 0 and self.dt_active:
-          can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, self._last_driver_torque))
+        self.dt_step += 1
+
+        # Fine del burst quando la sequenza è completa
+        if self.driver_torque_gen.is_done():
+          self.dt_active = False
+          self.hold_by_drv_active = False
+
+      # 3) Send IS_DAT_DIRA every frame (100 Hz) while burst is active OR hold persists
+      if self.dt_active or self.hold_by_drv_active:
+          can_sends.append(create_steering_hold(self.packer,
+                                                CS.is_dat_dira,
+                                                self._last_driver_torque,
+                                                self.hold_by_drv_active))
 
 
     # --- Actuator outputs ---
