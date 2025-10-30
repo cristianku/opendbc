@@ -24,11 +24,18 @@ class CarState(CarStateBase):
     self.steering = dict()
 
     # Filtro torque driver a 100 Hz
+    # self._drv_filt = DriverTorqueFilter(
+    #     alpha=0.05,           # ridotto per 100 Hz
+    #     deadband=0.6,         # Nm
+    #     rate_limit_per_s=30.0,
+    #     second_order=True
+    # )
+
     self._drv_filt = DriverTorqueFilter(
-        alpha=0.05,           # ridotto per 100 Hz
-        deadband=0.6,         # Nm
-        rate_limit_per_s=30.0,
-        second_order=True
+        alpha=0.10,            # EMA smoothing factor: balance between responsiveness and noise filtering
+        deadband=0.6,          # Torque threshold (Nm) to eliminate sensor noise when hands rest on wheel
+        rate_limit_per_s=30.0, # Maximum torque change rate (Nm/s) to prevent sudden spikes
+        second_order=True      # Apply double EMA pass for smoother, more comfortable steering feel
     )
 
   def update(self, can_parsers) -> structs.CarState:
