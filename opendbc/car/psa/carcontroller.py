@@ -6,6 +6,7 @@ from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, c
 from opendbc.car.psa.values import CarControllerParams, CAR
 from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
 import random
+VisualAlert = structs.CarControl.HUDControl.VisualAlert
 
 SteerControlType = structs.CarParams.SteerControlType
 
@@ -70,6 +71,10 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     self.apply_new_torque = 0
     apply_new_torque = 0
+    hud_control = CC.hudControl
+    ### STEER ###
+    steer_hud_alert = 1 if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw) else 0
+
 
     # --- Lateral control logic ---
     if self.CP.steerControlType == SteerControlType.torque:
@@ -107,6 +112,9 @@ class CarController(CarControllerBase):
 
     # # --- Driver torque generation (simulated torque input) ---
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
+
+    if self.frame % 1000 == 0:
+      can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
 
     #   # 100Hz ##
     if CC.latActive:

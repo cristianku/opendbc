@@ -10,6 +10,8 @@
 #define PSA_DAT_BSI               1042U // RX from BSI, brake
 #define PSA_LANE_KEEP_ASSIST      1010U // TX from OP,  EPS
 #define PSA_IS_DAT_DIRA           1173U // TX from OP,  hold steering wheel
+#define PSA_HS2_DYN_MDD_ETAT_2F6  758U // TX from ARTIV,  alert messages
+
 
 // CAN bus
 #define PSA_MAIN_BUS 0U
@@ -132,6 +134,8 @@ static safety_config psa_init(uint16_t param) {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
     {PSA_IS_DAT_DIRA, PSA_CAM_BUS, 4, .check_relay = false}, // hold steering wheel
     {PSA_STEERING, PSA_MAIN_BUS, 7, .check_relay = false}, // driver torque
+    {PSA_HS2_DYN_MDD_ETAT_2F6, PSA_ADAS_BUS, 8, .check_relay = false}, // Alert messages
+
   };
 
   static RxCheck psa_rx_checks[] = {
