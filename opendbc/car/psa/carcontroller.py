@@ -4,7 +4,7 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold, create_request_takeover, relay_driver_torque
 from opendbc.car.psa.values import CarControllerParams, CAR
-from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
+# from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
 import random
 
 SteerControlType = structs.CarParams.SteerControlType
@@ -24,7 +24,7 @@ class CarController(CarControllerBase):
     self.params = CarControllerParams(CP)
 
     # Driver torque generator with configurable parameters
-    self.driver_torque_gen = DriverTorqueGenerator()
+    # self.driver_torque_gen = DriverTorqueGenerator()
 
 
   def _reset_lat_state(self):
@@ -160,8 +160,8 @@ class CarController(CarControllerBase):
     #     self.torque_direction = 1
 
     # 100Hz
-    torque = self.driver_torque_gen.next_value()
-    can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
+    # torque = self.driver_torque_gen.next_value()
+    # can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
     # if self.frame % 10 == 0:
     #   can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, torque ))
 
