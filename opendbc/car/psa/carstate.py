@@ -33,10 +33,11 @@ class CarState(CarStateBase):
     # )
 
     self._drv_filt = DriverTorqueFilter(
-        alpha=0.10,            # EMA smoothing factor: balance between responsiveness and noise filtering
-        deadband=1,          # Torque threshold (Nm) to eliminate sensor noise when hands rest on wheel
-        rate_limit_per_s=30.0, # Maximum torque change rate (Nm/s) to prevent sudden spikes
-        second_order=True      # Apply double EMA pass for smoother, more comfortable steering feel
+        alpha=0.12,            # EMA smoothing factor: balance between responsiveness and smoothing @ 100Hz
+        deadband=1.5,          # Torque threshold (Nm) to eliminate sensor noise when hands rest on wheel
+        rate_limit_per_s=15.0, # Maximum torque change rate (Nm/s) to prevent sudden spikes
+        second_order=True,     # Apply double EMA pass for smoother, more comfortable steering feel
+        frequency_hz=100.0     # Update frequency
     )
 
   def update(self, can_parsers) -> structs.CarState:
@@ -103,7 +104,7 @@ class CarState(CarStateBase):
       ret.steeringTorque = self._drv_filt.update(raw_driver_torque)
 
       # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
-      ret.steeringPressed = (abs(cp.vl['IS_DAT_DIRA']['EPS_TORQUE']) * 10 ) > LKAS_LIMITS.STEER_THRESHOLD
+      ret.steeringPressed = abs(ret.steeringTorque ) > LKAS_LIMITS.STEER_THRESHOLD
 
     else:
       ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
