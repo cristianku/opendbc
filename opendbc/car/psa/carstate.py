@@ -33,7 +33,7 @@ class CarState(CarStateBase):
 
     self._drv_filt = DriverTorqueFilter(
         alpha=0.10,            # EMA smoothing factor: balance between responsiveness and noise filtering
-        deadband=0.6,          # Torque threshold (Nm) to eliminate sensor noise when hands rest on wheel
+        deadband=1,          # Torque threshold (Nm) to eliminate sensor noise when hands rest on wheel
         rate_limit_per_s=30.0, # Maximum torque change rate (Nm/s) to prevent sudden spikes
         second_order=True      # Apply double EMA pass for smoother, more comfortable steering feel
     )
