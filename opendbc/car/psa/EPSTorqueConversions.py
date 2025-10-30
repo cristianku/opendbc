@@ -1,28 +1,69 @@
 # EPSTorqueFilter.py
-
 class EPSTorqueConverter:
-    def __init__(self, alpha=0.15, scale_factor=10.545, offset=0.135,
-                 decim=10, quant=0.25, hold_thr=5.0):
-        self.alpha = alpha
+    """
+    Convert driver torque values to EPS torque format matching PSA CAN protocol.
+    Applies scaling, offset correction, and quantization to match ECU behavior.
+    """
+
+    def __init__(self, scale_factor=10.545, offset=0.135, quantization=0.25):
+        """
+        Args:
+            scale_factor: Conversion ratio between driver and EPS torque scales
+            offset: Zero-point offset correction (Nm)
+            quantization: Output resolution step size (Nm)
+        """
         self.scale_factor = float(scale_factor)
         self.offset = float(offset)
-        self.decim = int(decim)
-        self.quant = float(quant)
-        self.hold_thr = float(hold_thr)
-        self.filtered = 0.0
-        self.frame_count = 0
+        self.quantization = float(quantization)
+
+        # Hysteresis state for hold detection (0=released, 1=holding)
         self.hold_state = 0
 
     def convert_driver_torque_to_eps(self, driver_torque: float) -> float:
-        scaled = (driver_torque + self.offset) / self.scale_factor
-        q = round(scaled / self.quant) * self.quant    # step = self.quant (0.25)
-        return round(q, 2)
+        """
+        Convert driver torque to EPS torque with quantization.
 
-    def _convert_driver_to_hold(self, driver_torque: float) -> int:
+        Args:
+            driver_torque: Raw driver torque in Nm
+
+        Returns:
+            EPS torque value quantized to protocol resolution
+        """
+        # Apply scale and offset
+        scaled = (driver_torque + self.offset) / self.scale_factor
+
+        # Quantize to EPS resolution (default 0.25 Nm steps)
+        quantized = round(scaled / self.quantization) * self.quantization
+
+        return round(quantized, 2)
+
+    def convert_driver_to_hold(self, driver_torque: float) -> int:
+        """
+        Detect steering hold state using hysteresis thresholds.
+
+        Upper threshold: 7 Nm (engage) - increased to reduce false positives
+        Lower threshold: 3 Nm (release) - decreased to reduce false negatives
+        """
         t = abs(driver_torque)
-        if self.hold_state == 0 and t >= 6: self.hold_state = 1
-        elif self.hold_state == 1 and t <= 4: self.hold_state = 0
+
+        # Upper threshold: engage when torque exceeds 7 Nm
+        if self.hold_state == 0 and t >= 7:
+            self.hold_state = 1
+        # Lower threshold: release when torque drops below 3 Nm
+        elif self.hold_state == 1 and t <= 3:
+            self.hold_state = 0
+
         return self.hold_state
+
+        def reset(self):
+            """Reset internal state (useful when restarting or after errors)."""
+            self.hold_state = 0
+
+    def reset(self):
+        """Reset internal state (useful when restarting or after errors)."""
+        self.hold_state = 0
+
+
 
 
 class DriverTorqueFilter:

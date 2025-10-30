@@ -3,8 +3,9 @@ from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
-from opendbc.car.psa.psacan import driver_torque_from_eps
+# from opendbc.car.psa.psacan import driver_torque_from_eps
 from EPSTorqueConversions import DriverTorqueFilter
+
 from collections import deque
 
 # import copy
@@ -108,8 +109,6 @@ class CarState(CarStateBase):
       ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
 
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-      # Peugeot 3008: EPS_TORQUE represents only driver-applied torque (no motor assist).
-      # The signal is already smoothed by the EPS ECU, so update_steering_pressed is unnecessary.
       ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
 
     else:
