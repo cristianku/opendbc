@@ -131,6 +131,7 @@ class CarController(CarControllerBase):
       #   if CC.latActive:
       #     can_sends.append(create_wheel_speed_spoof(self.packer, CS.dyn4_fre, min_speed=55.0))
 
+
     # --- Actuator outputs ---
     new_actuators = actuators.as_builder()
     if self.CP.steerControlType == SteerControlType.torque:
