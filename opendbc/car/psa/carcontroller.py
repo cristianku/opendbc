@@ -6,7 +6,7 @@ from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, c
 from opendbc.car.psa.values import CarControllerParams, CAR
 from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
 import random
-from EPSTorqueConversions import EPSTorqueConverter
+from opendbc.car.psa.EPSTorqueConversions import EPSTorqueConverter
 
 SteerControlType = structs.CarParams.SteerControlType
 
