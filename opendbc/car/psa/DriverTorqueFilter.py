@@ -1,12 +1,12 @@
 
 class DriverTorqueFilter:
     """
-    20 Hz: deadband -> EMA -> rate-limit  (opz: 2° ordine)
+    Driver torque filter: deadband -> EMA -> rate-limit  (opz: 2° ordine)
     """
-    def __init__(self, alpha=0.22, deadband=0.6, rate_limit_per_s=30.0, second_order=True):
-        self.alpha = float(alpha)                 # 0.08–0.15 consigliato @20Hz
+    def __init__(self, alpha=0.22, deadband=0.6, rate_limit_per_s=30.0, second_order=True, frequency_hz=100.0):
+        self.alpha = float(alpha)                 # EMA smoothing factor
         self.db = float(deadband)                # Nm
-        self.dmax = float(rate_limit_per_s) / 20 # Nm/frame @20Hz
+        self.dmax = float(rate_limit_per_s) / frequency_hz # Nm/frame
         self.second_order = bool(second_order)
         self.y1 = 0.0
         self.y2 = 0.0  # per 2° ordine
