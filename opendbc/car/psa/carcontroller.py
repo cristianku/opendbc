@@ -111,10 +111,10 @@ class CarController(CarControllerBase):
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
 
     #   # 100Hz ##
-    #   torque = self.driver_torque_gen.next_value()
-    #   can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
-    #   if self.frame % 10 == 0:
-    #     can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, torque ,self.eps_converter))
+    torque = self.driver_torque_gen.next_value()
+    can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
+    # if self.frame % 10 == 0:
+    #   can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, torque ,self.eps_converter))
 
     # --- Actuator outputs ---
     new_actuators = actuators.as_builder()
