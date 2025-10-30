@@ -39,7 +39,7 @@ class CarControllerParams:
         #   -------------------------------------------------------------
         # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
         self.MAX_TORQUE_FACTOR = 100
-        self.MIN_TORQUE_FACTOR = 25
+        self.MIN_TORQUE_FACTOR = 30
 
 
 
