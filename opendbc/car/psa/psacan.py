@@ -1,4 +1,5 @@
 # import random
+import math
 
 def psa_checksum(address: int, sig, d: bytearray) -> int:
   chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
@@ -50,22 +51,12 @@ def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_fa
 #     return round(9.6 * eps)
 def convert_driver_torque_to_eps(driver_torque: float) -> float:
     """
-    Convert driver torque to EPS torque with quantization.
-
-    Args:
-        driver_torque: Raw driver torque in Nm
-
-    Returns:
-        EPS torque value quantized to protocol resolution
+    Convert driver torque to EPS torque.
+    Formula: divide by 10 and quantize to 0.25 Nm (floor)
     """
-    quantization=0.25
-    offset=0.135
-    cale_factor=10.545
-    # Apply scale and offset
-    scaled = (driver_torque + offset) / scale_factor
-
-    # Quantize to EPS resolution (default 0.25 Nm steps)
-    quantized = round(scaled / quantization) * quantization
+    # Divide by 10 and quantize to 0.25 Nm (floor)
+    eps_torque = driver_torque / 10.0
+    quantized = math.floor(eps_torque / 0.25) * 0.25
 
     return round(quantized, 2)
 
