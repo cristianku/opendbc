@@ -4,6 +4,7 @@ from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 from opendbc.car.psa.psacan import driver_torque_from_eps
+from EPSTorqueConversions import DriverTorqueFilter
 from collections import deque
 
 # import copy
@@ -19,22 +20,16 @@ TransmissionType = structs.CarParams.TransmissionType
 class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
-    # --- driver torque filtering state (Toyota-style) ---
-    # self._drv_lp = FirstOrderFilter(0.0, DT_CTRL, 0.25)  # tau=0.25 s
-    # self._drv_deadband = 0.3                             # Nm, snap-to-zero
-    # self._drv_press_thr = 1.0                            # Nm, pressed threshold
-    # self._drv_press_ms = 200                             # ms, debounce
-    # self._drv_press_frames = max(1, int(self._drv_press_ms / (DT_CTRL * 1000)))
-    # self._drv_press_cnt = 0
-    # Deque driver torque filtering
-    self.driver_torque_buffer = deque(maxlen=10)
     self.is_dat_dira = dict()
     self.steering = dict()
 
-  def _smooth_driver_torque(self, raw_torque):
-    """Smooth driver torque with deque (automatic FIFO )."""
-    self.driver_torque_buffer.append(raw_torque)
-    return sum(self.driver_torque_buffer) / len(self.driver_torque_buffer)
+    # Filtro torque driver a 100 Hz
+    self._drv_filt = DriverTorqueFilter(
+        alpha=0.05,           # ridotto per 100 Hz
+        deadband=0.6,         # Nm
+        rate_limit_per_s=30.0,
+        second_order=True
+    )
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
@@ -96,7 +91,9 @@ class CarState(CarStateBase):
       ## if the smoothing is correct then this value should be sent to ret.steeringTorque  and  ret.steeringTorqueEp back to 0
       # ret.steeringTorqueEps = 0.0
       raw_driver_torque = cp.vl['STEERING']['DRIVER_TORQUE']
-      ret.steeringTorqueEps = self._smooth_driver_torque(raw_driver_torque)
+
+      # Applica filtro e aggiorna CarState
+      ret.steeringTorqueEps = self._drv_filt.update(raw_driver_torque)
 
       # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
 
