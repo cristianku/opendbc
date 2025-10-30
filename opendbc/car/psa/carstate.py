@@ -23,7 +23,7 @@ class CarState(CarStateBase):
     super().__init__(CP)
     self.is_dat_dira = dict()
     self.steering = dict()
-
+    self.dyn4_fre = dict()  # Store wheel speeds for spoofing
     # Filtro torque driver a 100 Hz
     # self._drv_filt = DriverTorqueFilter(
     #     alpha=0.05,           # ridotto per 100 Hz
@@ -120,6 +120,7 @@ class CarState(CarStateBase):
     self.is_dat_dira = dict(cp.vl['IS_DAT_DIRA'])
     self.steering    = dict(cp.vl['STEERING'])
     self.HS2_DYN_MDD_ETAT_2F6 = dict(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
+    self.dyn4_fre    = dict(cp.vl['Dyn4_FRE'])
 
 
     # cruise

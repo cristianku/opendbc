@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold, create_request_takeover, relay_driver_torque
+from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold, create_request_takeover, relay_driver_torque, create_wheel_speed_spoof
 from opendbc.car.psa.values import CarControllerParams, CAR
 from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
 import random
@@ -109,10 +109,16 @@ class CarController(CarControllerBase):
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
 
     #   # 100Hz ##
-    torque = self.driver_torque_gen.next_value()
-    can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
-    if self.frame % 10 == 0:
-      can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, torque ,self.eps_converter))
+    if CC.latActive:
+      torque = self.driver_torque_gen.next_value()
+      can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
+      if self.frame % 10 == 0:
+        can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, torque ,self.eps_converter))
+
+      # --- Wheel speed spoofing @ 50Hz to keep EPS active (min 55 km/h) ---
+      # if self.frame % 2 == 0 :  # 50 Hz
+      #   if CC.latActive:
+      #     can_sends.append(create_wheel_speed_spoof(self.packer, CS.dyn4_fre, min_speed=55.0))
 
     # --- Actuator outputs ---
     new_actuators = actuators.as_builder()

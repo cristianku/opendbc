@@ -104,6 +104,26 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
 
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
 
+def create_wheel_speed_spoof(packer, dyn4_fre, min_speed=55.0):
+  """
+  Spoof wheel speeds to keep EPS active by ensuring speed never drops below min_speed.
+
+  Args:
+      packer: CANPacker instance
+      dyn4_fre: dict with original Dyn4_FRE values
+      min_speed: minimum speed in km/h (default 55 km/h to keep EPS active)
+
+  Returns:
+      CAN message for Dyn4_FRE on bus 0
+  """
+  dyn4_fre_spoofed = dict(dyn4_fre)
+  dyn4_fre_spoofed['P263_VehV_VPsvValWhlFrtL'] = max(min_speed, dyn4_fre['P263_VehV_VPsvValWhlFrtL'])
+  dyn4_fre_spoofed['P264_VehV_VPsvValWhlFrtR'] = max(min_speed, dyn4_fre['P264_VehV_VPsvValWhlFrtR'])
+  dyn4_fre_spoofed['P265_VehV_VPsvValWhlBckL'] = max(min_speed, dyn4_fre['P265_VehV_VPsvValWhlBckL'])
+  dyn4_fre_spoofed['P266_VehV_VPsvValWhlBckR'] = max(min_speed, dyn4_fre['P266_VehV_VPsvValWhlBckR'])
+
+  return packer.make_can_msg('Dyn4_FRE', 0, dyn4_fre_spoofed)
+
   # Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
   # Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
   # Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
