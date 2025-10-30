@@ -4,7 +4,7 @@ from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 # from opendbc.car.psa.psacan import driver_torque_from_eps
-from EPSTorqueConversions import DriverTorqueFilter
+from opendbc.car.psa.EPSTorqueConversions import DriverTorqueFilter
 
 from collections import deque
 
