@@ -48,6 +48,26 @@ def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_fa
 # def driver_torque_from_eps(eps: float) -> int:
 #     # eps quantizzato a 0.25
 #     return round(9.6 * eps)
+def convert_driver_torque_to_eps(driver_torque: float) -> float:
+    """
+    Convert driver torque to EPS torque with quantization.
+
+    Args:
+        driver_torque: Raw driver torque in Nm
+
+    Returns:
+        EPS torque value quantized to protocol resolution
+    """
+    quantization=0.25
+    offset=0.135
+    cale_factor=10.545
+    # Apply scale and offset
+    scaled = (driver_torque + offset) / scale_factor
+
+    # Quantize to EPS resolution (default 0.25 Nm steps)
+    quantized = round(scaled / quantization) * quantization
+
+    return round(quantized, 2)
 
 def create_driver_torque(packer, steering, driver_torque):
   steering['DRIVER_TORQUE'] = driver_torque
@@ -70,11 +90,14 @@ def create_steering_hold(packer, is_dat_dira, driver_torque, eps_converter):
   Returns:
       CAN message per IS_DAT_DIRA
   """
-
-  is_dat_dira['STEERWHL_HOLD_BY_DRV'] = eps_converter.convert_driver_to_hold(driver_torque)
+  if driver_torque > 6:
+    is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1
+  else:
+    is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 0
+    # eps_converter.convert_driver_to_hold(driver_torque)
 
   # Convert driver torque to EPS torque scale (with quantization)
-  is_dat_dira['EPS_TORQUE'] = eps_converter.convert_driver_torque_to_eps(driver_torque)
+  is_dat_dira['EPS_TORQUE'] = convert_driver_torque_to_eps(driver_torque)
 
 
   return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)

@@ -4,7 +4,7 @@ from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 # from opendbc.car.psa.psacan import driver_torque_from_eps
-from opendbc.car.psa.EPSTorqueConversions import DriverTorqueFilter
+from opendbc.car.psa.DriverTorqueFilter import DriverTorqueFilter
 
 from collections import deque
 
@@ -103,16 +103,13 @@ class CarState(CarStateBase):
       ret.steeringTorque = self._drv_filt.update(raw_driver_torque)
 
       # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
+      ret.steeringPressed = (abs(cp.vl['IS_DAT_DIRA']['EPS_TORQUE']) * 10 ) > LKAS_LIMITS.STEER_THRESHOLD
 
     else:
       ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
       ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
-
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-      ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
-
-    else:
       ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
+
 
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
     # self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
