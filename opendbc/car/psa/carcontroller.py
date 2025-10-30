@@ -110,7 +110,7 @@ class CarController(CarControllerBase):
     # # --- Driver torque generation (simulated torque input) ---
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
 
-    #   # 100Hz
+    #   # 100Hz ##
     #   torque = self.driver_torque_gen.next_value()
     #   can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
     #   if self.frame % 10 == 0:
