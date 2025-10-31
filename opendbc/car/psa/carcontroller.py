@@ -48,7 +48,8 @@ class CarController(CarControllerBase):
       self.apply_torque_factor = 0
 
     if abs( self.frame - self.eps_cycle_initial_frame) % 10 == 0:
-      self.steer_hud_alert = True
+      #  2 = Critical request
+      self.steer_hud_alert = 2
 
     # EPS activation sequence 2→3→4
     self.status = 2 if self.status == 4 else self.status + 1
@@ -63,9 +64,16 @@ class CarController(CarControllerBase):
     self.apply_new_torque = 0
     apply_new_torque = 0
     hud_control = CC.hudControl
-    ### STEER ###
-    self.steer_hud_alert = True if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw) else False
-    # steer_hud_alert = 0
+    # HS2_DYN_MDD_ETAT_2F6
+    if hud_control.visualAlert == VisualAlert.steerRequired
+      #  2 = Critical request
+      self.steer_hud_alert = 2
+    elif hud_control.visualAlert ==  VisualAlert.ldw
+      #  1 = Non Critical Request
+      self.steer_hud_alert = 1
+    else :
+      self.steer_hud_alert = 0
+
 
     # --- Lateral control logic ---
     if self.CP.steerControlType == SteerControlType.torque:
@@ -102,24 +110,17 @@ class CarController(CarControllerBase):
         can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
         self.apply_torque_last = apply_new_torque
 
-    # # --- Driver torque generation (simulated torque input) ---
-    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
-
-    # if self.frame % 1000 == 0:
-    #   can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-
-    #   # 100Hz ##
-      # if self.frame % 2 == 0 and steer_hud_alert:
     if self.steer_hud_alert:
-      can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,2))
+      can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,self.steer_hud_alert))
 
+    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
       # torque = self.driver_torque_gen.next_value()
       # can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
       # if self.frame % 1 == 0:
       #   can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, torque ))
 
       # --- Wheel speed spoofing @ 50Hz to keep EPS active (min 55 km/h) ---
-      # if self.frame % 2 == 0 :  # 50 Hz
+      # if self.frame % 2 == 0:  # 50 Hz
       #   if CC.latActive:
       #     can_sends.append(create_wheel_speed_spoof(self.packer, CS.dyn4_fre, min_speed=55.0))
 

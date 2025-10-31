@@ -32,12 +32,21 @@ class CarState(CarStateBase):
     #     second_order=True
     # )
 
+    # self._drv_filt = DriverTorqueFilter(
+    #     alpha=0.12,            # EMA smoothing factor: balance between responsiveness and smoothing @ 100Hz
+    #     deadband=1.5,          # Torque threshold (Nm) to eliminate sensor noise when hands rest on wheel
+    #     rate_limit_per_s=15.0, # Maximum torque change rate (Nm/s) to prevent sudden spikes
+    #     second_order=True,     # Apply double EMA pass for smoother, more comfortable steering feel
+    #     frequency_hz=100.0     # Update frequency
+    # )
+
     self._drv_filt = DriverTorqueFilter(
-        alpha=0.12,            # EMA smoothing factor: balance between responsiveness and smoothing @ 100Hz
-        deadband=1.5,          # Torque threshold (Nm) to eliminate sensor noise when hands rest on wheel
-        rate_limit_per_s=15.0, # Maximum torque change rate (Nm/s) to prevent sudden spikes
-        second_order=True,     # Apply double EMA pass for smoother, more comfortable steering feel
-        frequency_hz=100.0     # Update frequency
+        alpha=0.20,
+        deadband=1.0,
+        rate_limit_per_s=40.0,
+        second_order=True,
+        frequency_hz=100.0,
+        spike_threshold=3.0
     )
 
   def update(self, can_parsers) -> structs.CarState:
