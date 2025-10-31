@@ -88,6 +88,8 @@ class CarController(CarControllerBase):
         else:
           if not CS.eps_active:
             self._activate_eps( CS.eps_active)
+            steer_hud_alert = 1
+
 
           else:
             # EPS ACTIVE — perform steering torque control
