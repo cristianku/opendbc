@@ -2,7 +2,12 @@
 import math
 
 def psa_checksum(address: int, sig, d: bytearray) -> int:
-  chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
+  chk_ini = {0x452: 0x4,
+             0x38D: 0x7,
+             0x42D: 0xC,
+             0x2B6: 0x3, # 694 decimale - HS2_DYN1_MDD_ETAT_2B6
+             0x2F6: 0x7  # 758 decimale - messaggio ACC2
+             }.get(address, 0xB)
   byte = sig.start_bit // 8
   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
   checksum = sum((b >> 4) + (b & 0xF) for b in d)
