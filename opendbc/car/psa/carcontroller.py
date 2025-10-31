@@ -65,10 +65,10 @@ class CarController(CarControllerBase):
     apply_new_torque = 0
     hud_control = CC.hudControl
     # HS2_DYN_MDD_ETAT_2F6
-    if hud_control.visualAlert == VisualAlert.steerRequired
+    if hud_control.visualAlert == VisualAlert.steerRequired:
       #  2 = Critical request
       self.steer_hud_alert = 2
-    elif hud_control.visualAlert ==  VisualAlert.ldw
+    elif hud_control.visualAlert ==  VisualAlert.ldw:
       #  1 = Non Critical Request
       self.steer_hud_alert = 1
     else :
