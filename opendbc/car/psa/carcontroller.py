@@ -70,10 +70,10 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     self.apply_new_torque = 0
     apply_new_torque = 0
-    hud_control = CC.hudControl
+    # hud_control = CC.hudControl
     ### STEER ###
-    steer_hud_alert = 1 if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw) else 0
-
+    # steer_hud_alert = 1 if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw) else 0
+    steer_hud_alert = 0
 
     # --- Lateral control logic ---
     if self.CP.steerControlType == SteerControlType.torque:
