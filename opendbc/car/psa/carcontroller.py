@@ -1,6 +1,6 @@
 from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs
-from opendbc.car.lateral import apply_driver_steer_torque_limits
+from opendbc.car.lateral import apply_driver_steer_torque_limits, common_fault_avoidance
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold, create_request_takeover, relay_driver_torque, create_wheel_speed_spoof
 from opendbc.car.psa.values import CarControllerParams, CAR
@@ -9,6 +9,13 @@ import random
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 
 SteerControlType = structs.CarParams.SteerControlType
+
+# EPS faults if you apply torque while the steering angle is above XX TODO degrees for more than 1 second
+# All slightly below EPS thresholds to avoid fault
+MAX_ANGLE = 10
+MAX_ANGLE_FRAMES = 18
+MAX_ANGLE_CONSECUTIVE_FRAMES = 2
+
 
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP):
@@ -23,6 +30,7 @@ class CarController(CarControllerBase):
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
     self.eps_cycle_initial_frame = 0
+    self.angle_limit_counter = 0
 
     # Driver torque generator with configurable parameters
     self.driver_torque_gen = DriverTorqueGenerator()
@@ -95,20 +103,32 @@ class CarController(CarControllerBase):
             # EPS ACTIVE — perform steering torque control
             self._set_lat_state_active()
 
-            # --- Torque calculation ---
-            temp_torque = int(round(CC.actuators.torque * self.params.STEER_MAX))
-            apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
+            # >XX degree steering fault prevention
+            self.angle_limit_counter, apply_steer_req = common_fault_avoidance(abs(CS.out.steeringAngleDeg) >= MAX_ANGLE, CC.latActive,
+                                                                              self.angle_limit_counter, MAX_ANGLE_FRAMES,
+                                                                              MAX_ANGLE_CONSECUTIVE_FRAMES)
+
+            if apply_steer_req:
+              # --- Torque calculation ---
+              temp_torque = int(round(CC.actuators.torque * self.params.STEER_MAX))
+              apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
                                                             CS.out.steeringTorque, self.params, self.params.STEER_MAX)
-            # this is just to test the alert
-            if apply_new_torque > 20:
-                #  1 = Non Critical alert
-                self.steer_hud_alert = 1
 
-            # Linear torque factor interpolation
-            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) ** 2)
+              # this is just to test the alert
+              if apply_new_torque > 20:
+                  #  1 = Non Critical alert
+                  self.steer_hud_alert = 1
 
-            self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
-            self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+              # Linear torque factor interpolation
+              ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) ** 2)
+
+              self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
+              self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+            else:
+              #  2 = Critical request
+              self.steer_hud_alert = 2
+              self.apply_torque_factor = 0
+              apply_new_torque = 0
 
 
         #

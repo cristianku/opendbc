@@ -17,7 +17,6 @@ from collections import deque
 GearShifter = structs.CarState.GearShifter
 TransmissionType = structs.CarParams.TransmissionType
 
-
 class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
