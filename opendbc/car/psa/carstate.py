@@ -3,7 +3,12 @@ from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
-import copy
+# from opendbc.car.psa.psacan import driver_torque_from_eps
+from opendbc.car.psa.DriverTorqueFilter import DriverTorqueFilter
+
+from collections import deque
+
+# import copy
 # from openpilot.common.filter_simple import FirstOrderFilter
 # from opendbc.car import DT_CTRL
 # from collections import deque
@@ -16,13 +21,24 @@ TransmissionType = structs.CarParams.TransmissionType
 class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
-    # --- driver torque filtering state (Toyota-style) ---
-    # self._drv_lp = FirstOrderFilter(0.0, DT_CTRL, 0.25)  # tau=0.25 s
-    # self._drv_deadband = 0.3                             # Nm, snap-to-zero
-    # self._drv_press_thr = 1.0                            # Nm, pressed threshold
-    # self._drv_press_ms = 200                             # ms, debounce
-    # self._drv_press_frames = max(1, int(self._drv_press_ms / (DT_CTRL * 1000)))
-    # self._drv_press_cnt = 0
+    self.is_dat_dira = dict()
+    self.steering = dict()
+    self.dyn4_fre = dict()  # Store wheel speeds for spoofing
+    # Filtro torque driver a 100 Hz
+    # self._drv_filt = DriverTorqueFilter(
+    #     alpha=0.05,           # ridotto per 100 Hz
+    #     deadband=0.6,         # Nm
+    #     rate_limit_per_s=30.0,
+    #     second_order=True
+    # )
+
+    self._drv_filt = DriverTorqueFilter(
+        alpha=0.12,            # EMA smoothing factor: balance between responsiveness and smoothing @ 100Hz
+        deadband=1.5,          # Torque threshold (Nm) to eliminate sensor noise when hands rest on wheel
+        rate_limit_per_s=15.0, # Maximum torque change rate (Nm/s) to prevent sudden spikes
+        second_order=True,     # Apply double EMA pass for smoother, more comfortable steering feel
+        frequency_hz=100.0     # Update frequency
+    )
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
@@ -79,25 +95,33 @@ class CarState(CarStateBase):
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
       ret.genericToggle = (int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"]) == 1) # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
 
-      ret.steeringTorque  = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
-      ret.steeringTorqueEps = 0.0
+      # Store raw driver torque in steeringTorqueEps for comparison purposes (temporary)
+      ret.steeringTorqueEps = cp.vl['STEERING']['DRIVER_TORQUE']
+
+      # Read raw driver torque from CAN bus
+      raw_driver_torque = cp.vl['STEERING']['DRIVER_TORQUE']
+      # Apply filtering and update CarState with smoothed torque value
+      ret.steeringTorque = self._drv_filt.update(raw_driver_torque)
+
       # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
+      ret.steeringPressed = abs(ret.steeringTorque ) > LKAS_LIMITS.STEER_THRESHOLD
 
     else:
       ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
       ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
-
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-      # Peugeot 3008: EPS_TORQUE represents only driver-applied torque (no motor assist).
-      # The signal is already smoothed by the EPS ECU, so update_steering_pressed is unnecessary.
-      ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
-    else:
       ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
 
+
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
-    self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
-    self.steering = copy.copy(cp.vl['STEERING'])
-    self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
+    # self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
+    # self.steering = copy.copy(cp.vl['STEERING'])
+    # self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
+
+    self.is_dat_dira = dict(cp.vl['IS_DAT_DIRA'])
+    self.steering    = dict(cp.vl['STEERING'])
+    self.HS2_DYN_MDD_ETAT_2F6 = dict(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
+    self.dyn4_fre    = dict(cp.vl['Dyn4_FRE'])
+
 
     # cruise
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed
