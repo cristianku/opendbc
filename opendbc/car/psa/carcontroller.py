@@ -20,9 +20,9 @@ class CarController(CarControllerBase):
     self.status = 2
     self.takeover_req_sent = False
     # frame counter when LKA (lateral control) becomes active
-    self.lat_activation_frame  = 0
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
+    self.eps_cycle_initial_frame = 0
 
     # Driver torque generator with configurable parameters
     self.driver_torque_gen = DriverTorqueGenerator()
@@ -31,32 +31,19 @@ class CarController(CarControllerBase):
     """Reset lateral control state."""
     self.status = 2
     self.apply_torque_factor = 0
-    self.lat_activation_frame = 0
+    self.eps_cycle_initial_frame = 0
 
   def _set_lat_state_active(self):
     """Set EPS state as active."""
     self.status = 4
-    self.lat_activation_frame = 0
+    self.eps_cycle_initial_frame = 0
 
   def _activate_eps(self, eps_active):
     """
     Handle EPS activation sequence and takeover request.
     STATUS transitions: 2 → 3 → 4 (READY → AUTHORIZED → ACTIVE)
     """
-
-    # Save frame number when EPS first activates or re-activates
-    if self.lat_activation_frame == 0:
-      self.lat_activation_frame = self.frame
-      self.takeover_req_sent = False
-
-
     if not eps_active: # and not CS.out.steeringPressed:
-      # Issue takeover request if EPS is unavailable (e.g., speed < 50 km/h)
-      if self.frame % 2 == 0: # 50 Hz
-        if not self.takeover_req_sent:
-          if (self.frame - self.lat_activation_frame ) > 10:
-          # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-            self.takeover_req_sent = True
 
       # EPS activation sequence 2→3→4
       self.status = 2 if self.status == 4 else self.status + 1
@@ -70,10 +57,10 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     self.apply_new_torque = 0
     apply_new_torque = 0
-    # hud_control = CC.hudControl
+    hud_control = CC.hudControl
     ### STEER ###
-    # steer_hud_alert = 1 if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw) else 0
-    steer_hud_alert = 0
+    steer_hud_alert = 1 if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw) else 0
+    # steer_hud_alert = 0
 
     # --- Lateral control logic ---
     if self.CP.steerControlType == SteerControlType.torque:
@@ -86,8 +73,12 @@ class CarController(CarControllerBase):
 
         else:
           if not CS.eps_active:
+            if self.eps_cycle_initial_frame == 0:
+              self.eps_cycle_initial_frame = self.frame
+
             self._activate_eps( CS.eps_active)
-            steer_hud_alert = 1
+            if ( self.frame - self.eps_cycle_initial_frame) % 10 == 0:
+              steer_hud_alert = 1
 
 
           else:
@@ -125,7 +116,7 @@ class CarController(CarControllerBase):
       torque = self.driver_torque_gen.next_value()
       can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
       if self.frame % 10 == 0:
-        can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, torque ,self.eps_converter))
+        can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, torque ))
 
       # --- Wheel speed spoofing @ 50Hz to keep EPS active (min 55 km/h) ---
       # if self.frame % 2 == 0 :  # 50 Hz
