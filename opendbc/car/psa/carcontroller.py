@@ -115,7 +115,7 @@ class CarController(CarControllerBase):
 
       torque = self.driver_torque_gen.next_value()
       can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
-      if self.frame % 10 == 0:
+      if self.frame % 1 == 0:
         can_sends.append(create_steering_hold(self.packer, CS.is_dat_dira, torque ))
 
       # --- Wheel speed spoofing @ 50Hz to keep EPS active (min 55 km/h) ---
