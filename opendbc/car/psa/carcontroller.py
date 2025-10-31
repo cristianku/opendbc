@@ -108,11 +108,11 @@ class CarController(CarControllerBase):
     # if self.frame % 1000 == 0:
     #   can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
 
-    if self.frame % 2 == 0 and steer_hud_alert:
-      can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,2))
-
     #   # 100Hz ##
     if CC.latActive:
+      if self.frame % 2 == 0 and steer_hud_alert:
+        can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,2))
+
       torque = self.driver_torque_gen.next_value()
       can_sends.append(create_driver_torque(self.packer, CS.steering, torque ))
       if self.frame % 10 == 0:
