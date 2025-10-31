@@ -2,6 +2,10 @@
 import math
 
 def psa_checksum(address: int, sig, d: bytearray) -> int:
+  # Skip disabled checksums (prefix "0_")
+  if sig.name.startswith("0_"):
+    return 0
+
   # Special case: CHECKSUM_CONS_RVV_LVV2 - extracts parity bits from SPEED_SETPOINT
   if sig.name == "CHECKSUM_CONS_RVV_LVV2":
     # Get SPEED_SETPOINT value (start_bit 15, byte 1)
