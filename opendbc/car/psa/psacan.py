@@ -2,11 +2,18 @@
 import math
 
 def psa_checksum(address: int, sig, d: bytearray) -> int:
+  # Special case: CHECKSUM_CONS_RVV_LVV2 - extracts parity bits from SPEED_SETPOINT
+  if sig.name == "CHECKSUM_CONS_RVV_LVV2":
+    # Get SPEED_SETPOINT value (start_bit 15, byte 1)
+    set_speed = d[1]
+    # Extract MSB parity bit (bit 0 of high nibble) and LSB parity bit (bit 0 of low nibble)
+    return (((set_speed >> 4) & 1) << 1) | (set_speed & 1)
+
   chk_ini = {0x452: 0x4,
              0x38D: 0x7,
              0x42D: 0xC,
-             0x2B6: 0x3, # 694 decimale - HS2_DYN1_MDD_ETAT_2B6
-             0x2F6: 0x7  # 758 decimale - messaggio ACC2
+             0x2B6: 0x3, # 694 decimal - HS2_DYN1_MDD_ETAT_2B6
+             0x2F6: 0x7  # 758 decimal - messagmessage ACC2
              }.get(address, 0xB)
   byte = sig.start_bit // 8
   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
