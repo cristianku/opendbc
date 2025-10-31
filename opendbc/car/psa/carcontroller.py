@@ -77,11 +77,12 @@ class CarController(CarControllerBase):
               self.eps_cycle_initial_frame = self.frame
 
             self._activate_eps( CS.eps_active)
-            if ( self.frame - self.eps_cycle_initial_frame) % 10 == 0:
+            if abs( self.frame - self.eps_cycle_initial_frame) % 10 == 0:
               steer_hud_alert = 1
 
 
           else:
+            steer_hud_alert = 1
             # EPS ACTIVE — perform steering torque control
             self._set_lat_state_active()
 
