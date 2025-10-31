@@ -70,9 +70,11 @@ class CarController(CarControllerBase):
       self.steer_hud_alert = 2
     elif hud_control.visualAlert ==  VisualAlert.ldw:
       #  1 = Non Critical Request
-      self.steer_hud_alert = 1
-    else :
-      self.steer_hud_alert = 0
+      # if in the buffer there is a critical = 2 this has higher prio
+      self.steer_hud_alert = max(self.steer_hud_alert, 1 )
+    # since the message is sent only every 2 frames, it will be set to zero by the sender
+    # else :
+    #   self.steer_hud_alert = 0
 
 
     # --- Lateral control logic ---
@@ -97,6 +99,10 @@ class CarController(CarControllerBase):
             temp_torque = int(round(CC.actuators.torque * self.params.STEER_MAX))
             apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
                                                             CS.out.steeringTorque, self.params, self.params.STEER_MAX)
+            # this is just to test the alert
+            if apply_new_torque > 20:
+                #  1 = Non Critical alert
+                self.steer_hud_alert = 1
 
             # Linear torque factor interpolation
             ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) ** 2)
@@ -110,8 +116,10 @@ class CarController(CarControllerBase):
         can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
         self.apply_torque_last = apply_new_torque
 
-    if self.steer_hud_alert:
-      can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,self.steer_hud_alert))
+    if self.frame % 2 == 0:
+      if self.steer_hud_alert:
+        can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,self.steer_hud_alert))
+        self.steer_hud_alert = 0
 
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
       # torque = self.driver_torque_gen.next_value()
