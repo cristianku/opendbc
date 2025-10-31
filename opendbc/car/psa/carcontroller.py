@@ -59,7 +59,7 @@ class CarController(CarControllerBase):
     apply_new_torque = 0
     hud_control = CC.hudControl
     ### STEER ###
-    steer_hud_alert = 1 if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw) else 0
+    steer_hud_alert = True if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw) else False
     # steer_hud_alert = 0
 
     # --- Lateral control logic ---
@@ -78,11 +78,11 @@ class CarController(CarControllerBase):
 
             self._activate_eps( CS.eps_active)
             if abs( self.frame - self.eps_cycle_initial_frame) % 10 == 0:
-              steer_hud_alert = 1
+              steer_hud_alert = True
 
 
           else:
-            steer_hud_alert = 1
+            steer_hud_alert = True
             # EPS ACTIVE — perform steering torque control
             self._set_lat_state_active()
 
