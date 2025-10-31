@@ -26,7 +26,7 @@ class CarInterface(CarInterfaceBase):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
       ret.steerControlType = structs.CarParams.SteerControlType.torque
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
-      ret.steerActuatorDelay = 0.376803
+      ret.steerActuatorDelay = 0.15
       ret.steerLimitTimer = 1
       ret.steerAtStandstill = False
     else:
