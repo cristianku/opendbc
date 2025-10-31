@@ -113,8 +113,8 @@ class CarController(CarControllerBase):
     # # --- Driver torque generation (simulated torque input) ---
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
 
-    if self.frame % 1000 == 0:
-      can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+    # if self.frame % 1000 == 0:
+    #   can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
 
     if self.frame % 2 == 0 and steer_hud_alert:
       can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,2))
