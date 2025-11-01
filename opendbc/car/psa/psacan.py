@@ -6,12 +6,17 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
   if sig.name.startswith("0_"):
     return 0
 
-  # Special case: CHECKSUM_CONS_RVV_LVV2 - extracts parity bits from SPEED_SETPOINT
   if sig.name == "CHECKSUM_CONS_RVV_LVV2":
-    # Get SPEED_SETPOINT value (start_bit 15, byte 1)
-    set_speed = d[1]
-    # Extract MSB parity bit (bit 0 of high nibble) and LSB parity bit (bit 0 of low nibble)
-    return (((set_speed >> 4) & 1) << 1) | (set_speed & 1)
+    # Extract SPEED_SETPOINT from byte 1
+    speed_setpoint = d[1]
+    # Calculate parity of each nibble
+    msb_nibble = (speed_setpoint >> 4) & 0xF
+    lsb_nibble = speed_setpoint & 0xF
+    # Count bits (parity): 1 if odd number of 1s, 0 if even
+    msb_parity = bin(msb_nibble).count('1') & 1
+    lsb_parity = bin(lsb_nibble).count('1') & 1
+    # Return 2-bit checksum: [msb_parity, lsb_parity]
+    return (msb_parity << 1) | lsb_parity
 
   chk_ini = {0x452: 0x4,
              0x38D: 0x7,
