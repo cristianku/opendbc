@@ -1,6 +1,7 @@
 # import random
 import math
 
+#### USE THIS TO CHECK THE CHECKSUM AGAINS REAL DATA https://github.com/cristianku/opendbc-checksum-tools
 def psa_checksum(address: int, sig, d: bytearray) -> int:
   # Skip disabled checksums (prefix "0_")
   if sig.name.startswith("0_"):
@@ -18,14 +19,24 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
     # Return 2-bit checksum: [msb_parity, lsb_parity]
     return (msb_parity << 1) | lsb_parity
 
+  # --- SPECIAL CASE: 0x305 (STEERING_ALT) ---
+  if address == 0x305:
+    # "checksum" is just the upper nibble of byte 4
+    return (d[4] >> 4) & 0xF
+
+  # --- 0x3AD: this ECUs always sends 0 in that field ---
+  if address in (0x3AD, 0x3F2):  # ✅ CORRETTO
+    return 0
+
   chk_ini = {0x452: 0x4,
              0x38D: 0x7,
              0x42D: 0xC,
-             0x2B6: 0x3, # 694 decimal - HS2_DYN1_MDD_ETAT_2B6
-             0x2F6: 0x7  # 758 decimal - messagmessage ACC2
+             0x2B6: 0xC, # 694 decimal - HS2_DYN1_MDD_ETAT_2B6 - override 0xC su ECU MDD 2018+)
+             0x2F6: 0x8,  # 758 decimal - messagmessage ACC2
              }.get(address, 0xB)
   byte = sig.start_bit // 8
   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
+
   checksum = sum((b >> 4) + (b & 0xF) for b in d)
   return (chk_ini - checksum) & 0xF
 
