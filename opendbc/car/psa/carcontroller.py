@@ -8,6 +8,7 @@ from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
 import random
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 
+import math
 SteerControlType = structs.CarParams.SteerControlType
 
 # EPS faults if you apply torque while the steering angle is above XX TODO degrees for more than 1 second
@@ -34,6 +35,7 @@ class CarController(CarControllerBase):
 
     # Driver torque generator with configurable parameters
     self.driver_torque_gen = DriverTorqueGenerator()
+
 
   def _reset_lat_state(self):
     """Reset lateral control state."""
@@ -120,7 +122,9 @@ class CarController(CarControllerBase):
                   self.steer_hud_alert = 1
 
               # Linear torque factor interpolation
-              ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) ** 2)
+              ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)))
+              # ratio = ratio_temp ** 2
+              # ratio =  1 / (1 + math.exp(-ratio_temp)) ##sigmoid
 
               self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
               self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
