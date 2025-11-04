@@ -37,6 +37,7 @@ class CarController(CarControllerBase):
     # Driver torque generator with configurable parameters
     self.driver_torque_gen = DriverTorqueGenerator()
 
+    self.steer_hud_alert = 0
 
   def _reset_lat_state(self):
     """Reset lateral control state."""
