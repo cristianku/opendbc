@@ -42,8 +42,6 @@ class CarControllerParams:
         self.MIN_TORQUE_FACTOR = 30
 
 
-
-
 @dataclass
 class PSACarDocs(CarDocs):
   package: str = "Adaptive Cruise Control (ACC) & Lane Assist"
