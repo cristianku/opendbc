@@ -1,6 +1,7 @@
 from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs
-from opendbc.car.lateral import apply_driver_steer_torque_limits, common_fault_avoidance
+from opendbc.car.lateral import apply_driver_steer_torque_limits
+# , common_fault_avoidance
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold, create_request_takeover, relay_driver_torque, create_wheel_speed_spoof
 from opendbc.car.psa.values import CarControllerParams, CAR
@@ -13,7 +14,7 @@ SteerControlType = structs.CarParams.SteerControlType
 
 # EPS faults if you apply torque while the steering angle is above XX TODO degrees for more than 1 second
 # All slightly below EPS thresholds to avoid fault
-MAX_ANGLE = 10
+MAX_ANGLE = 90
 MAX_ANGLE_FRAMES = 18
 MAX_ANGLE_CONSECUTIVE_FRAMES = 2
 
@@ -73,18 +74,15 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     self.apply_new_torque = 0
     apply_new_torque = 0
-    hud_control = CC.hudControl
-    # HS2_DYN_MDD_ETAT_2F6
-    if hud_control.visualAlert == VisualAlert.steerRequired:
-      #  2 = Critical request
-      self.steer_hud_alert = 2
-    elif hud_control.visualAlert ==  VisualAlert.ldw:
-      #  1 = Non Critical Request
-      # if in the buffer there is a critical = 2 this has higher prio
-      self.steer_hud_alert = max(self.steer_hud_alert, 1 )
-    # since the message is sent only every 2 frames, it will be set to zero by the sender
-    # else :
-    #   self.steer_hud_alert = 0
+    # hud_control = CC.hudControl
+    # # HS2_DYN_MDD_ETAT_2F6
+    # if hud_control.visualAlert == VisualAlert.steerRequired:
+    #   #  2 = Critical request
+    #   self.steer_hud_alert = 2
+    # elif hud_control.visualAlert ==  VisualAlert.ldw:
+    #   #  1 = Non Critical Request
+    #   # if in the buffer there is a critical = 2 this has higher prio
+    #   self.steer_hud_alert = max(self.steer_hud_alert, 1 )
 
 
     # --- Lateral control logic ---
@@ -106,10 +104,10 @@ class CarController(CarControllerBase):
             self._set_lat_state_active()
 
             # >XX degree steering fault prevention
-            self.angle_limit_counter, apply_steer_req = common_fault_avoidance(abs(CS.out.steeringAngleDeg) >= MAX_ANGLE, CC.latActive,
-                                                                              self.angle_limit_counter, MAX_ANGLE_FRAMES,
-                                                                              MAX_ANGLE_CONSECUTIVE_FRAMES)
-
+            # self.angle_limit_counter, apply_steer_req = common_fault_avoidance(abs(CS.out.steeringAngleDeg) >= MAX_ANGLE, CC.latActive,
+            #                                                                   self.angle_limit_counter, MAX_ANGLE_FRAMES,
+            #                                                                   MAX_ANGLE_CONSECUTIVE_FRAMES)
+            apply_steer_req = True
             if apply_steer_req:
               # --- Torque calculation ---
               temp_torque = int(round(CC.actuators.torque * self.params.STEER_MAX))
@@ -117,7 +115,7 @@ class CarController(CarControllerBase):
                                                             CS.out.steeringTorque, self.params, self.params.STEER_MAX)
 
               # this is just to test the alert
-              if apply_new_torque > 20:
+              if apply_new_torque > 100:
                   #  1 = Non Critical alert
                   self.steer_hud_alert = 1
 
@@ -128,11 +126,11 @@ class CarController(CarControllerBase):
 
               self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
               self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
-            else:
-              #  2 = Critical request
-              self.steer_hud_alert = 2
-              self.apply_torque_factor = 0
-              apply_new_torque = 0
+            # else:
+            #   #  2 = Critical request
+            #   self.steer_hud_alert = 2
+            #   self.apply_torque_factor = 0
+            #   apply_new_torque = 0
 
 
         #
@@ -140,10 +138,10 @@ class CarController(CarControllerBase):
         can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
         self.apply_torque_last = apply_new_torque
 
-    if self.frame % 2 == 0:
-      if self.steer_hud_alert:
-        can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,self.steer_hud_alert))
-        self.steer_hud_alert = 0
+    # if self.frame % 2 == 0:
+    #   if self.steer_hud_alert:
+    #     can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,self.steer_hud_alert))
+    #     self.steer_hud_alert = 0
 
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
       # torque = self.driver_torque_gen.next_value()
