@@ -2,6 +2,7 @@
 import math
 
 #### USE THIS TO CHECK THE CHECKSUM AGAINS REAL DATA https://github.com/cristianku/opendbc-checksum-tools
+#CRISTIANKU VERSION
 # def psa_checksum(address: int, sig, d: bytearray) -> int:
 #   # Skip disabled checksums (prefix "0_")
 #   if sig.name.startswith("0_"):
