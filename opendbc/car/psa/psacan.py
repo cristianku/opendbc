@@ -40,6 +40,15 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
   checksum = sum((b >> 4) + (b & 0xF) for b in d)
   return (chk_ini - checksum) & 0xF
 
+# ## ELKOLED VERSION
+# def psa_checksum(address: int, sig, d: bytearray) -> int:
+#   chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
+#   byte = sig.start_bit // 8
+#   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
+#   checksum = sum((b >> 4) + (b & 0xF) for b in d)
+#   return (chk_ini - checksum) & 0xF
+
+
 
 # def create_lka_steering(packer, apply_torque: int, torque_factor: int, status: int):
 #   values = {
