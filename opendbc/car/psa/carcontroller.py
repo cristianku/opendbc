@@ -99,7 +99,7 @@ class CarController(CarControllerBase):
                                                             CS.out.steeringTorque, self.params, self.params.STEER_MAX)
 
             # Linear torque factor interpolation
-            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) ** 2)
+            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) )
 
             self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
             self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
