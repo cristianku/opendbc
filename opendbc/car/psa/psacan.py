@@ -54,12 +54,11 @@ def convert_driver_torque_to_eps(driver_torque: float) -> float:
     Convert driver torque to EPS torque.
     Formula: divide by 10 and quantize to 0.25 Nm (floor)
     """
-    # # Divide by 10 and quantize to 0.25 Nm (floor)
-    # eps_torque = driver_torque / 10.0
-    # quantized = math.floor(eps_torque / 0.25) * 0.25
-    eps_torque = math.floor(driver_torque / 2.5) * 2.5 / 10
+    # Divide by 10 and quantize to 0.25 Nm (floor)
+    eps_torque = driver_torque / 10.0
+    quantized = math.floor(eps_torque / 0.25) * 0.25
 
-    return round(eps_torque, 2)
+    return round(quantized, 2)
 
 def create_driver_torque(packer, steering, driver_torque):
   steering['DRIVER_TORQUE'] = driver_torque
@@ -70,7 +69,7 @@ def relay_driver_torque(packer, steering):
   return packer.make_can_msg('STEERING', 0, steering)
 
 
-def create_steering_hold(packer, is_dat_dira, driver_torque):
+def create_steering_hold(packer, is_dat_dira, driver_torque, eps_converter):
   """
   Crea messaggio IS_DAT_DIRA con EPS_TORQUE e STEERWHL_HOLD_BY_DRV.
 
