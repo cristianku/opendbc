@@ -18,7 +18,7 @@ class CarControllerParams:
         self.STEER_MAX = 120  # Maximum steering torque command that can be applied (unitless scaling factor)
         # Dynamic torque limits based on vehicle speed (m/s)
         # [50 km/h, 90 km/h] -> [120, 90] for safer high-speed behavior
-        self.STEER_MAX_LOOKUP = [13.9, 25], [120, 90]
+        # self.STEER_MAX_LOOKUP = [13.9, 25], [120, 90]
 
         self.STEER_STEP = 3  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
