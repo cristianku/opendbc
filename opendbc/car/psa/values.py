@@ -15,10 +15,10 @@ class CarControllerParams:
   def __init__(self, CP):
     if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,):
         # Steering torque limits and dynamics for the EPS controller
-        self.STEER_MAX = 150  # Maximum steering torque command that can be applied (unitless scaling factor)
+        self.STEER_MAX = 120  # Maximum steering torque command that can be applied (unitless scaling factor)
         # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
 
-        self.STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
+        self.STEER_STEP = 3  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
         self.STEER_DELTA_UP = 15  # Maximum allowed torque increase per control frame (prevents sudden jumps)
         self.STEER_DELTA_DOWN = 38  # Maximum allowed torque decrease per control frame (can be faster for quick release)
