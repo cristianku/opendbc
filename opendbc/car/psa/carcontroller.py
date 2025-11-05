@@ -23,6 +23,7 @@ class CarController(CarControllerBase):
     self.lat_activation_frame  = 0
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
+    self.eps_was_active = False
 
     # Driver torque generator with configurable parameters
     self.driver_torque_gen = DriverTorqueGenerator()
@@ -38,6 +39,7 @@ class CarController(CarControllerBase):
     """Set EPS state as active."""
     self.status = 4
     self.lat_activation_frame = 0
+    self.eps_was_active
 
   def _activate_eps(self, eps_active):
     """
@@ -50,14 +52,19 @@ class CarController(CarControllerBase):
       self.lat_activation_frame = self.frame
       self.takeover_req_sent = False
 
+    if self.eps_was_active:
+      #  1 = Non Critical Request
+      #  2 = Critical request
+      steer_hud_alert = 1
 
-    if not eps_active: # and not CS.out.steeringPressed:
-      # Issue takeover request if EPS is unavailable (e.g., speed < 50 km/h)
-      if self.frame % 2 == 0: # 50 Hz
-        if not self.takeover_req_sent:
-          if (self.frame - self.lat_activation_frame ) > 10:
-          # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-            self.takeover_req_sent = True
+
+    # if not eps_active: # and not CS.out.steeringPressed:
+    #   # Issue takeover request if EPS is unavailable (e.g., speed < 50 km/h)
+    #   if self.frame % 2 == 0: # 50 Hz
+    #     if not self.takeover_req_sent:
+    #       if (self.frame - self.lat_activation_frame ) > 10:
+    #       # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+    #         self.takeover_req_sent = True
 
       # EPS activation sequence 2→3→4
       self.status = 2 if self.status == 4 else self.status + 1
@@ -67,6 +74,7 @@ class CarController(CarControllerBase):
       self.apply_torque_factor = min( self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
 
   def update(self, CC, CS, now_nanos):
+    steer_hud_alert = 0
     can_sends = []
     actuators = CC.actuators
     self.apply_new_torque = 0
@@ -116,8 +124,8 @@ class CarController(CarControllerBase):
     # if self.frame % 1000 == 0:
     #   can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
 
-    # if self.frame % 2 == 0 and steer_hud_alert:
-    #   can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,2))
+    if self.frame % 2 == 0 and steer_hud_alert:
+      can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,2))
 
     #   # 100Hz ##
     # if CC.latActive:
