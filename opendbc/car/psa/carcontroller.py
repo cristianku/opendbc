@@ -52,12 +52,6 @@ class CarController(CarControllerBase):
       self.lat_activation_frame = self.frame
       self.takeover_req_sent = False
 
-    if self.eps_was_active:
-      #  1 = Non Critical Request
-      #  2 = Critical request
-      steer_hud_alert = 1
-
-
     # if not eps_active: # and not CS.out.steeringPressed:
     #   # Issue takeover request if EPS is unavailable (e.g., speed < 50 km/h)
     #   if self.frame % 2 == 0: # 50 Hz
@@ -96,6 +90,10 @@ class CarController(CarControllerBase):
         else:
           if not CS.eps_active:
             self._activate_eps( CS.eps_active)
+            if self.eps_was_active:
+              #  1 = Non Critical Request
+              #  2 = Critical request
+              steer_hud_alert = 1
 
           else:
             # EPS ACTIVE — perform steering torque control
