@@ -13,7 +13,7 @@ TransmissionType = structs.CarParams.TransmissionType
 
 class CarState(CarStateBase):
   def __init__(self, CP, CP_SP):
-    super.__init__( CP, CP_SP)
+    super().__init__(CP, CP_SP)
     self.is_dat_dira = dict()
     self.steering = dict()
     self.dyn4_fre = dict()  # Store wheel speeds for spoofing
