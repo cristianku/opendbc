@@ -25,7 +25,8 @@ class CarState(CarStateBase):
         frequency_hz=100.0,
         spike_threshold=3.0
     )
-  def update(self, can_parsers) -> structs.CarState:
+  # def update(self, can_parsers) -> structs.CarState:
+  def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
     cp = can_parsers[Bus.main]
     cp_adas = can_parsers[Bus.adas]
     cp_cam = can_parsers[Bus.cam]
