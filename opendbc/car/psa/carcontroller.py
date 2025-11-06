@@ -60,12 +60,12 @@ class CarController(CarControllerBase):
     #       # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
     #         self.takeover_req_sent = True
 
-      # EPS activation sequence 2→3→4
-      self.status = 2 if self.status == 4 else self.status + 1
+    # EPS activation sequence 2→3→4
+    self.status = 2 if self.status == 4 else self.status + 1
 
-      # Gradual ramp-up of torque factor during reactivation
-      self.apply_torque_factor += 10
-      self.apply_torque_factor = min( self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
+    # Gradual ramp-up of torque factor during reactivation
+    self.apply_torque_factor += 10
+    self.apply_torque_factor = min( self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
 
   def update(self, CC, CS, now_nanos):
     steer_hud_alert = 0
