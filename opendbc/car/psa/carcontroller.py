@@ -90,10 +90,12 @@ class CarController(CarControllerBase):
         else:
           if not CS.eps_active:
             self._activate_eps( CS.eps_active)
-            if self.eps_was_active:
-              #  1 = Non Critical Request
-              #  2 = Critical request
-              steer_hud_alert = 1
+
+          if self.eps_was_active:
+            #  1 = Non Critical Request
+            #  2 = Critical request
+            self.eps_was_active = False
+            steer_hud_alert = 1
 
           else:
             # EPS ACTIVE — perform steering torque control
