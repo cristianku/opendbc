@@ -2,7 +2,8 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold, create_request_takeover, relay_driver_torque, create_wheel_speed_spoof
+from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold
+# from opendbc.car.psa.psacan import create_request_takeover, relay_driver_torque, create_wheel_speed_spoof
 from opendbc.car.psa.values import CarControllerParams, CAR
 from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
 import random
