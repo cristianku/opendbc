@@ -7,7 +7,7 @@ from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, c
 from opendbc.car.psa.values import CarControllerParams, CAR
 from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
 import random
-VisualAlert = structs.CarControl.HUDControl.VisualAlert
+# VisualAlert = structs.CarControl.HUDControl.VisualAlert
 
 SteerControlType = structs.CarParams.SteerControlType
 
@@ -36,11 +36,11 @@ class CarController(CarControllerBase):
     self.apply_torque_factor = 0
     self.lat_activation_frame = 0
 
-  def _set_lat_state_active(self):
-    """Set EPS state as active."""
-    self.status = 4
-    self.lat_activation_frame = 0
-    self.eps_was_active
+  # def _set_lat_state_active(self):
+  #   """Set EPS state as active."""
+  #   self.status = 4
+  #   self.lat_activation_frame = 0
+  #   self.eps_was_active
 
 
   def _activate_eps(self, eps_active):
@@ -98,7 +98,10 @@ class CarController(CarControllerBase):
 
           else:
             # EPS ACTIVE — perform steering torque control
-            self._set_lat_state_active()
+            # self._set_lat_state_active()
+            self.status = 4
+            self.lat_activation_frame = 0
+            self.eps_was_active
 
             # --- Torque calculation ---
             temp_torque = int(round(CC.actuators.torque * self.params.STEER_MAX))
