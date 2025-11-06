@@ -20,7 +20,7 @@ class CarControllerParams:
         # [50 km/h, 90 km/h] -> [120, 90] for safer high-speed behavior
         # self.STEER_MAX_LOOKUP = [13.9, 25], [120, 90]
 
-        self.STEER_STEP = 3  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
+        self.STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
         self.STEER_DELTA_UP = 15  # Maximum allowed torque increase per control frame (prevents sudden jumps)
         self.STEER_DELTA_DOWN = 35  # Maximum allowed torque decrease per control frame (can be faster for quick release)
