@@ -42,6 +42,7 @@ class CarController(CarControllerBase):
     self.lat_activation_frame = 0
     self.eps_was_active
 
+
   def _activate_eps(self, eps_active):
     """
     Handle EPS activation sequence and takeover request.
