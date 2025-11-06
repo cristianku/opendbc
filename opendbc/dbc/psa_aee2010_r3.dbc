@@ -298,7 +298,7 @@ BO_ 1010 LANE_KEEP_ASSIST: 8 XXX
  SG_ DRIVE : 6|1@0+ (1,0) [0|1] "" XXX
  SG_ XOUNTER : 11|4@0+ (1,0) [0|15] "" XXX
  SG_ XHECKSUM : 15|4@0+ (1,0) [0|15] "" XXX
- SG_ unknown2 : 23|8@0+ (1,0) [0|255] "" XXX
+ SG_ LANE_QUALITY : 23|8@0+ (1,0) [0|255] "" XXX
  SG_ TORQUE : 31|11@0- (1,0) [0|2047] "" XXX
  SG_ LANE_DEPARTURE : 33|2@0+ (1,0) [0|3] "" XXX
  SG_ STATUS : 36|3@0+ (1,0) [0|3] "" XXX
@@ -1012,6 +1012,7 @@ VAL_ 760 ESP_STATUS_RELATED_INV 0 "ENABLED" 1 "DISABLED";
 VAL_ 840 P134_Com_stEng 7 "RESERVED" 6 "DegradedGO" 5 "GO" 4 "Stopped" 3 "Running" 2 "Starting" 1 "Cut" 0 "Locked";
 VAL_ 909 VITESSE_VEHICULE_ROUES 65535 "Invalid";
 VAL_ 1010 LANE_DEPARTURE 0 "NOT_DEPARTED" 1 "DEPARTED_RIGHT" 2 "DEPARTED_LEFT";
+VAL_ 1010 LANE_QUALITY 0 "LANES NOT VISIBLE" 10 "LANES PERFECTLY VISIBLE"
 VAL_ 1010 STATUS 0 "UNAVAILABLE" 1 "UNSELECTED" 2 "SELECTED" 3 "AUTHORIZED" 4 "ACTIVE" 5 "DEFECT" 6 "COLLISION" 7 "RESERVED";
 VAL_ 1106 LONGITUDINAL_REGULATION_TYPE 0 "None" 1 "RVV: Vehicle Speed Governor" 2 "LVV: Vehicle Speed Limiter" 3 "ACC: Adaptive Cruise Control";
 VAL_ 1106 TURN_SIGNAL_STATUS 0 "Turn signal inactive" 1 "Right turn signal active" 2 "Left turn signal active" 3 "Both turn signals active";
