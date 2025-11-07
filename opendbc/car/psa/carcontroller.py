@@ -2,8 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold
-# from opendbc.car.psa.psacan import create_request_takeover, relay_driver_torque, create_wheel_speed_spoof
+from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold, create_request_takeover, relay_driver_torque, create_wheel_speed_spoof
 from opendbc.car.psa.values import CarControllerParams, CAR
 from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
 import random
@@ -24,11 +23,10 @@ class CarController(CarControllerBase):
     self.lat_activation_frame  = 0
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
-    self.eps_was_active = False
 
     # Driver torque generator with configurable parameters
     self.driver_torque_gen = DriverTorqueGenerator()
-    self.steer_hud_alert = 0
+
 
   def _reset_lat_state(self):
     """Reset lateral control state."""
@@ -40,39 +38,33 @@ class CarController(CarControllerBase):
     """Set EPS state as active."""
     self.status = 4
     self.lat_activation_frame = 0
-    self.eps_was_active
-
 
   def _activate_eps(self, eps_active):
     """
     Handle EPS activation sequence and takeover request.
     STATUS transitions: 2 → 3 → 4 (READY → AUTHORIZED → ACTIVE)
     """
-    if self.eps_was_active:
-      #  1 = Non Critical Request
-      #  2 = Critical request
-      self.eps_was_active = False
-      self.steer_hud_alert = 1
 
     # Save frame number when EPS first activates or re-activates
     if self.lat_activation_frame == 0:
       self.lat_activation_frame = self.frame
       self.takeover_req_sent = False
 
-    # if not eps_active: # and not CS.out.steeringPressed:
-    #   # Issue takeover request if EPS is unavailable (e.g., speed < 50 km/h)
-    #   if self.frame % 2 == 0: # 50 Hz
-    #     if not self.takeover_req_sent:
-    #       if (self.frame - self.lat_activation_frame ) > 10:
-    #       # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-    #         self.takeover_req_sent = True
 
-    # EPS activation sequence 2→3→4
-    self.status = 2 if self.status == 4 else self.status + 1
+    if not eps_active: # and not CS.out.steeringPressed:
+      # Issue takeover request if EPS is unavailable (e.g., speed < 50 km/h)
+      if self.frame % 2 == 0: # 50 Hz
+        if not self.takeover_req_sent:
+          if (self.frame - self.lat_activation_frame ) > 10:
+          # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+            self.takeover_req_sent = True
 
-    # Gradual ramp-up of torque factor during reactivation
-    self.apply_torque_factor += 10
-    self.apply_torque_factor = min( self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
+      # EPS activation sequence 2→3→4
+      self.status = 2 if self.status == 4 else self.status + 1
+
+      # Gradual ramp-up of torque factor during reactivation
+      self.apply_torque_factor += 10
+      self.apply_torque_factor = min( self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
@@ -81,7 +73,7 @@ class CarController(CarControllerBase):
     apply_new_torque = 0
     # hud_control = CC.hudControl
     ### STEER ###
-    # self.steer_hud_alert = 1 if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw) else 0
+    # steer_hud_alert = 1 if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw) else 0
 
 
     # --- Lateral control logic ---
@@ -95,7 +87,6 @@ class CarController(CarControllerBase):
 
         else:
           if not CS.eps_active:
-
             self._activate_eps( CS.eps_active)
 
           else:
@@ -125,7 +116,7 @@ class CarController(CarControllerBase):
     # if self.frame % 1000 == 0:
     #   can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
 
-    # if self.frame % 2 == 0 and self.steer_hud_alert > 0:
+    # if self.frame % 2 == 0 and steer_hud_alert:
     #   can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,2))
 
     #   # 100Hz ##

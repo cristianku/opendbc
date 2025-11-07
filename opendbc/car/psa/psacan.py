@@ -148,14 +148,13 @@ def create_steering_hold(packer, is_dat_dira, driver_torque):
 def relay_is_dat_dira(packer, is_dat_dira,driver_torque):
   return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
 
-# def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
-#   # HS2_DYN_MDD_ETAT_2F6
-#   # steer_hud_alert
-#   #  1 = Non Critical Request
-#   #  2 = Critical request
-#   HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = type
+def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
+  # HS2_DYN_MDD_ETAT_2F6
+  #  1 = Non Critical Request
+  #  2 = Critical request
+  HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = type
 
-#   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
+  return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
 
 def create_wheel_speed_spoof(packer, dyn4_fre, min_speed=55.0):
   """

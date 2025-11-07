@@ -23,7 +23,7 @@ class CarControllerParams:
         self.STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
         self.STEER_DELTA_UP = 15  # Maximum allowed torque increase per control frame (prevents sudden jumps)
-        self.STEER_DELTA_DOWN = 35  # Maximum allowed torque decrease per control frame (can be faster for quick release)
+        self.STEER_DELTA_DOWN = 38  # Maximum allowed torque decrease per control frame (can be faster for quick release)
 
         self.STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
         self.STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
