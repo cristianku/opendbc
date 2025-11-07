@@ -64,6 +64,7 @@ class CarController(CarControllerBase):
       # Gradual ramp-up of torque factor during reactivation
       self.apply_torque_factor += 10
       self.apply_torque_factor = min( self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
+
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
