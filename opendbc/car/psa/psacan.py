@@ -74,8 +74,8 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
 #   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
 
 
-# def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_factor: int, status: int):
-def create_lka_steering(packer, lane_keep_assist, lat_active: bool, apply_torque: float, torque_factor: int, status: int):
+def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_factor: int, status: int):
+# def create_lka_steering(packer, lane_keep_assist, lat_active: bool, apply_torque: float, torque_factor: int, status: int):
   values = {
     'TORQUE': apply_torque,
     # 'LANE_DEPARTURE':0 if not lat_active else 1 if torque>0 else 2,
