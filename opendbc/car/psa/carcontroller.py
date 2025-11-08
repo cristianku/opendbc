@@ -107,8 +107,13 @@ class CarController(CarControllerBase):
 
         #
         # Send LKA steering message (every 5 frames)
-        # can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
-        can_sends.append(create_lka_steering(self.packer, CS.LANE_KEEP_ASSIST, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
+        can_sends.append(create_lka_steering(self.packer,
+                                            CC.latActive,
+                                            apply_new_torque,
+                                            self.apply_torque_factor,
+                                            self.status)
+                        )
+        # can_sends.append(create_lka_steering(self.packer, CS.LANE_KEEP_ASSIST, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
         self.apply_torque_last = apply_new_torque
 
     # # --- Driver torque generation (simulated torque input) ---
