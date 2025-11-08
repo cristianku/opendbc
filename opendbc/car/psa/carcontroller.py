@@ -98,7 +98,7 @@ class CarController(CarControllerBase):
             apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
                                                             CS.out.steeringTorque, self.params, self.params.STEER_MAX)
 
-            # Linear torque factor interpolation
+            # Quadratic torque factor interpolation
             ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) ) ** 2
 
             self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
