@@ -86,9 +86,10 @@ class CarState(CarStateBase):
       ret.steeringTorqueEps = cp.vl['STEERING']['DRIVER_TORQUE']
 
       # Read raw driver torque from CAN bus
-      raw_driver_torque = cp.vl['STEERING']['DRIVER_TORQUE']
+      # raw_driver_torque = cp.vl['STEERING']['DRIVER_TORQUE']
       # Apply filtering and update CarState with smoothed torque value
-      ret.steeringTorque = self._drv_filt.update(raw_driver_torque)
+      # ret.steeringTorque = self._drv_filt.update(raw_driver_torque)
+      ret.steeringTorque = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
 
       # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
       ret.steeringPressed = abs(ret.steeringTorque ) > LKAS_LIMITS.STEER_THRESHOLD
