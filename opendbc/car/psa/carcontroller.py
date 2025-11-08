@@ -104,9 +104,11 @@ class CarController(CarControllerBase):
             self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
             self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
 
-
-        #
+        #########
         # Send LKA steering message (every 5 frames)
+        # -- if self.CP.steerControlType == SteerControlType.torque
+        # -- if self.frame % self.params.STEER_STEP == 0:
+        #########
         can_sends.append(create_lka_steering(self.packer,
                                             CC.latActive,
                                             apply_new_torque,
