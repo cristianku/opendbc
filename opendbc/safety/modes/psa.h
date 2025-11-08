@@ -120,10 +120,10 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     // TORQUE_FACTOR
     bool lka_active = ((msg->data[5] & 0xFEU) >> 1) == 100U;
 
-    // if (steer_angle_cmd_checks(desired_angle, lka_active, PSA_STEERING_LIMITS)) {
-    //   violation = true;
-    // }
-
+    if (steer_angle_cmd_checks(desired_angle, lka_active, PSA_STEERING_LIMITS)) {
+      // violation = true;
+      violation = false;
+    }
   }
 
   if (violation) {
