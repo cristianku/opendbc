@@ -164,6 +164,11 @@ def tesla_setup_signal(sig: Signal, dbc_name: str, line_num: int) -> None:
     sig.type = SignalType.TESLA_CHECKSUM
     sig.calc_checksum = tesla_checksum
 
+def psa_setup_signal(sig: Signal, dbc_name: str, line_num: int) -> None:
+  if "CHECKSUM" in sig.name:
+    sig.calc_checksum = psa_checksum
+  elif sig.name == "COUNTER":
+    sig.type = SignalType.COUNTER
 
 @dataclass
 class ChecksumState:
@@ -199,7 +204,7 @@ def get_checksum_state(dbc_name: str) -> ChecksumState | None:
   elif dbc_name.startswith("tesla_model3_party"):
     return ChecksumState(8, -1, 0, -1, True, SignalType.TESLA_CHECKSUM, tesla_checksum, tesla_setup_signal)
   elif dbc_name.startswith("psa_"):
-    return ChecksumState(4, 4, 7, 3, False, SignalType.PSA_CHECKSUM, psa_checksum)
+    return ChecksumState(4, 4, 7, 3, False, SignalType.PSA_CHECKSUM, psa_checksum, psa_setup_signal)
   return None
 
 

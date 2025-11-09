@@ -2,12 +2,12 @@
 import math
 
 # ELKOLED VERSION
-def psa_checksum(address: int, sig, d: bytearray) -> int:
-  chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
-  byte = sig.start_bit // 8
-  d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
-  checksum = sum((b >> 4) + (b & 0xF) for b in d)
-  return (chk_ini - checksum) & 0xF
+# def psa_checksum(address: int, sig, d: bytearray) -> int:
+#   chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
+#   byte = sig.start_bit // 8
+#   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
+#   checksum = sum((b >> 4) + (b & 0xF) for b in d)
+#   return (chk_ini - checksum) & 0xF
 
 
 # ## ELKOLED VERSION + 2F6
@@ -18,45 +18,59 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
 #   checksum = sum((b >> 4) + (b & 0xF) for b in d)
 #   return (chk_ini - checksum) & 0xF
 
-#### USE THIS TO CHECK THE CHECKSUM AGAINS REAL DATA https://github.com/cristianku/opendbc-checksum-tools
-#CRISTIANKU VERSION
-# def psa_checksum(address: int, sig, d: bytearray) -> int:
-#   # Skip disabled checksums (prefix "0_")
-#   if sig.name.startswith("0_"):
-#     return 0
+### USE THIS TO CHECK THE CHECKSUM AGAINS REAL DATA https://github.com/cristianku/opendbc-checksum-tools
+# CRISTIANKU VERSION
+def psa_checksum(address: int, sig, d: bytearray) -> int:
+  # Skip disabled checksums (prefix "0_")
+  if sig.name.startswith("0_"):
+    return 0
 
-#   # HS2_DAT_MDD_CMD_452 1106 / 0x452
-#   if address == 0x452 and  sig.name == "CHECKSUM_CONS_RVV_LVV2":
-#     # Extract SPEED_SETPOINT from byte 1
-#     speed_setpoint = d[1]
-#     # Calculate parity of each nibble
-#     msb_nibble = (speed_setpoint >> 4) & 0xF
-#     lsb_nibble = speed_setpoint & 0xF
-#     # Count bits (parity): 1 if odd number of 1s, 0 if even
-#     msb_parity = bin(msb_nibble).count('1') & 1
-#     lsb_parity = bin(lsb_nibble).count('1') & 1
-#     # Return 2-bit checksum: [msb_parity, lsb_parity]
-#     return (msb_parity << 1) | lsb_parity
+  # HS2_DAT_MDD_CMD_452 1106 / 0x452
+  if address == 0x452 and  sig.name == "CHECKSUM_CONS_RVV_LVV2":
+    # Extract SPEED_SETPOINT from byte 1
+    speed_setpoint = d[1]
+    # Calculate parity of each nibble
+    msb_nibble = (speed_setpoint >> 4) & 0xF
+    lsb_nibble = speed_setpoint & 0xF
+    # Count bits (parity): 1 if odd number of 1s, 0 if even
+    msb_parity = bin(msb_nibble).count('1') & 1
+    lsb_parity = bin(lsb_nibble).count('1') & 1
+    # Return 2-bit checksum: [msb_parity, lsb_parity]
+    return (msb_parity << 1) | lsb_parity
 
-#   # --- SPECIAL CASE: 0x305 (STEERING_ALT 773) ---
-#   if address == 0x305:
-#     # "checksum" is just the upper nibble of byte 4
-#     return (d[4] >> 4) & 0xF
+  # --- SPECIAL CASE: 0x305 (STEERING_ALT 773) ---
+  if address == 0x305:
+    # "checksum" is just the upper nibble of byte 4
+    return (d[4] >> 4) & 0xF
 
-#   chk_ini = {
-#              0x1CD: 0x5,  # 461 decimal - ESP
-#              0x2B6: 0xC,  # 694 decimal - HS2_DYN1_MDD_ETAT_2B6 - override 0xC su ECU MDD 2018+)
-#              0x2F6: 0x8,  # 758 decimal - message ACC2
-#              0x38D: 0x7,  #  909 - HS2_DYN_ABR_38D
-#              0x42D: 0xC,  # 1069 - NEW_MSG_42D
-#              0x452: 0x4   # 1106 - HS2_DAT_MDD_CMD_452
-#              }.get(address, 0xB)
+  # --- SPECIAL CASE: 0x3AD (Dyn_EasyMove) ---
+  # P299_Com_bCrCtlInhib is NOT a calculated checksum but a control flag
+  # It's a status bit (Cruise Control Inhibit flag)
+  # This message does not have a traditional PSA checksum
+  # Extract the actual bit value from the message instead of calculating
+  if address == 0x3AD:
+    # Extract the bit from the message (bit 17 is in byte 2, bit 1)
+    byte_index = sig.start // 8
+    bit_offset = sig.start % 8
+    bit_value = (d[byte_index] >> bit_offset) & ((1 << sig.length) - 1)
+    return bit_value  # Return the actual bit value from the message
 
-#   byte = sig.start_bit // 8
-#   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
 
-#   checksum = sum((b >> 4) + (b & 0xF) for b in d)
-#   return (chk_ini - checksum) & 0xF
+
+  chk_ini = {
+             0x1CD: 0x5,  # 461 decimal - ESP
+             0x2B6: 0xC,  # 694 decimal - HS2_DYN1_MDD_ETAT_2B6 - override 0xC su ECU MDD 2018+)
+             0x2F6: 0x8,  # 758 decimal - message ACC2
+             0x38D: 0x7,  #  909 - HS2_DYN_ABR_38D
+             0x42D: 0xC,  # 1069 - NEW_MSG_42D
+             0x452: 0x4   # 1106 - HS2_DAT_MDD_CMD_452
+             }.get(address, 0xB)
+
+  byte = sig.start_bit // 8
+  d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
+
+  checksum = sum((b >> 4) + (b & 0xF) for b in d)
+  return (chk_ini - checksum) & 0xF
 
 
 
