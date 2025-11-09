@@ -28,43 +28,43 @@ static uint8_t psa_get_counter(const CANPacket_t *msg) {
   return cnt;
 }
 
-static uint32_t psa_get_checksum(const CANPacket_t *msg) {
-  uint8_t chksum = 0;
-  if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
-    chksum = msg->data[5] & 0xFU;
-  } else if (msg->addr == PSA_HS2_DYN_ABR_38D) {
-    chksum = msg->data[5] & 0xFU;
-  } else {
-  }
-  return chksum;
-}
+// static uint32_t psa_get_checksum(const CANPacket_t *msg) {
+//   uint8_t chksum = 0;
+//   if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
+//     chksum = msg->data[5] & 0xFU;
+//   } else if (msg->addr == PSA_HS2_DYN_ABR_38D) {
+//     chksum = msg->data[5] & 0xFU;
+//   } else {
+//   }
+//   return chksum;
+// }
 
-static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, int chk_pos) {
-  int len = GET_LEN(msg);
+// static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, int chk_pos) {
+//   int len = GET_LEN(msg);
 
-  uint8_t sum = 0;
-  for (int i = 0; i < len; i++) {
-    uint8_t b = msg->data[i];
+//   uint8_t sum = 0;
+//   for (int i = 0; i < len; i++) {
+//     uint8_t b = msg->data[i];
 
-    if (i == chk_pos) {
-      // set checksum in low nibble to 0
-      b &= 0xF0U;
-    }
-    sum += (b >> 4) + (b & 0xFU);
-  }
-  return (chk_ini - sum) & 0xFU;
-}
+//     if (i == chk_pos) {
+//       // set checksum in low nibble to 0
+//       b &= 0xF0U;
+//     }
+//     sum += (b >> 4) + (b & 0xFU);
+//   }
+//   return (chk_ini - sum) & 0xFU;
+// }
 
-static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
-  uint8_t chk = 0;
-  if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
-    chk = _psa_compute_checksum(msg, 0x4, 5);
-  } else if (msg->addr == PSA_HS2_DYN_ABR_38D) {
-    chk = _psa_compute_checksum(msg, 0x7, 5);
-  } else {
-  }
-  return chk;
-}
+// static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
+//   uint8_t chk = 0;
+//   if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
+//     chk = _psa_compute_checksum(msg, 0x4, 5);
+//   } else if (msg->addr == PSA_HS2_DYN_ABR_38D) {
+//     chk = _psa_compute_checksum(msg, 0x7, 5);
+//   } else {
+//   }
+//   return chk;
+// }
 
 static void psa_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == PSA_MAIN_BUS) {
@@ -167,6 +167,6 @@ const safety_hooks psa_hooks = {
   .rx = psa_rx_hook,
   .tx = psa_tx_hook,
   .get_counter = psa_get_counter,
-  .get_checksum = psa_get_checksum,
-  .compute_checksum = psa_compute_checksum,
+  // .get_checksum = psa_get_checksum,
+  // .compute_checksum = psa_compute_checksum,
 };
