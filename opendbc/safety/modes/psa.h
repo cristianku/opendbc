@@ -81,7 +81,6 @@ static void psa_rx_hook(const CANPacket_t *msg) {
     }
   }
 
-
   if (msg->bus == PSA_CAM_BUS) {
     if (msg->addr == PSA_DRIVER) {
       gas_pressed = msg->data[3] > 0U; // GAS_PEDAL
