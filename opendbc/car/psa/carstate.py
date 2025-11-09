@@ -5,8 +5,9 @@ from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 # from opendbc.car.psa.psacan import driver_torque_from_eps
 from opendbc.car.psa.DriverTorqueFilter import DriverTorqueFilter
+import copy
+# from collections import deque
 
-from collections import deque
 GearShifter = structs.CarState.GearShifter
 TransmissionType = structs.CarParams.TransmissionType
 
@@ -112,10 +113,10 @@ class CarState(CarStateBase):
     # self.HS2_DYN_MDD_ETAT_2F6 = dict(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
     # self.dyn4_fre    = dict(cp.vl['Dyn4_FRE'])
 
-    self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
-    self.steering    = copy.copy(cp.vl['STEERING'])
+    self.is_dat_dira          = copy.copy(cp.vl['IS_DAT_DIRA'])
+    self.steering             = copy.copy(cp.vl['STEERING'])
     self.HS2_DYN_MDD_ETAT_2F6 = copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
-    self.dyn4_fre    = copy.copy(cp.vl['Dyn4_FRE'])
+    # self.dyn4_fre             = copy.copy(cp.vl['Dyn4_FRE'])
 
 
     # cruise
