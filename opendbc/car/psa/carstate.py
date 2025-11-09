@@ -106,10 +106,16 @@ class CarState(CarStateBase):
     # self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
 
     # self.LANE_KEEP_ASSIST = dict(cp_cam.vl['LANE_KEEP_ASSIST'])
-    self.is_dat_dira = dict(cp.vl['IS_DAT_DIRA'])
-    self.steering    = dict(cp.vl['STEERING'])
-    self.HS2_DYN_MDD_ETAT_2F6 = dict(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
-    self.dyn4_fre    = dict(cp.vl['Dyn4_FRE'])
+
+    # self.is_dat_dira = dict(cp.vl['IS_DAT_DIRA'])
+    # self.steering    = dict(cp.vl['STEERING'])
+    # self.HS2_DYN_MDD_ETAT_2F6 = dict(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
+    # self.dyn4_fre    = dict(cp.vl['Dyn4_FRE'])
+
+    self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
+    self.steering    = copy.copy(cp.vl['STEERING'])
+    self.HS2_DYN_MDD_ETAT_2F6 = copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
+    self.dyn4_fre    = copy.copy(cp.vl['Dyn4_FRE'])
 
 
     # cruise
