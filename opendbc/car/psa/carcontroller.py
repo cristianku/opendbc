@@ -31,9 +31,7 @@ class CarController(CarControllerBase):
     #  1 = Non Critical Request
     #  2 = Critical request
     self.steer_hud_alert = 0
-
     self.eps_was_active = False
-
 
   def _reset_lat_state(self):
     """Reset lateral control state."""
