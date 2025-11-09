@@ -36,6 +36,15 @@ class CarController(CarControllerBase):
 
     self.first_lat_activation_request_frame = 0
 
+  def _calculate_torque_factor(self, apply_new_torque):
+    """Torque factor calculation."""
+    # Quadratic torque factor interpolation
+    ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) ) # ** 2
+
+    apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
+    apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+    return apply_torque_factor
+
   def _reset_lat_state(self):
     """Reset lateral control state."""
     self.status = 2
@@ -117,10 +126,11 @@ class CarController(CarControllerBase):
                                                             CS.out.steeringTorque, self.params, self.params.STEER_MAX)
 
             # Quadratic torque factor interpolation
-            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) ) ** 2
+            # ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) ) ** 2
 
-            self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
-            self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+            # self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
+            # self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+            self.apply_torque_factor = self._calculate_torque_factor(apply_new_torque)
 
         #########
         # Send LKA steering message (every 5 frames)
@@ -172,5 +182,6 @@ class CarController(CarControllerBase):
       # EPS holds torque >50 ms, preventing output gaps.
       new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
+      new_actuators.TorqueFactorOutputCan = self.apply_torque_factor
     self.frame += 1
     return new_actuators, can_sends
