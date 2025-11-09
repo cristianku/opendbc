@@ -185,11 +185,27 @@ def relay_is_dat_dira(packer, is_dat_dira,driver_torque):
   return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
 
 def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
-  # HS2_DYN_MDD_ETAT_2F6
-  #  1 = Non Critical Request
-  #  2 = Critical request
-  HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = type
+  # Priority logic:
+  # - type 0: relay unchanged (don't overwrite REQUEST_TAKEOVER)
+  # - type 2 (critical) always overwrites anything (1 or existing 2)
+  # - type 1 (non-critical) only overwrites if current is not critical (not 2)
 
+  if type == 0:
+    # Relay unchanged, keep current REQUEST_TAKEOVER value
+    pass
+  elif type == 2:
+    # Critical request always overwrites
+    HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = type
+  elif type == 1:
+    # Non-critical only overwrites if not already critical
+    current_request = HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER']
+    if current_request != 2:
+      HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = type
+
+  return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
+
+def relay_HS2_DYN_MDD_ETAT_2F6(packer, HS2_DYN_MDD_ETAT_2F6):
+  # Pure relay - forward message unchanged
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
 
 # def create_wheel_speed_spoof(packer, dyn4_fre, min_speed=55.0):

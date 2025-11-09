@@ -3,7 +3,8 @@ from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering,  create_driver_torque, create_steering_hold
-from opendbc.car.psa.psacan import create_request_takeover, relay_driver_torque #, create_wheel_speed_spoof
+from opendbc.car.psa.psacan import create_request_takeover, relay_HS2_DYN_MDD_ETAT_2F6
+from opendbc.car.psa.psacan import relay_driver_torque #, create_wheel_speed_spoof
 from opendbc.car.psa.values import CarControllerParams, CAR
 from opendbc.car.psa.driver_torque_generator import DriverTorqueGenerator
 import random
@@ -139,13 +140,17 @@ class CarController(CarControllerBase):
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and CC.latActive:
 
 
-    if self.frame % 2000 == 0:
-      can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.steer_hud_alert))
-      self.steer_hud_alert = 0
+    # if self.frame % 2000 == 0:
+    #   can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.steer_hud_alert))
+    #   self.steer_hud_alert = 0
 
-    if self.frame % 2 == 0 and self.steer_hud_alert > 0:
-      can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.steer_hud_alert))
-      self.steer_hud_alert = 0
+    if self.frame % 2 == 0:
+      if self.steer_hud_alert > 0:
+        can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.steer_hud_alert))
+        self.steer_hud_alert = 0
+      else:
+        can_sends.append(relay_HS2_DYN_MDD_ETAT_2F6(self.packer, CS.HS2_DYN_MDD_ETAT_2F6))
+
 
     #   # 100Hz ##
     # if CC.latActive:
