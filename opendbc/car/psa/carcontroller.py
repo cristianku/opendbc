@@ -33,6 +33,8 @@ class CarController(CarControllerBase):
     self.steer_hud_alert = 0
     self.eps_was_active = False
 
+    self.first_lat_activation_request_frame = 0
+
   def _reset_lat_state(self):
     """Reset lateral control state."""
     self.status = 2
@@ -44,6 +46,7 @@ class CarController(CarControllerBase):
     self.status = 4
     self.lat_activation_frame = 0
     self.eps_was_active = True
+    self.first_lat_activation_request_frame = 0
 
   def _activate_eps(self, eps_active):
     """
@@ -52,8 +55,12 @@ class CarController(CarControllerBase):
     """
 
     # Save frame number when EPS first activates or re-activates
-    if self.lat_activation_frame == 0:
-      self.lat_activation_frame = self.frame
+    if self.first_lat_activation_request_frame == 0:
+      self.first_lat_activation_request_frame = self.frame
+
+    diff = abs(self.frame - self.first_lat_activation_request_frame)
+    if diff > 0 and diff % 100 == 0:
+      self.steer_hud_alert = 1
 
     # if not eps_active: # and not CS.out.steeringPressed:
     if not eps_active: # and not CS.out.steeringPressed:
