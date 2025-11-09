@@ -56,6 +56,22 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
     return bit_value  # Return the actual bit value from the message
 
 
+  # --- SPECIAL CASE: 0x2F6 (ACC2) ---
+  if address == 0x2F6:
+    chk_ini = 0x8
+    d_copy = bytearray(d)
+
+    # Azzera il nibble del checksum (byte 6, nibble inferiore)
+    d_copy[6] &= 0xF0
+
+    # CRUCIALE: Azzera il bit 1 del byte 0
+    d_copy[0] &= 0xFD  # Equivalente a: &= ~(1 << 1)
+
+    # Somma tutti i nibble
+    checksum = sum((b >> 4) + (b & 0xF) for b in d_copy)
+
+    return (chk_ini - checksum) & 0xF
+
 
   chk_ini = {
              0x1CD: 0x5,  # 461 decimal - ESP
