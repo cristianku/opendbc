@@ -182,6 +182,5 @@ class CarController(CarControllerBase):
       # EPS holds torque >50 ms, preventing output gaps.
       new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
-      new_actuators.TorqueFactorOutputCan = self.apply_torque_factor
     self.frame += 1
     return new_actuators, can_sends
