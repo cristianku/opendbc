@@ -1,13 +1,16 @@
 from opendbc.can.packer import CANPacker
-from opendbc.car import Bus, structs
+from opendbc.car import Bus, structs, make_tester_present_msg
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover
+from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold,  create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, make_tester_present_msg
 from opendbc.car.psa.values import CarControllerParams, CAR
+from cereal import messaging
+
 import random
 import math
 
 SteerControlType = structs.CarParams.SteerControlType
+sm = messaging.SubMaster(['modelV2'], poll='modelV2')
 
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP):
@@ -112,6 +115,70 @@ class CarController(CarControllerBase):
     #     # send steering wheel hold message
     #     can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
+
+    #  ELKOLED LONGITUDINAL CONTROL
+
+    # TUNING
+    # >=-0.5: Engine brakes only
+    # <-0.5: Add friction brakes
+    pitch = CC.orientationNED[1] if len(CC.orientationNED) == 3 else 0.0
+    accel_slope = math.sin(pitch) * 9.81
+    accel_cmd = actuators.accel + accel_slope
+
+    brake_accel = -0.5
+
+    # torque lookup
+    ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
+    TORQUE_LOOKUP = [-400, -300, 120, 350, 550, 800, 1000]
+
+    # calculate Torque
+    torque_nm = interp(accel_cmd, ACCEL_LOOKUP, TORQUE_LOOKUP)
+    torque = max(-400, min(torque_nm, 1000))
+
+    braking = accel_cmd < brake_accel and not CS.out.gasPressed
+    if self.CP.openpilotLongitudinalControl:
+      if CC.hudControl.leadVisible:
+        sm.update(0)
+        leads_v3 = sm['modelV2'].leadsV3
+        if leads_v3 and leads_v3[0].x:
+          r = leads_v3[0].x[0] / (5 + CS.out.vEgo)
+          if self.bars > 3:  # initialize from "no lead"
+            self.bars = min(3, int(r))
+          elif r > self.bars + 1.2:
+            self.bars = min(3, self.bars + 1)
+          elif r < self.bars - 0.2:
+            self.bars = max(0, self.bars - 1)
+      else:
+        self.bars = 4
+
+      # disable radar ECU by setting to programming mode
+      if self.radar_disabled == 0:
+        can_sends.append(create_disable_radar())
+        self.radar_disabled = 1
+
+      # keep radar ECU disabled by sending tester present
+      if self.frame % 100 == 0 and self.frame>0: # TODO check if disable_radar is sent 100 frames before
+        can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
+
+      # Highest torque seen without gas input: ~1000
+      # Lowest torque seen without break mode: -560 (but only when transitioning from brake to accel mode, else -248)
+      # Lowest brake mode accel seen: -4.85m/s²
+
+      if self.frame % 2 == 0:
+        can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
+        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking, CC.hudControl.leadVisible, self.bars))
+
+    # stock long
+    # emulate resume button every 3 seconds to prevent autohold timeout
+    elif CC.latActive and CS.out.standstill and CC.hudControl.leadVisible:
+      # map: {frame:status} - 0, 1
+      status = {0: 0, 5: 1}.get(self.frame % 300)
+      if status is not None:
+        msg = CS.hs2_dat_mdd_cmd_452
+        counter = (msg['COUNTER'] + 1) % 16
+        can_sends.append(create_resume_acc(self.packer, counter, status, msg))
+
+    #  ELKOLED LONGITUDINAL CONTROL
 
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):

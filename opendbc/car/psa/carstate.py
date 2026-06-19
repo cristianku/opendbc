@@ -38,7 +38,9 @@ class CarState(CarStateBase):
       cp.vl['Dyn4_FRE']['P266_VehV_VPsvValWhlBckR'],
     )
     ret.yawRate = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VITESSE_LACET_BRUTE'] * CV.DEG_TO_RAD
-    ret.standstill = cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'] < 0.1
+    # versione cristian ret.standstill = cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'] < 0.1
+    # versione elkoled 
+    ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
 
     # gas
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
@@ -74,7 +76,7 @@ class CarState(CarStateBase):
     else:
       # Convert EPS direction bit [0,1] to signed multiplier [-1,+1]
       # Standard convention: 0 → left (negative), 1 → right (positive)
-      ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1)
+     ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (1 - 2 * bus['STEERING_ALT']['RATE_SIGN']) # convert [0,1] to [1,-1] EPS: rot. speed * rot. sign
 
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
       ret.genericToggle = (int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"]) == 1) # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
@@ -106,7 +108,8 @@ class CarState(CarStateBase):
     ret.cruiseState.nonAdaptive = False # not available for CC-only
 
     ret.cruiseState.standstill = False # not available for CC-only
-    ret.accFaulted = False # not available for CC-only
+    ret.accFaulted = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['ACC_ETAT_DECEL_OR_ESP_STATUS'] == 3
+    self.hs2_dat_mdd_cmd_452 = copy.copy(cp_adas.vl['HS2_DAT_MDD_CMD_452'])
 
     # gear
     if bool(cp_cam.vl['Dat_BSI']['P103_Com_bRevGear']):
