@@ -1,5 +1,8 @@
 import random
 
+from opendbc.car.can_definitions import CanData
+
+
 def psa_checksum(address: int, sig, d: bytearray) -> int:
 # versione cristian  chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
 
@@ -143,4 +146,3 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
   # Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
   # Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
   # Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
-

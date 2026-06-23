@@ -5,6 +5,7 @@ from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 from opendbc.car.psa.values import CarControllerParams, CAR
 from cereal import messaging
+from numpy import interp
 
 import random
 import math
@@ -25,6 +26,8 @@ class CarController(CarControllerBase):
     self.lat_activation_frame  = 0
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
+    self.radar_disabled = 0
+    self.bars = 4
     self.steering_hold_counter = 0
     self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
     self.driver_torque_counter = 0
