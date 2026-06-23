@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs, make_tester_present_msg
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold,  create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, make_tester_present_msg
+from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 from opendbc.car.psa.values import CarControllerParams, CAR
 from cereal import messaging
 
