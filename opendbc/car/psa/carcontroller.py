@@ -124,21 +124,21 @@ class CarController(CarControllerBase):
     # TUNING
     # >=-0.5: Engine brakes only
     # <-0.5: Add friction brakes
-    pitch = CC.orientationNED[1] if len(CC.orientationNED) == 3 else 0.0
-    accel_slope = math.sin(pitch) * 9.81
-    accel_cmd = actuators.accel + accel_slope
+    # pitch = CC.orientationNED[1] if len(CC.orientationNED) == 3 else 0.0
+    # accel_slope = math.sin(pitch) * 9.81
+    # accel_cmd = actuators.accel + accel_slope
 
-    brake_accel = -0.5
+    # brake_accel = -0.5
 
-    # torque lookup
-    ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
-    TORQUE_LOOKUP = [-400, -300, 120, 350, 550, 800, 1000]
+    # # torque lookup
+    # ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
+    # TORQUE_LOOKUP = [-400, -300, 120, 350, 550, 800, 1000]
 
-    # calculate Torque
-    torque_nm = interp(accel_cmd, ACCEL_LOOKUP, TORQUE_LOOKUP)
-    torque = max(-400, min(torque_nm, 1000))
+    # # calculate Torque
+    # torque_nm = interp(accel_cmd, ACCEL_LOOKUP, TORQUE_LOOKUP)
+    # torque = max(-400, min(torque_nm, 1000))
 
-    braking = accel_cmd < brake_accel and not CS.out.gasPressed
+    # braking = accel_cmd < brake_accel and not CS.out.gasPressed
     # if self.CP.openpilotLongitudinalControl:
     #   if CC.hudControl.leadVisible:
     #     sm.update(0)
