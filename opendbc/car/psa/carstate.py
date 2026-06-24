@@ -51,11 +51,6 @@ class CarState(CarStateBase):
     # brake pressed
     ret.brakePressed = bool(cp_cam.vl['Dat_BSI']['P013_MainBrake'])
 
-    # brake pressure
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-      raw = cp.vl["Dyn2_FRE"]["BRAKE_PRESSURE"]
-      ret.brake = max(0.0, float(raw) - 550.0)  # clamp a 0
-
     # parking brake
     ret.parkingBrake = cp.vl['Dyn_EasyMove']['P337_Com_stPrkBrk'] == 1 # 0: disengaged, 1: engaged, 3: brake actuator moving
 
