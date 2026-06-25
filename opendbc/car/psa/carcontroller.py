@@ -44,7 +44,7 @@ class CarController(CarControllerBase):
     if self.lat_activation_frame == 0:
       # first frame the EPS activate or re activate is sent
       self.lat_activation_frame = self.frame
-      self.takeover_req_sent = False
+      # self.takeover_req_sent = False
 
 
     if not eps_active: # and not CS.out.steeringPressed:
@@ -52,10 +52,10 @@ class CarController(CarControllerBase):
       # Alarm - Takeover request!
       # EPS works from 50km/h - Takeover Request if speed is slower than 50
       ######
-      if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
-        if (self.frame - self.lat_activation_frame) > 10:
+      # if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
+      #   if (self.frame - self.lat_activation_frame) > 10:
         # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-          self.takeover_req_sent = True
+          # self.takeover_req_sent = True
 
       ######
       # EPS activation sequence 2->3->4 to re-engage
