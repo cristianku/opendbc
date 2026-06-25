@@ -98,31 +98,33 @@ static void psa_rx_hook(const CANPacket_t *msg) {
 }
 
 static bool psa_tx_hook(const CANPacket_t *msg) {
+  // SAFETY_UNUSED(msg);
   bool tx = true;
-  // static const TorqueSteeringLimits PSA_STEERING_LIMITS = {
-  //   .max_torque = 200,
-  //   .max_rate_up = 22,
-  //   .max_rate_down = 38,
-  //   .driver_torque_allowance = 50,
-  //   .driver_torque_multiplier = 1,
-  //   .max_rt_delta = 150,
-  //   .type = TorqueDriverLimited,
-  // };
+  static const TorqueSteeringLimits PSA_STEERING_LIMITS = {
+    .max_torque = 200,
+    .max_rate_up = 22,
+    .max_rate_down = 38,
+    .driver_torque_allowance = 50,
+    .driver_torque_multiplier = 1,
+    .max_rt_delta = 150,
+    .type = TorqueDriverLimited,
+  };
 
   // // Safety check for LKA
-  // if (msg->addr == PSA_LANE_KEEP_ASSIST) {
-  //   // TORQUE: 31|11@0-
-  //   int desired_torque = (msg->data[3] << 3) | (msg->data[4] >> 5);
-  //   desired_torque = to_signed(desired_torque, 11);
+  if (msg->addr == PSA_LANE_KEEP_ASSIST) {
+    // TORQUE: 31|11@0-
+    int desired_torque = (msg->data[3] << 3) | (msg->data[4] >> 5);
+    desired_torque = to_signed(desired_torque, 11);
 
-  //   // TORQUE_FACTOR: 47|7@0+
-  //   uint8_t torque_factor = (msg->data[5] & 0xFEU) >> 1;
-  //   bool lka_active = torque_factor != 0U;
+    // TORQUE_FACTOR: 47|7@0+
+    uint8_t torque_factor = (msg->data[5] & 0xFEU) >> 1;
+    bool lka_active = torque_factor != 0U;
 
-  //   if (steer_torque_cmd_checks(desired_torque, lka_active, PSA_STEERING_LIMITS)) {
-  //     tx = false;
-  //   }
-  // }
+    if (steer_torque_cmd_checks(desired_torque, lka_active, PSA_STEERING_LIMITS)) {
+      // tx = false;
+      tx = true;
+    }
+  }
 
   return tx;
 }
