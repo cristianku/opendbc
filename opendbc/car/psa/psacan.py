@@ -32,6 +32,7 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
 
 def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_factor: int, status: int):
   values = {
+    'unknown2': 24,
     'TORQUE': apply_torque,
     # 'LANE_DEPARTURE':0 if not lat_active else 1 if torque>0 else 2,
     # 'DRIVE': 1,
@@ -112,13 +113,13 @@ def create_HS2_DYN_MDD_ETAT_2F6(packer, braking: bool, lead_visible: bool, lead_
 
 # TODO: do this in interface.py init()
 # Disable radar ECU by setting it to programming mode
-def create_disable_radar():
-  addr = 0x6B6
-  bus = 1
-  dat = [0x02, 0x10, 0x02, 0x80]
-  dat.extend([0x0] * (8 - len(dat)))
+# def create_disable_radar():
+#   addr = 0x6B6
+#   bus = 1
+#   dat = [0x02, 0x10, 0x02, 0x80]
+#   dat.extend([0x0] * (8 - len(dat)))
 
-  return CanData(addr, bytes(dat), bus)
+#   return CanData(addr, bytes(dat), bus)
 
 def create_driver_torque(packer, steering):
   t = int(steering.get('DRIVER_TORQUE', 0))
