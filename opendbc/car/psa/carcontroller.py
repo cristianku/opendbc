@@ -1,5 +1,6 @@
 from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs, make_tester_present_msg
+from opendbc.car.carlog import carlog
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 # from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
@@ -25,6 +26,7 @@ class CarController(CarControllerBase):
     self.takeover_req_sent = False
     # this is the frame when the latactive is being pressed
     self.lat_activation_frame  = 0
+    self.lat_active_last = False
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
     self.radar_disabled = 0
@@ -72,6 +74,10 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     self.apply_new_torque = 0
     apply_new_torque = 0
+
+    if CC.latActive != self.lat_active_last:
+      carlog.error(f"PSA_DEBUG latActive={CC.latActive}")
+      self.lat_active_last = CC.latActive
 
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
@@ -210,6 +216,8 @@ class CarController(CarControllerBase):
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
       new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
+      if self.frame % 100 == 0:
+        carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_last}")
 
     self.frame += 1
     return new_actuators, can_sends
