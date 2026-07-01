@@ -75,7 +75,7 @@ class CarController(CarControllerBase):
     self.apply_new_torque = 0
     apply_new_torque = 0
     if CC.latActive != self.lat_active_last:
-      carlog.error(f"PSA_DEBUG latActive={CC.latActive}")
+      # carlog.error(f"PSA_DEBUG latActive={CC.latActive}")
       self.lat_active_last = CC.latActive
 
     # lateral control
@@ -166,7 +166,8 @@ class CarController(CarControllerBase):
     #     self.radar_disabled = 1
 
     #   # keep radar ECU disabled by sending tester present
-    #   if self.frame % 100 == 0 and self.frame>0: # TODO check if disable_radar is sent 100 frames before
+    #   if self.frame % 100 == 0 and self.frame>0: 
+    # # TODO check if disable_radar is sent 100 frames before
     #     can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
     #   # Highest torque seen without gas input: ~1000
@@ -216,8 +217,8 @@ class CarController(CarControllerBase):
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
       new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
-      if self.frame % 100 == 0:
-        carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_last}")
+      # if self.frame % 100 == 0:
+      #   carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_last}")
 
     self.frame += 1
     return new_actuators, can_sends
