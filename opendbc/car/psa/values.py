@@ -37,6 +37,11 @@ class CarControllerParams:
         # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
         self.MAX_TORQUE_FACTOR = 100
         self.MIN_TORQUE_FACTOR = 20
+        # Factor fisso usato mentre l'EPS è attivo: mantiene il plant lineare così che la
+        # coppia effettiva sia proporzionale ad apply_new_torque (ciò che openpilot vede e
+        # su cui torqued impara). MIN/MAX_TORQUE_FACTOR restano usati dalla rampa di
+        # attivazione in _activate_eps e dal vecchio blocco smoothstep (commentato).
+        self.FIXED_TORQUE_FACTOR = 80
 
 
 @dataclass

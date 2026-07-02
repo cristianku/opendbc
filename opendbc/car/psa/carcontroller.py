@@ -125,23 +125,34 @@ class CarController(CarControllerBase):
             #                                min(int(self.apply_torque_factor), self.params.MAX_TORQUE_FACTOR))
             # --- OLD GROK TORQUE FACTOR END ---
 
-            # Smoothstep curve: basso vicino allo zero, sale rapidamente nella zona media
-            abs_torque_norm = min(1.0, abs(apply_new_torque) / max(1.0, float(self.params.STEER_MAX)))
-            factor_curve = abs_torque_norm * abs_torque_norm * (3.0 - 2.0 * abs_torque_norm)
+            # --- OLD SMOOTHSTEP TORQUE FACTOR START ---
+            # Un factor variabile invisibile a openpilot crea un secondo attuatore nascosto:
+            # controlsd/torqued vede solo apply_new_torque, quindi legge la rampa del factor
+            # (curva + low-pass) come ritardo puro -> guadagno/lag imparati sbagliati, oscillazione.
+            # # Smoothstep curve: basso vicino allo zero, sale rapidamente nella zona media
+            # abs_torque_norm = min(1.0, abs(apply_new_torque) / max(1.0, float(self.params.STEER_MAX)))
+            # factor_curve = abs_torque_norm * abs_torque_norm * (3.0 - 2.0 * abs_torque_norm)
+            #
+            # target_factor = self.params.MIN_TORQUE_FACTOR + (
+            #     self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR
+            # ) * factor_curve
+            #
+            # # Applica smoothing
+            # if self.frame < 10 or self.apply_torque_factor < 5:
+            #     self.apply_torque_factor = target_factor
+            # else:
+            #     self.apply_torque_factor = self.apply_torque_factor * 0.7 + target_factor * 0.3
+            #
+            # self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR,
+            #                               min(round(self.apply_torque_factor), self.params.MAX_TORQUE_FACTOR))
+            # --- OLD SMOOTHSTEP TORQUE FACTOR END ---
 
-            target_factor = self.params.MIN_TORQUE_FACTOR + (
-                self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR
-            ) * factor_curve
+            # FIXED TORQUE FACTOR: plant lineare -> la coppia effettiva è proporzionale a
+            # apply_new_torque, che è esattamente ciò che openpilot riporta e su cui torqued
+            # impara. Lo smoothing vero lo fa apply_driver_steer_torque_limits (STEER_DELTA_UP/DOWN),
+            # visibile nel feedback. Dopo questo cambio resettare i params imparati.
+            self.apply_torque_factor = self.params.FIXED_TORQUE_FACTOR
 
-            # Applica smoothing
-            if self.frame < 10 or self.apply_torque_factor < 5:
-                self.apply_torque_factor = target_factor
-            else:
-                self.apply_torque_factor = self.apply_torque_factor * 0.7 + target_factor * 0.3
-
-            self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR,
-                                          min(round(self.apply_torque_factor), self.params.MAX_TORQUE_FACTOR))
-            
         #####
         # CAN MESSAGE needs to be sent every 5 frames
         #  - psa.h  check_relay is set for PSA_LANE_KEEP_ASSIST
