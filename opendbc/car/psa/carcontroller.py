@@ -9,8 +9,7 @@ from opendbc.car.psa.values import CarControllerParams, CAR
 from cereal import messaging
 from numpy import interp
 
-import random
-import math
+import random, math 
 
 SteerControlType = structs.CarParams.SteerControlType
 sm = messaging.SubMaster(['modelV2'], poll='modelV2')
@@ -75,7 +74,7 @@ class CarController(CarControllerBase):
     self.apply_new_torque = 0
     apply_new_torque = 0
     if CC.latActive != self.lat_active_last:
-      # carlog.error(f"PSA_DEBUG latActive={CC.latActive}")
+      carlog.error(f"PSA_DEBUG latActive={CC.latActive}")
       self.lat_active_last = CC.latActive
 
     # lateral control
@@ -101,27 +100,53 @@ class CarController(CarControllerBase):
             apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
                                                             CS.out.steeringTorque, self.params, self.params.STEER_MAX)
 
-            # Linearly increase torque factor
-            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0)
-
-            # OLD: factor ricalcolato istantaneamente da |torque| a ogni ciclo
+            # --- OLD LINEAR TORQUE FACTOR START ---
+            # ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0)
             # -> crollo di guadagno a ogni passaggio per lo zero, ciclo limite ~0.5-0.7 Hz al centro corsia
             # self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
             # self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+            # --- OLD LINEAR TORQUE FACTOR END ---
 
-            # NEW: stesso target, ma inseguito con slew limit +-3 per step (20 Hz);
-            # la camera stock non cambia mai il suo factor a gradini (vedi wiki psa-3008-can-reverse-engineering)
-            target_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
-            target_factor = max(self.params.MIN_TORQUE_FACTOR, min(target_factor, self.params.MAX_TORQUE_FACTOR))
-            self.apply_torque_factor += max(-3, min(3, target_factor - self.apply_torque_factor))
+            # --- OLD GROK TORQUE FACTOR START ---
+            # abs_torque_norm = abs(apply_new_torque) / max(1.0, self.params.STEER_MAX)
+            #
+            # if abs_torque_norm < 0.015:
+            #   target_factor = self.params.MIN_TORQUE_FACTOR + 8
+            # else:
+            #   target_factor = self.params.MIN_TORQUE_FACTOR + \
+            #                   (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR) * math.sqrt(abs_torque_norm)
+            #
+            # if self.frame < 10 or self.apply_torque_factor < 5:
+            #   self.apply_torque_factor = target_factor
+            # else:
+            #   self.apply_torque_factor = self.apply_torque_factor * 0.75 + target_factor * 0.25
+            #
+            # self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR,
+            #                                min(int(self.apply_torque_factor), self.params.MAX_TORQUE_FACTOR))
+            # --- OLD GROK TORQUE FACTOR END ---
 
+            # Smoothstep curve: basso vicino allo zero, sale rapidamente nella zona media
+            abs_torque_norm = min(1.0, abs(apply_new_torque) / max(1.0, float(self.params.STEER_MAX)))
+            factor_curve = abs_torque_norm * abs_torque_norm * (3.0 - 2.0 * abs_torque_norm)
 
-        #
+            target_factor = self.params.MIN_TORQUE_FACTOR + (
+                self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR
+            ) * factor_curve
+
+            # Applica smoothing
+            if self.frame < 10 or self.apply_torque_factor < 5:
+                self.apply_torque_factor = target_factor
+            else:
+                self.apply_torque_factor = self.apply_torque_factor * 0.7 + target_factor * 0.3
+
+            self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR,
+                                          min(round(self.apply_torque_factor), self.params.MAX_TORQUE_FACTOR))
+            
         #####
         # CAN MESSAGE needs to be sent every 5 frames
         #  - psa.h  check_relay is set for PSA_LANE_KEEP_ASSIST
         ####
-        can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
+        can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, int(round(self.apply_torque_factor)), self.status))
         # last sent value to the EPS
         self.apply_torque_last = apply_new_torque
         ### END EPS ACTIVE
@@ -174,8 +199,7 @@ class CarController(CarControllerBase):
     #     self.radar_disabled = 1
 
     #   # keep radar ECU disabled by sending tester present
-    #   if self.frame % 100 == 0 and self.frame>0: 
-    # # TODO check if disable_radar is sent 100 frames before
+    #   if self.frame % 100 == 0 and self.frame>0: # TODO check if disable_radar is sent 100 frames before
     #     can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
     #   # Highest torque seen without gas input: ~1000
@@ -223,14 +247,8 @@ class CarController(CarControllerBase):
     if self.CP.steerControlType == SteerControlType.torque:
       # Keep last applied torque between 20 Hz LKA updates.
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
-      # NB: NON scalare questo valore per il torque factor: controlsd lo confronta con
-      # actuators.torque sulla stessa scala (steer_limited_by_safety) e un valore ridotto
-      # congelerebbe l'integratore laterale. La coppia effettiva vista da torqued resta
-      # quindi sovrastimata al centro: correzione da fare lato openpilot_sunny, non qui.
       new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
-      # if self.frame % 100 == 0:
-      #   carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_last}")
 
     self.frame += 1
     return new_actuators, can_sends
