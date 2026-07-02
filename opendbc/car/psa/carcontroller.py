@@ -104,8 +104,16 @@ class CarController(CarControllerBase):
             # Linearly increase torque factor
             ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0)
 
-            self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
-            self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+            # OLD: factor ricalcolato istantaneamente da |torque| a ogni ciclo
+            # -> crollo di guadagno a ogni passaggio per lo zero, ciclo limite ~0.5-0.7 Hz al centro corsia
+            # self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
+            # self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+
+            # NEW: stesso target, ma inseguito con slew limit +-3 per step (20 Hz);
+            # la camera stock non cambia mai il suo factor a gradini (vedi wiki psa-3008-can-reverse-engineering)
+            target_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
+            target_factor = max(self.params.MIN_TORQUE_FACTOR, min(target_factor, self.params.MAX_TORQUE_FACTOR))
+            self.apply_torque_factor += max(-3, min(3, target_factor - self.apply_torque_factor))
 
 
         #
@@ -215,6 +223,10 @@ class CarController(CarControllerBase):
     if self.CP.steerControlType == SteerControlType.torque:
       # Keep last applied torque between 20 Hz LKA updates.
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
+      # NB: NON scalare questo valore per il torque factor: controlsd lo confronta con
+      # actuators.torque sulla stessa scala (steer_limited_by_safety) e un valore ridotto
+      # congelerebbe l'integratore laterale. La coppia effettiva vista da torqued resta
+      # quindi sovrastimata al centro: correzione da fare lato openpilot_sunny, non qui.
       new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
       # if self.frame % 100 == 0:
