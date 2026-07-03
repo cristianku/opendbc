@@ -88,7 +88,10 @@ class LKAS_LIMITS:
   # Peugeot 3008
   # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
   # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
-  STEER_THRESHOLD = 5
+  # 25: above the torsion-bar reaction to LKA's own torque (up to ~20 deci-Nm in curves,
+  # route 00000029--0f498d7077), below a real grip (30-100). At 5, phantom steeringPressed
+  # fired ~30% of latActive frames and starved lagd/torqued learning.
+  STEER_THRESHOLD = 25
   DISABLE_SPEED = 50    # kph
   ENABLE_SPEED = 50     # kph
 
