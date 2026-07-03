@@ -41,7 +41,7 @@ class CarControllerParams:
         # coppia effettiva sia proporzionale ad apply_new_torque (ciò che openpilot vede e
         # su cui torqued impara). MIN/MAX_TORQUE_FACTOR restano usati dalla rampa di
         # attivazione in _activate_eps e dal vecchio blocco smoothstep (commentato).
-        self.FIXED_TORQUE_FACTOR = 80
+        self.FIXED_TORQUE_FACTOR = 100
 
 
 @dataclass
