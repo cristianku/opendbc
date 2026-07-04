@@ -17,8 +17,8 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 # NOTE: torqued clamps learning to +/-30% (factor) and +/-50% (friction) of these values.
 # "PSA_PEUGEOT_3008" = [2.2, 2.2, 0.15]
 # [LAT_ACCEL_FACTOR, MAX_LAT_ACCEL_MEASURED, friction]
-"PSA_PEUGEOT_3008" = [3.541, 2.2, 0.165]
-
+# "PSA_PEUGEOT_3008" = [3.541, 2.2, 0.165]
+"PSA_PEUGEOT_3008" = [2.538214, 2.767198, 0.210548]
 
 # New subarus angle based controllers
 "SUBARU_FORESTER_2022" = [nan, 3.0, nan]
