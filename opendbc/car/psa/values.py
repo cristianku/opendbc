@@ -12,13 +12,17 @@ class CarControllerParams:
   def __init__(self, CP):
     if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,):
         # Steering torque limits and dynamics for the EPS controller
-        self.STEER_MAX = 250  # Maximum steering torque command that can be applied (unitless scaling factor)
+        self.STEER_MAX = 200  # Must match safety max_torque in opendbc/safety/modes/psa.h (200): above it the panda blocks the message
         # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
 
         self.STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
-        self.STEER_DELTA_UP = 1  # Maximum allowed torque increase per control frame (prevents sudden jumps)
-        self.STEER_DELTA_DOWN = 5  # Maximum allowed torque decrease per control frame (can be faster for quick release)
+        # Deltas are applied per STEER_STEP call (20 Hz), not per 100 Hz frame.
+        # UP=1 @ 20 Hz = 20 units/s: the request needed seconds to arrive -> limit-cycle weave
+        # (route 00000038--a592572e65: PID at full scale, CAN capped at ~1/3, 79% of steps rate-limited).
+        # Safety allows up to 22/msg up, 38/msg down.
+        self.STEER_DELTA_UP = 10  # 200 units/s: full authority in ~1 s, still smooth for the EPS
+        self.STEER_DELTA_DOWN = 25  # release ~2.5x faster than apply
 
         self.STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
         self.STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)

@@ -11,14 +11,16 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 "PSA_PEUGEOT_208" = [2.6, 2.0, 0.15]
 "PSA_PEUGEOT_508" = [2.6, 2.0, 0.15]
 # PSA torque based controllers
-# Old values [2.538214, 2.767198, 0.210548] were fit on the variable torque-factor plant
-# (oscillating data inflates friction). LAT_ACCEL_FACTOR/MAX measured on route
-# 00000029--0f498d7077 with FIXED_TORQUE_FACTOR=80: 2.2 m/s^2 at full-scale command.
+# History: [2.538214, 2.767198, 0.210548] and [3.541, 2.2, 0.165] were fit on the
+# variable torque-factor plant - oscillating data inflates friction. Friction 0.21
+# = +/-21 CAN-unit feedforward kicks ~3.5x/s on straights (route 00000038--a592572e65),
+# the direct source of the ~2 Hz sawtooth request and the lane weave at ANY STEER_DELTA_UP.
+# LAT_ACCEL_FACTOR: 2.2 m/s^2 at full-scale measured on route 00000029--0f498d7077 with
+# FIXED_TORQUE_FACTOR=80 @ STEER_MAX=250; rescaled for factor=100 @ STEER_MAX=200 it
+# stays ~2.2 (x100/80 x200/250). Friction set low: true EPS friction on the linear plant
+# is small; torqued can refine within the clamp.
 # NOTE: torqued clamps learning to +/-30% (factor) and +/-50% (friction) of these values.
-# "PSA_PEUGEOT_3008" = [2.2, 2.2, 0.15]
-# [LAT_ACCEL_FACTOR, MAX_LAT_ACCEL_MEASURED, friction]
-# "PSA_PEUGEOT_3008" = [3.541, 2.2, 0.165]
-"PSA_PEUGEOT_3008" = [2.538214, 2.767198, 0.210548]
+"PSA_PEUGEOT_3008" = [2.2, 2.2, 0.08]
 
 # New subarus angle based controllers
 "SUBARU_FORESTER_2022" = [nan, 3.0, nan]

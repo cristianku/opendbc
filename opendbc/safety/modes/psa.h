@@ -101,9 +101,9 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
   // SAFETY_UNUSED(msg);
   bool tx = true;
   static const TorqueSteeringLimits PSA_STEERING_LIMITS = {
-    .max_torque = 200,
-    .max_rate_up = 22,
-    .max_rate_down = 38,
+    .max_torque = 400,
+    .max_rate_up = 40,
+    .max_rate_down = 40,
     .driver_torque_allowance = 50,
     .driver_torque_multiplier = 1,
     .max_rt_delta = 150,
