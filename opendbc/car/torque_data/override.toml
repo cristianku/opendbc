@@ -20,7 +20,7 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 # lane weave. 3.8 keeps the +/-30% clamp window [2.66, 4.94] around the true ~4.0.
 # Friction raw on that route is 0.135 (inflated by the weave); 0.10 gives a +/-50% clamp
 # window [0.05, 0.15] that still covers it, letting torqued settle lower on clean data.
-"PSA_PEUGEOT_3008" = [3.8, 2.2, 0.10]
+"PSA_PEUGEOT_3008" = [2.538214, 2.767198, 0.210548]
 
 # New subarus angle based controllers
 "SUBARU_FORESTER_2022" = [nan, 3.0, nan]
