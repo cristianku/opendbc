@@ -12,17 +12,13 @@ class CarControllerParams:
   def __init__(self, CP):
     if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,):
         # Steering torque limits and dynamics for the EPS controller
-        self.STEER_MAX = 200  # Must match safety max_torque in opendbc/safety/modes/psa.h (200): above it the panda blocks the message
+        self.STEER_MAX = 200  # Maximum steering torque command that can be applied (unitless scaling factor)
         # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
 
         self.STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
-        # Deltas are applied per STEER_STEP call (20 Hz), not per 100 Hz frame.
-        # UP=1 @ 20 Hz = 20 units/s: the request needed seconds to arrive -> limit-cycle weave
-        # (route 00000038--a592572e65: PID at full scale, CAN capped at ~1/3, 79% of steps rate-limited).
-        # Safety allows up to 22/msg up, 38/msg down.
-        self.STEER_DELTA_UP = 10  # 200 units/s: full authority in ~1 s, still smooth for the EPS
-        self.STEER_DELTA_DOWN = 25  # release ~2.5x faster than apply
+        self.STEER_DELTA_UP = 22  # Maximum allowed torque increase per control frame (prevents sudden jumps)
+        self.STEER_DELTA_DOWN = 38  # Maximum allowed torque decrease per control frame (can be faster for quick release)
 
         self.STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
         self.STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
@@ -40,12 +36,8 @@ class CarControllerParams:
         #   -------------------------------------------------------------
         # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
         self.MAX_TORQUE_FACTOR = 100
-        self.MIN_TORQUE_FACTOR = 20
-        # Factor fisso usato mentre l'EPS è attivo: mantiene il plant lineare così che la
-        # coppia effettiva sia proporzionale ad apply_new_torque (ciò che openpilot vede e
-        # su cui torqued impara). MIN/MAX_TORQUE_FACTOR restano usati dalla rampa di
-        # attivazione in _activate_eps e dal vecchio blocco smoothstep (commentato).
-        self.FIXED_TORQUE_FACTOR = 100
+        self.MIN_TORQUE_FACTOR = 25
+
 
 
 @dataclass
@@ -92,10 +84,7 @@ class LKAS_LIMITS:
   # Peugeot 3008
   # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
   # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
-  # 25: above the torsion-bar reaction to LKA's own torque (up to ~20 deci-Nm in curves,
-  # route 00000029--0f498d7077), below a real grip (30-100). At 5, phantom steeringPressed
-  # fired ~30% of latActive frames and starved lagd/torqued learning.
-  STEER_THRESHOLD = 25
+  STEER_THRESHOLD = 5
   DISABLE_SPEED = 50    # kph
   ENABLE_SPEED = 50     # kph
 
