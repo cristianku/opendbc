@@ -20,7 +20,7 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 # stays ~2.2 (x100/80 x200/250). Friction set low: true EPS friction on the linear plant
 # is small; torqued can refine within the clamp.
 # NOTE: torqued clamps learning to +/-30% (factor) and +/-50% (friction) of these values.
-"PSA_PEUGEOT_3008" = [2.2, 2.2, 0.08]
+"PSA_PEUGEOT_3008" = [3.8, 2.2, 0.08]
 
 # New subarus angle based controllers
 "SUBARU_FORESTER_2022" = [nan, 3.0, nan]
