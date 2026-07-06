@@ -74,6 +74,7 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     self.apply_new_torque = 0
     apply_new_torque = 0
+    temp_driverSteeringTorque = 0
     if CC.latActive != self.lat_active_last:
       carlog.error(f"PSA_DEBUG latActive={CC.latActive}")
       self.lat_active_last = CC.latActive
@@ -95,20 +96,45 @@ class CarController(CarControllerBase):
             self.lat_activation_frame = 0
             self.status = 4 # 4: EPS ACTIVE
 
-            ######
-            # TORQUE CALCULATION
-            temp_torque = int(round(CC.actuators.torque * self.params.STEER_MAX))
-            apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
-                                                            CS.out.steeringTorque, self.params, self.params.STEER_MAX)
+            if (CS.out.steeringPressed):
+              #### DRIVER STEERING DETECTED
+              # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
+              self.apply_torque_factor = 0
+              apply_new_torque = 0
+            else:
+              ######
+              # TORQUE CALCULATION
+              actuatorsRequestedTorque = int(round(CC.actuators.torque * self.params.STEER_MAX))
 
-            # Linearly increase torque factor
-            # ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0)
-            # ratio = math.log1p(abs(apply_new_torque)) / math.log1p(float(self.params.STEER_MAX))
-            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0) **1.5
+              ######
+              # TORQUE FACTORC CALCULATION
 
+              # Linearly increase torque factor
+              # ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0)
+              # ratio = math.log1p(abs(apply_new_torque)) / math.log1p(float(self.params.STEER_MAX))
+              ratio = min(1.0, (abs(self.apply_torque_last) / float(self.params.STEER_MAX)) * 1.0) **1.5
 
-            self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
-            self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+              self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
+              self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+
+              ######
+              # DRIVER TORQUE -> RAW COMMAND UNITS (for apply_driver_steer_torque_limits)
+              # The limiter compares the driver torque against the RAW command
+              # (actuatorsRequestedTorque, 0..STEER_MAX), but that raw value is NOT the
+              # force the driver actually fights. Two conversions bring them to the same scale:
+              #   * / factor * 100 : the EPS applies (command * factor/100), so the raw
+              #     command is 100/factor larger than the effective assist at the wheel.
+              #   * * 4            : the driver signal (EPS_TORQUE*10, ~0..30) is on a ~4x
+              #     smaller base scale than the command (measured: effective ~78 <-> driver ~18).
+              # Net: at low factor (weak assist) the driver weighs more -> override engages
+              # sooner, which is physically correct. Safe from /0 because factor >= MIN (>=15).
+              temp_driverSteeringTorque = (CS.out.steeringTorque / self.apply_torque_factor) * 100 * 4
+
+              # apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
+              #                                                 CS.out.steeringTorque, self.params, self.params.STEER_MAX)
+              apply_new_torque = apply_driver_steer_torque_limits(actuatorsRequestedTorque, self.apply_torque_last,
+                                                              temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
+
 
 
         #

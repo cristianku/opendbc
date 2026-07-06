@@ -22,7 +22,7 @@ class CarControllerParams:
 
         self.STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
         self.STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
-        self.STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
+        # self.STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
 
         # Increasing STEER_MAX increases resolution (number of torque steps).
         # MAX_TORQUE_FACTOR limits the effective range (percent of STEER_MAX).
@@ -84,7 +84,7 @@ class LKAS_LIMITS:
   # Peugeot 3008
   # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
   # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
-  STEER_THRESHOLD = 5
+  STEER_THRESHOLD = 10
   DISABLE_SPEED = 50    # kph
   ENABLE_SPEED = 50     # kph
 
