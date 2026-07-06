@@ -103,7 +103,8 @@ class CarController(CarControllerBase):
 
             # Linearly increase torque factor
             # ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0)
-            ratio = math.log1p(abs(apply_new_torque)) / math.log1p(float(self.params.STEER_MAX))
+            # ratio = math.log1p(abs(apply_new_torque)) / math.log1p(float(self.params.STEER_MAX))
+            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0) **1.5
 
 
             self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
