@@ -245,6 +245,9 @@ class CarController(CarControllerBase):
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
       new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
+      new_actuators.curvature = temp_driverSteeringTorque   # lo vedi in juggle come carControl.actuatorsOutput.curvature
+      new_actuators.steeringAngleDeg = float(self.apply_torque_factor)
+
       if self.frame % 100 == 0:
         carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_last}")
 
