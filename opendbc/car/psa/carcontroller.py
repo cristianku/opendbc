@@ -129,7 +129,7 @@ class CarController(CarControllerBase):
               # Net: at low factor (weak assist) the driver weighs more -> override engages
               # sooner, which is physically correct. Safe from /0 because factor >= MIN (>=15).
               temp_driverSteeringTorque = (CS.out.steeringTorque / self.apply_torque_factor) * 100 * 4
-
+              temp_driverSteeringTorque = 0
               # apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
               #                                                 CS.out.steeringTorque, self.params, self.params.STEER_MAX)
               apply_new_torque = apply_driver_steer_torque_limits(actuatorsRequestedTorque, self.apply_torque_last,
@@ -245,8 +245,8 @@ class CarController(CarControllerBase):
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
       new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
-      new_actuators.curvature = temp_driverSteeringTorque   # lo vedi in juggle come carControl.actuatorsOutput.curvature
-      new_actuators.steeringAngleDeg = float(self.apply_torque_factor)
+      # new_actuators.curvature = temp_driverSteeringTorque   # lo vedi in juggle come carControl.actuatorsOutput.curvature
+      # new_actuators.steeringAngleDeg = float(self.apply_torque_factor)
 
       if self.frame % 100 == 0:
         carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_last}")
