@@ -69,7 +69,7 @@ class CarState(CarStateBase):
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
       ret.genericToggle = (int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"]) == 1) # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
 
-      ret.steeringTorque  = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
+      ret.steeringTorque  = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10 * 4
       ret.steeringTorqueEps = 0.0
       # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
 
@@ -80,7 +80,8 @@ class CarState(CarStateBase):
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
       # Peugeot 3008: EPS_TORQUE represents only driver-applied torque (no motor assist).
       # The signal is already smoothed by the EPS ECU, so update_steering_pressed is unnecessary.
-      ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
+      # ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
+      ret.steeringPressed = abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE
     else:
       ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
 
