@@ -102,6 +102,7 @@ class CarController(CarControllerBase):
               #### DRIVER STEERING DETECTED
               # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
               self.apply_torque_factor = 0
+              apply_new_torque_scaled = 0
               # apply_new_torque = 0
             else:
               ######
@@ -164,7 +165,11 @@ class CarController(CarControllerBase):
         ####
         # can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
         # ex. int(round(apply_new_torque_scaled / self.apply_torque_factor *100)) = int(round(16 / 25 * 100)) = int(round(0.64 * 100)) = int(round(64)) = 64
-        can_sends.append(create_lka_steering(self.packer, CC.latActive, int(round(apply_new_torque_scaled / self.apply_torque_factor *100)), self.apply_torque_factor, self.status))
+        if self.apply_torque_factor > 0:
+          torque = int(round(apply_new_torque_scaled / self.apply_torque_factor *100))
+        else:
+          torque = 0
+        can_sends.append(create_lka_steering(self.packer, CC.latActive, torque, self.apply_torque_factor, self.status))
         # last sent value to the EPS
         # self.apply_torque_last = apply_new_torque
         self.apply_torque_last = apply_new_torque_scaled

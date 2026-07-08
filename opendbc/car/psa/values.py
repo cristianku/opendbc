@@ -91,7 +91,7 @@ PSA_VERSION_RESP = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER + 0x40, 0xF0,
 
 PSA_RX_OFFSET = -0x20
 
-class LKAS_LIMITS_PEUGEOT_3008:
+class LKAS_LIMITS:
   # Peugeot 3008
   # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
   # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
