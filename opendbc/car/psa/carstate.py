@@ -1,7 +1,8 @@
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
+from opendbc.car.psa.values import CAR, DBC, CarControllerParams
+# , LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 import copy
 # from opendbc.car.common.filter_simple import FirstOrderFilter  # NB: version inside opendbc (like Toyota), NOT openpilot.common
