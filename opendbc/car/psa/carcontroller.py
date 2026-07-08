@@ -124,7 +124,7 @@ class CarController(CarControllerBase):
               # ratio = min(1.0, (abs(self.apply_torque_last) / float(self.params.STEER_MAX)) * 1.0) **1.5
 
               #  ex ratio = min(1.0, (abs(62.5) / float(250)) * 1.0) **1.5 = min(1.0, 0.25) **1.5 = 0.125
-              ratio = min(1.0, (abs(actuatorsRequestedTorque) / float(self.params.STEER_MAX)) * 1.0) **1.5
+              ratio = min(1.0, (abs(actuatorsRequestedTorque) / float(self.params.STEER_MAX)) * 1.0) **1.2
 
               # ex self.apply_torque_factor = int(15 + 0.125 * (100 - 15)) = int(15 + 0.125 * 85) = int(15 + 10.625) = int(25.625) = 25
               self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
@@ -147,8 +147,7 @@ class CarController(CarControllerBase):
               #     smaller base scale than the command (measured: effective ~78 <-> driver ~18).
               # Net: at low factor (weak assist) the driver weighs more -> override engages
               # sooner, which is physically correct. Safe from /0 because factor >= MIN (>=15).
-              # temp_driverSteeringTorque = (CS.out.steeringTorque / self.apply_torque_factor) * 100 * 4
-              temp_driverSteeringTorque = 0
+              temp_driverSteeringTorque = CS.out.steeringTorque
               # apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
               #                                                 CS.out.steeringTorque, self.params, self.params.STEER_MAX)
               # apply_new_torque = apply_driver_steer_torque_limits(actuatorsRequestedTorque, self.apply_torque_last,
@@ -276,8 +275,8 @@ class CarController(CarControllerBase):
       # new_actuators.curvature = temp_driverSteeringTorque   # lo vedi in juggle come carControl.actuatorsOutput.curvature
       # new_actuators.steeringAngleDeg = float(self.apply_torque_factor)
 
-      if self.frame % 100 == 0:
-        carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_last}")
+      # if self.frame % 100 == 0:
+      #   carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_last}")
 
     self.frame += 1
     return new_actuators, can_sends
