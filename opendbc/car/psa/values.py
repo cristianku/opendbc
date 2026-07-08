@@ -95,7 +95,6 @@ class LKAS_LIMITS:
   # Peugeot 3008
   # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
   # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
-  STEER_THRESHOLD = 10
   DISABLE_SPEED = 50    # kph
   ENABLE_SPEED = 50     # kph
 
