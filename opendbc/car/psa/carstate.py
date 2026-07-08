@@ -24,8 +24,8 @@ class CarState(CarStateBase):
   #   super().__init__(CP, CP_SP)
   #   self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
 
-  def update(self, can_parsers) -> structs.CarState:
-    cp = can_parsers[Bus.main]
+  # def update(self, can_parsers) -> structs.CarState:
+  def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
     cp_adas = can_parsers[Bus.adas]
     cp_cam = can_parsers[Bus.cam]
     ret = structs.CarState()
