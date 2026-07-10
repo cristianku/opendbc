@@ -22,7 +22,7 @@ class CarInterface(CarInterfaceBase):
     #
     ret.dashcamOnly = False
 
-    if candidate in (CAR.PSA_PEUGEOT_3008,):
+    if candidate in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
       ret.steerControlType = structs.CarParams.SteerControlType.torque
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
