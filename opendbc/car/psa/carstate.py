@@ -24,6 +24,13 @@ class CarState(CarStateBase):
   #   super().__init__(CP, CP_SP)
   #   self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
 
+  # #HANDS-FREE - START: state for the EPS silent-dropout safety net
+  # def __init__(self, CP, CP_SP):
+  #   super().__init__(CP, CP_SP)
+  #   self.eps_state_last = 0
+  #   self.eps_fault_frames = 0
+  # #HANDS-FREE - END
+
   # def update(self, can_parsers) -> structs.CarState:
   def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
     cp = can_parsers[Bus.main]
