@@ -10,7 +10,7 @@ Ecu = CarParams.Ecu
 
 class CarControllerParams:
   def __init__(self, CP):
-    if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,):
+    if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
         # Steering torque limits and dynamics for the EPS controller
         self.STEER_MAX = 200  # Maximum steering torque command that can be applied (unitless scaling factor)
         # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
@@ -66,6 +66,10 @@ class CAR(Platforms):
     [PSACarDocs("PEUGEOT 3008 2016-29")],
     # https://www.auto-data.net/en/peugeot-3008-ii-phase-i-2016-1.6-puretech-180hp-automatic-s-s-34446#google_vignette
     CarSpecs(mass=1577, wheelbase=2.675, steerRatio=17.69, tireStiffnessFactor=0.996044 ),
+  )
+  PSA_CITROEN_C4_SPACETOURER = PSAPlatformConfig(
+    [PSACarDocs("CITROEN C4 SPACETOURER 2018-22")],
+    CarSpecs(mass=1517, wheelbase=2.785, steerRatio=17.69, tireStiffnessFactor=0.996044),
   )
 
 
