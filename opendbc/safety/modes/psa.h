@@ -5,11 +5,18 @@
 #define PSA_STEERING              757U  // RX from XXX, driver torque
 #define PSA_STEERING_ALT          773U  // RX from EPS, steering angle
 #define PSA_DRIVER                1390U // RX from XXX, gas pedal
+#define PSA_DYN4_FRE              781U  // RX from CDS, wheel speeds
+#define PSA_HS2_DYN_UCF_MDD_32D   813U  // RX from UC_FREIN, standstill
 #define PSA_HS2_DYN_ABR_38D       909U  // RX from UC_FREIN, speed
 #define PSA_HS2_DAT_MDD_CMD_452   1106U // RX from BSI, cruise state
 #define PSA_DAT_BSI               1042U // RX from BSI, brake
 #define PSA_LANE_KEEP_ASSIST      1010U // TX from OP,  EPS
 #define PSA_IS_DAT_DIRA           1173U // TX from OP,  hold steering wheel
+#define PSA_REQ_DIAG_ARTIV        1718U // TX from OP, radar diagnostics
+#define PSA_HS2_SUPV_ARTIV_796    1942U // TX from OP, radar emulation
+#define PSA_HS2_DAT_ARTIV_V2_4F6  1270U // TX from OP, radar emulation
+#define PSA_HS2_DYN1_MDD_ETAT_2B6 694U  // TX from OP, radar emulation
+#define PSA_HS2_DYN_MDD_ETAT_2F6  758U  // TX from OP, radar emulation
 
 // CAN bus
 #define PSA_MAIN_BUS 0U
@@ -22,6 +29,8 @@ static uint8_t psa_get_counter(const CANPacket_t *msg) {
     cnt = (msg->data[3] >> 4) & 0xFU;
   } else if (msg->addr == PSA_HS2_DYN_ABR_38D) {
     cnt = (msg->data[5] >> 4) & 0xFU;
+  } else if (msg->addr == PSA_STEERING) {
+    cnt = msg->data[0] & 0xFU;  // DBC: COUNTER 3|4@0+ -> low nibble of byte 0 (no >>4 here)
   } else {
   }
   return cnt;
@@ -33,12 +42,15 @@ static uint32_t psa_get_checksum(const CANPacket_t *msg) {
     chksum = msg->data[5] & 0xFU;
   } else if (msg->addr == PSA_HS2_DYN_ABR_38D) {
     chksum = msg->data[5] & 0xFU;
+  } else if (msg->addr == PSA_STEERING) {
+    chksum = (msg->data[0] >> 4) & 0xFU;  // DBC: CHECKSUM 7|4@0+ -> HIGH nibble of byte 0
   } else {
   }
   return chksum;
 }
 
-static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, int chk_pos) {
+// static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, int chk_pos) {
+static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, int chk_pos, bool chk_high_nibble) {
   int len = GET_LEN(msg);
 
   uint8_t sum = 0;
@@ -47,7 +59,8 @@ static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, in
 
     if (i == chk_pos) {
       // set checksum in low nibble to 0
-      b &= 0xF0U;
+      // b &= 0xF0U;
+      b &= chk_high_nibble ? 0x0FU : 0xF0U;
     }
     sum += (b >> 4) + (b & 0xFU);
   }
@@ -57,9 +70,11 @@ static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, in
 static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
   uint8_t chk = 0;
   if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
-    chk = _psa_compute_checksum(msg, 0x4, 5);
+    chk = _psa_compute_checksum(msg, 0x4, 5, false);   // checksum in LOW nibble of byte 5
   } else if (msg->addr == PSA_HS2_DYN_ABR_38D) {
-    chk = _psa_compute_checksum(msg, 0x7, 5);
+    chk = _psa_compute_checksum(msg, 0x7, 5, false);   // checksum in LOW nibble of byte 5
+  } else if (msg->addr == PSA_STEERING) {
+    chk = _psa_compute_checksum(msg, 0xB, 0, true);    // default init 0xB, checksum in HIGH nibble of byte 0
   } else {
   }
   return chk;
@@ -101,9 +116,9 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
   // SAFETY_UNUSED(msg);
   bool tx = true;
   static const TorqueSteeringLimits PSA_STEERING_LIMITS = {
-    .max_torque = 400,
-    .max_rate_up = 40,
-    .max_rate_down = 40,
+    .max_torque = 200,
+    .max_rate_up = 22,
+    .max_rate_down = 38,
     .driver_torque_allowance = 50,
     .driver_torque_multiplier = 1,
     .max_rt_delta = 150,
@@ -133,14 +148,26 @@ static safety_config psa_init(uint16_t param) {
   SAFETY_UNUSED(param);
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
-    // {PSA_IS_DAT_DIRA, PSA_CAM_BUS, 4, .check_relay = false}, // hold steering wheel
-    // {PSA_STEERING, PSA_MAIN_BUS, 7, .check_relay = false}, // driver torque
+    {PSA_IS_DAT_DIRA, PSA_CAM_BUS, 4, .check_relay = false}, // hold steering wheel
+    {PSA_STEERING, PSA_MAIN_BUS, 7, .check_relay = false}, // driver torque
+    {PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .check_relay = false}, // resume acc
+    {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 8, .check_relay = false},        // radar diagnostics TODO: check if reduce to 3 is ok
+    {PSA_HS2_SUPV_ARTIV_796, PSA_ADAS_BUS, 8, .check_relay = false},    // radar emulation
+    {PSA_HS2_DAT_ARTIV_V2_4F6, PSA_ADAS_BUS, 5, .check_relay = false},  // radar emulation
+    {PSA_HS2_DYN1_MDD_ETAT_2B6, PSA_ADAS_BUS, 8, .check_relay = false}, // radar emulation
+    {PSA_HS2_DYN_MDD_ETAT_2F6, PSA_ADAS_BUS, 8, .check_relay = false},  // radar emulation
   };
 
   static RxCheck psa_rx_checks[] = {
     {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                        // cruise state
     {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_MAIN_BUS, 8, 25U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                            // speed
+    // [CLAUDE steering-rx-counter] - START
     // {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
+    // [CLAUDE steering-rx-checksum] - START
+    // {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .max_counter = 15U, .ignore_checksum = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},             // driver torque (counter verified, checksum TBD)
+    {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},             // driver torque (counter + checksum verified)
+    // [CLAUDE steering-rx-checksum] - END
+    // [CLAUDE steering-rx-counter] - END
     {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},        // brake
     // GAS_PEDAL - DRIVER -> 208: 6 Bytes, 508: 7 Bytes
     // TODO: Berlingo uses Dyn5_CMM on MAIN_BUS for gas pedal

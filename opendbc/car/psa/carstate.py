@@ -52,7 +52,7 @@ class CarState(CarStateBase):
     ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
 
     # gas
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint in( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
       ret.gasPressed = cp.vl['Dyn5_CMM']['P334_ACCPed_Position'] > 0
     else:
       ret.gasPressed = cp_cam.vl['DRIVER']['GAS_PEDAL'] > 0
@@ -70,10 +70,11 @@ class CarState(CarStateBase):
       CAR.PSA_PEUGEOT_208: cp.vl,
       CAR.PSA_PEUGEOT_508: cp_cam.vl,
       CAR.PSA_PEUGEOT_3008: cp.vl,
+      CAR.PSA_CITROEN_C4_SPACETOURER: cp.vl,
     }
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
     ret.steeringAngleDeg = bus['STEERING_ALT']['ANGLE'] # EPS
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint in ( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER ):
       # PSA EPS encodes the steering rotation direction bit inverted from the driver's perspective:
       #   RATE_SIGN = 0 → clockwise (right turn)
       #   RATE_SIGN = 1 → anticlockwise (left turn)
@@ -84,11 +85,11 @@ class CarState(CarStateBase):
       # Standard convention: 0 → left (negative), 1 → right (positive)
       ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1)
 
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint in ( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER ):
       ret.genericToggle = (int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"]) == 1) # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
 
-      # ret.steeringTorque  = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10 * 3
-      ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE'] * 3
+      ret.steeringTorque  = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
+      ret.steeringTorqueEps = 0.0
       # Filtered version (FirstOrderFilter, needs __init__ + import above uncommented too):
       # ret.steeringTorque = self.driver_torque_filter.update(cp.vl['STEERING']['DRIVER_TORQUE']) * 3
       ret.steeringTorqueEps = cp.vl['STEERING']['DRIVER_TORQUE'] * 3
@@ -97,7 +98,7 @@ class CarState(CarStateBase):
       ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
       ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
 
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint in ( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER ):
       # Peugeot 3008: EPS_TORQUE represents only driver-applied torque (no motor assist).
       # The signal is already smoothed by the EPS ECU, so update_steering_pressed is unnecessary.
       # ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
@@ -129,7 +130,7 @@ class CarState(CarStateBase):
 
     # blinkers
     blinker = cp_cam.vl['HS2_DAT7_BSI_612']['CDE_CLG_ET_HDC']
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint in( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER ):
       ret.leftBlinker = blinker == 2
       ret.rightBlinker = blinker == 1
     else:
@@ -137,12 +138,12 @@ class CarState(CarStateBase):
       ret.rightBlinker = blinker == 2
 
     # Blind sensor ( there is not left and right )
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint in( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER ):
       ret.leftBlindspot = cp_adas.vl["HS2_DYN_MDD_ETAT_2F6"]["BLIND_SENSOR"] != 0
       ret.rightBlindspot = cp_adas.vl["HS2_DYN_MDD_ETAT_2F6"]["BLIND_SENSOR"] != 0
 
     # Auto Braking in progress
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint in( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER ):
       ret.stockAeb = cp_adas.vl["HS2_DYN1_MDD_ETAT_2B6"]["AUTO_BRAKING_STATUS"] == 1
 
     # lock info

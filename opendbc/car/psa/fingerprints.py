@@ -67,7 +67,7 @@ FW_VERSIONS = {
         #
     ],
   },
-  CAR.PSA_CITROEN_BERLINGO: {
+  CAR.PSA_CITROEN_C4_SPACETOURER: {
     # INJ - Engine
     (Ecu.engine, 0x6A8, None): [
         b'3306SA00280507 ',
