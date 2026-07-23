@@ -35,23 +35,12 @@ class CarController(CarControllerBase):
     self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
     self.driver_torque_counter = 0
     self.next_driver_torque = random.randint(500, 800)  # 5–8 s @100 Hz
-    self.max_same_torque_frames = int(self.params.STEER_TIME_STUCK_TORQUE / (DT_CTRL * self.params.STEER_STEP))
-    self.same_torque_frames = 0
-    self.max_eps_active_cycles = int(self.params.EPS_REFRESH_TIME / (DT_CTRL * self.params.STEER_STEP))
-    self.eps_refresh_abort_cycles = int(1.0 / (DT_CTRL * self.params.STEER_STEP))  # give up the release after 1s
-    self.eps_active_cycles = 0    # consecutive 20Hz cycles with EPS active
-    self.eps_refreshing = False   # True while forcing the EPS to drop
-    self.eps_refresh_cycles = 0   # cycles spent in the forced release
 
   def _reset_lat_state(self):
     self.status = 2
     self.apply_torque_factor = 0
     self.takeover_req_sent = False
     self.lat_activation_frame = 0
-    self.same_torque_frames = 0
-    self.eps_active_cycles = 0
-    self.eps_refreshing = False
-    self.eps_refresh_cycles = 0
 
   def _activate_eps(self, eps_active):
     # Save the frame number when the LKA (steering assist) button is first pressed on the car
@@ -79,7 +68,6 @@ class CarController(CarControllerBase):
       # EPS likes a progressive activation of the Torque Factor
       self.apply_torque_factor += 10
       self.apply_torque_factor = min( self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
-      self.eps_active_cycles = 0
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
