@@ -23,7 +23,7 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
 #   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
 
 
-def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_factor: int, status: int):
+def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_factor: int, status: int, set_angle: int):
   values = {
     'unknown2': 24,
     'TORQUE': apply_torque,
@@ -32,7 +32,7 @@ def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_fa
     'STATUS': status,
     # 'LXA_ACTIVATION': 1,
     'TORQUE_FACTOR': torque_factor, # * 100,
-    'SET_ANGLE': 0,
+    'SET_ANGLE': set_angle,
   }
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)

@@ -105,73 +105,53 @@ class CarController(CarControllerBase):
               apply_new_torque_scaled = 0
               # apply_new_torque = 0
             else:
-              ######
-              # TORQUE CALCULATION 
-              # This is not rounded and not converted to int yet, because it is used for the torque factor calculation
-              # ex 
-              #     actuatorsRequestedTorque = 
-              #       int(round(CC.actuators.torque * self.params.STEER_MAX)) = int(round(0.25 * 250)) 
-              #           = 62.5
-
+              # --- Requested torque (raw, still float) ------------------------------
+              # actuators.torque is the model output in -1..1; scale to counts (x STEER_MAX).
+              # Kept as a float here: it feeds the torque-factor curve below.
+              #   ex: 0.25 * 250 = 62.5
               actuatorsRequestedTorque = CC.actuators.torque * self.params.STEER_MAX
 
-              ######
-              # TORQUE FACTOR CALCULATION
-
-              # Linearly increase torque factor
-              # ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0)
-              # ratio = math.log1p(abs(apply_new_torque)) / math.log1p(float(self.params.STEER_MAX))
-              # ratio = min(1.0, (abs(self.apply_torque_last) / float(self.params.STEER_MAX)) * 1.0) **1.5
-
-              #  ex ratio = min(1.0, (abs(62.5) / float(250)) * 1.0) **1.5 = min(1.0, 0.25) **1.5 = 0.125
+              # --- Torque factor (dynamic EPS gain, MIN..MAX) -----------------------
+              # The EPS multiplies our command by factor/100. Small requests get a low
+              # factor (gentle), big ones a high factor, via a slightly convex curve.
+              # ratio = normalized request magnitude, clamped 0..1, raised to 1.2.
+              #   ex: (62.5/250) ** 1.2 = 0.25 ** 1.2 = 0.19
               ratio = min(1.0, (abs(actuatorsRequestedTorque) / float(self.params.STEER_MAX)) * 1.0) **1.2
 
-              # ex self.apply_torque_factor = int(15 + 0.125 * (100 - 15)) = int(15 + 0.125 * 85) = int(15 + 10.625) = int(25.625) = 25
+              # Lerp ratio onto [MIN_TORQUE_FACTOR, MAX_TORQUE_FACTOR], then clamp.
+              #   ex: 15 + 0.19 * (100 - 15) = 31
               self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
               self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
 
-              ######
-              # CALCULATING THE REAL TORQUE 
-              # This is the scaled torque that can be compared to the steering driver torque
-              # ex new_torque_scaled = int(round(62.5 * 25 / 100)) = int(round(15.625)) = 16
+              # --- Effective (scaled) torque ---------------------------------------
+              # What the wheel actually gets = request * factor/100. Same "force at the
+              # wheel" domain as the driver torque, so this is what the limiter compares.
+              #   ex: round(62.5 * 31/100) = 19
               new_torque_scaled = int(round(actuatorsRequestedTorque * self.apply_torque_factor / 100))
 
-              ######
-              # DRIVER TORQUE -> RAW COMMAND UNITS (for apply_driver_steer_torque_limits)
-              # The limiter compares the driver torque against the RAW command
-              # (actuatorsRequestedTorque, 0..STEER_MAX), but that raw value is NOT the
-              # force the driver actually fights. Two conversions bring them to the same scale:
-              #   * / factor * 100 : the EPS applies (command * factor/100), so the raw
-              #     command is 100/factor larger than the effective assist at the wheel.
-              #   * * 4            : the driver signal (EPS_TORQUE*10, ~0..30) is on a ~4x
-              #     smaller base scale than the command (measured: effective ~78 <-> driver ~18).
-              # Net: at low factor (weak assist) the driver weighs more -> override engages
-              # sooner, which is physically correct. Safe from /0 because factor >= MIN (>=15).
+              # --- Driver-aware rate/override limiter -------------------------------
+              # Feed the EFFECTIVE (scaled) command: it is already in the driver-torque
+              # domain, so the driver signal needs no conversion. The limiter rate-limits
+              # the ramp (STEER_DELTA_UP/DOWN) and backs off when the driver pushes.
+              # It always returns an int (see lateral.py).
               temp_driverSteeringTorque = CS.out.steeringTorque
-              # apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
-              #                                                 CS.out.steeringTorque, self.params, self.params.STEER_MAX)
-              # apply_new_torque = apply_driver_steer_torque_limits(actuatorsRequestedTorque, self.apply_torque_last,
-              #                                                 temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
               apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_last,
                                                               temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
 
-
-
-        #
-        #####
-        # CAN MESSAGE needs to be sent every 5 frames
-        #  - psa.h  check_relay is set for PSA_LANE_KEEP_ASSIST
-        ####
-        # can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
-        # ex. int(round(apply_new_torque_scaled / self.apply_torque_factor *100)) = int(round(16 / 25 * 100)) = int(round(0.64 * 100)) = int(round(64)) = 64
+        # --- Back to a raw CAN command ----------------------------------------
+        # The EPS re-applies factor/100, so undo the scaling to recover the raw value
+        # to send. can_torque and factor travel as two separate CAN signals. Sent
+        # every STEER_STEP frames; psa.h check_relay is set for PSA_LANE_KEEP_ASSIST.
+        #   ex: round(19 / 31 * 100) = 61  ->  EPS redoes 61 * 31/100 = 19 (effective)
         if self.apply_torque_factor > 0:
-          torque = int(round(apply_new_torque_scaled / self.apply_torque_factor *100))
+          can_torque = int(round(apply_new_torque_scaled / self.apply_torque_factor *100))
         else:
-          torque = 0
-        can_sends.append(create_lka_steering(self.packer, CC.latActive, torque, self.apply_torque_factor, self.status))
-        # last sent value to the EPS
-        # self.apply_torque_last = apply_new_torque
+          can_torque = 0
+        # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status))
+        can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status,apply_new_torque_scaled))
+        # Remember the effective (scaled) value for the next frame's rate limit.
         self.apply_torque_last = apply_new_torque_scaled
+        self.apply_can_torque_last = can_torque
         ### END EPS ACTIVE
         ##########
 
@@ -274,6 +254,7 @@ class CarController(CarControllerBase):
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
       new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
+      new_actuators.steeringAngleDeg = float(self.apply_can_torque_last)
       # new_actuators.curvature = temp_driverSteeringTorque   # lo vedi in juggle come carControl.actuatorsOutput.curvature
       # new_actuators.steeringAngleDeg = float(self.apply_torque_factor)
 
