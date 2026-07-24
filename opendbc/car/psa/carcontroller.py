@@ -236,15 +236,15 @@ class CarController(CarControllerBase):
     #     # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
         self.steering_hold_counter += 1
         if self.steering_hold_counter >= self.next_steering_hold:
-          can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+          # can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
           self.steering_hold_counter = 0
           self.next_steering_hold = random.randint(8, 12)
     #     # --- DRIVER TORQUE (ogni 5–8 s) ---
         self.driver_torque_counter += 1
         if self.driver_torque_counter >= self.next_driver_torque:
           msg = CS.steering
-          counter = (msg['COUNTER'] + 1) % 16
-          can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
+          # counter = (msg['COUNTER'] + 1) % 16
+          # can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
           self.driver_torque_counter = 0
           self.next_driver_torque = random.randint(500, 800)
 
