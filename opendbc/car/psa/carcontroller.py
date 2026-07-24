@@ -242,7 +242,7 @@ class CarController(CarControllerBase):
     #     # --- DRIVER TORQUE (ogni 5–8 s) ---
         self.driver_torque_counter += 1
         if self.driver_torque_counter >= self.next_driver_torque:
-          msg = CS.steering
+          # msg = CS.steering
           # counter = (msg['COUNTER'] + 1) % 16
           # can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
           self.driver_torque_counter = 0
