@@ -67,10 +67,6 @@ FW_VERSIONS = {
         #
     ],
   },
-  
- # 
- # C4 SpaceTourer 2018–2022
- #  
   CAR.PSA_CITROEN_C4_SPACETOURER: {
     # INJ - Engine
     (Ecu.engine, 0x6A8, None): [
@@ -89,7 +85,7 @@ FW_VERSIONS = {
         b'085095200769200218',
         b"\x00\x00\x00\x00\x03\x92\x03\x07\x13\x01\xa4'\x00\xff\xff\xff\x00\x02\x00\x00\x01\x93\x94\x16",
     ],
-},
+},  
 }
 
 

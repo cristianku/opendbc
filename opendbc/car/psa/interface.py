@@ -22,11 +22,14 @@ class CarInterface(CarInterfaceBase):
     #
     ret.dashcamOnly = False
 
-    if candidate in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+    if candidate in (CAR.PSA_PEUGEOT_3008,):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
       ret.steerControlType = structs.CarParams.SteerControlType.torque
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
-      ret.steerActuatorDelay = 0.376803
+      # Measured from route 00000029--0f498d7077 with FIXED_TORQUE_FACTOR: torque request ->
+      # steering rate response lag ~140ms. The old 0.376803 was tuned on the variable
+      # torque-factor plant, whose ramp made the EPS look ~4x slower than it is.
+      ret.steerActuatorDelay = 0.15
       ret.steerLimitTimer = 0.1
       ret.steerAtStandstill = False
       ret.openpilotLongitudinalControl = False

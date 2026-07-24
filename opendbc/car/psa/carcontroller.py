@@ -20,6 +20,7 @@ class CarController(CarControllerBase):
     super().__init__(dbc_names, CP, CP_SP)
     self.packer = CANPacker(dbc_names[Bus.main])
     self.apply_torque_last = 0
+    self.apply_can_torque_last = 0  # raw CAN torque logged to steeringAngleDeg (debug); init so it always exists
     self.apply_torque_factor = 0
     self.apply_torque = 0
     self.status = 2
@@ -73,7 +74,10 @@ class CarController(CarControllerBase):
     can_sends = []
     actuators = CC.actuators
     self.apply_new_torque = 0
-    apply_new_torque = 0
+    # apply_new_torque = 0
+    temp_driverSteeringTorque = 0
+    new_torque_scaled = 0
+    apply_new_torque_scaled = 0
     if CC.latActive != self.lat_active_last:
       carlog.error(f"PSA_DEBUG latActive={CC.latActive}")
       self.lat_active_last = CC.latActive
@@ -95,27 +99,60 @@ class CarController(CarControllerBase):
             self.lat_activation_frame = 0
             self.status = 4 # 4: EPS ACTIVE
 
-            ######
-            # TORQUE CALCULATION
-            temp_torque = int(round(CC.actuators.torque * self.params.STEER_MAX))
-            apply_new_torque = apply_driver_steer_torque_limits(temp_torque, self.apply_torque_last,
-                                                            CS.out.steeringTorque, self.params, self.params.STEER_MAX)
+            if (CS.out.steeringPressed):
+              #### DRIVER STEERING DETECTED
+              # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
+              self.apply_torque_factor = 0
+              apply_new_torque_scaled = 0
+              # apply_new_torque = 0
+            else:
+              # --- Requested torque (raw, still float) ------------------------------
+              # actuators.torque is the model output in -1..1; scale to counts (x STEER_MAX).
+              # Kept as a float here: it feeds the torque-factor curve below.
+              #   ex: 0.25 * 250 = 62.5
+              actuatorsRequestedTorque = CC.actuators.torque * self.params.STEER_MAX
 
-            # Linearly increase torque factor
-            ratio = min(1.0, (abs(apply_new_torque) / float(self.params.STEER_MAX)) * 1.0)
+              # --- Torque factor (dynamic EPS gain, MIN..MAX) -----------------------
+              # The EPS multiplies our command by factor/100. Small requests get a low
+              # factor (gentle), big ones a high factor, via a slightly convex curve.
+              # ratio = normalized request magnitude, clamped 0..1, raised to 1.2.
+              #   ex: (62.5/250) ** 1.2 = 0.25 ** 1.2 = 0.19
+              ratio = min(1.0, (abs(actuatorsRequestedTorque) / float(self.params.STEER_MAX)) * 1.0) **1.2
 
-            self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
-            self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+              # Lerp ratio onto [MIN_TORQUE_FACTOR, MAX_TORQUE_FACTOR], then clamp.
+              #   ex: 15 + 0.19 * (100 - 15) = 31
+              self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
+              self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
 
+              # --- Effective (scaled) torque ---------------------------------------
+              # What the wheel actually gets = request * factor/100. Same "force at the
+              # wheel" domain as the driver torque, so this is what the limiter compares.
+              #   ex: round(62.5 * 31/100) = 19
+              new_torque_scaled = int(round(actuatorsRequestedTorque * self.apply_torque_factor / 100))
 
-        #
-        #####
-        # CAN MESSAGE needs to be sent every 5 frames
-        #  - psa.h  check_relay is set for PSA_LANE_KEEP_ASSIST
-        ####
-        can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_new_torque, self.apply_torque_factor, self.status))
-        # last sent value to the EPS
-        self.apply_torque_last = apply_new_torque
+              # --- Driver-aware rate/override limiter -------------------------------
+              # Feed the EFFECTIVE (scaled) command: it is already in the driver-torque
+              # domain, so the driver signal needs no conversion. The limiter rate-limits
+              # the ramp (STEER_DELTA_UP/DOWN) and backs off when the driver pushes.
+              # It always returns an int (see lateral.py).
+              temp_driverSteeringTorque = CS.out.steeringTorque
+              apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_last,
+                                                              temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
+
+        # --- Back to a raw CAN command ----------------------------------------
+        # The EPS re-applies factor/100, so undo the scaling to recover the raw value
+        # to send. can_torque and factor travel as two separate CAN signals. Sent
+        # every STEER_STEP frames; psa.h check_relay is set for PSA_LANE_KEEP_ASSIST.
+        #   ex: round(19 / 31 * 100) = 61  ->  EPS redoes 61 * 31/100 = 19 (effective)
+        if self.apply_torque_factor > 0:
+          can_torque = int(round(apply_new_torque_scaled / self.apply_torque_factor *100))
+        else:
+          can_torque = 0
+        # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status))
+        can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status,apply_new_torque_scaled))
+        # Remember the effective (scaled) value for the next frame's rate limit.
+        self.apply_torque_last = apply_new_torque_scaled
+        self.apply_can_torque_last = can_torque
         ### END EPS ACTIVE
         ##########
 
@@ -191,23 +228,25 @@ class CarController(CarControllerBase):
 
 
 
-    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
-    #   if not CC.latActive:
-    #     self.driver_torque_counter = 0
-    #     self.next_driver_torque = random.randint(500, 800)
-    #   else:
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
+      if not CC.latActive:
+        self.driver_torque_counter = 0
+        self.next_driver_torque = random.randint(500, 800)
+      else:
     #     # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
-    #     self.steering_hold_counter += 1
-    #     if self.steering_hold_counter >= self.next_steering_hold:
-    #       can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
-    #       self.steering_hold_counter = 0
-    #       self.next_steering_hold = random.randint(8, 12)
+        self.steering_hold_counter += 1
+        if self.steering_hold_counter >= self.next_steering_hold:
+          # can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+          self.steering_hold_counter = 0
+          self.next_steering_hold = random.randint(8, 12)
     #     # --- DRIVER TORQUE (ogni 5–8 s) ---
-    #     self.driver_torque_counter += 1
-    #     if self.driver_torque_counter >= self.next_driver_torque:
-    #       can_sends.append(create_driver_torque(self.packer, CS.steering))
-    #       self.driver_torque_counter = 0
-    #       self.next_driver_torque = random.randint(500, 800)
+        self.driver_torque_counter += 1
+        if self.driver_torque_counter >= self.next_driver_torque:
+          # msg = CS.steering
+          # counter = (msg['COUNTER'] + 1) % 16
+          # can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
+          self.driver_torque_counter = 0
+          self.next_driver_torque = random.randint(500, 800)
 
     # Actuators output
     new_actuators = actuators.as_builder()
@@ -216,8 +255,12 @@ class CarController(CarControllerBase):
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
       new_actuators.torque = self.apply_torque_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_last
-      if self.frame % 100 == 0:
-        carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_last}")
+      new_actuators.steeringAngleDeg = float(self.apply_can_torque_last)
+      # new_actuators.curvature = temp_driverSteeringTorque   # lo vedi in juggle come carControl.actuatorsOutput.curvature
+      # new_actuators.steeringAngleDeg = float(self.apply_torque_factor)
+
+      # if self.frame % 100 == 0:
+      #   carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_last}")
 
     self.frame += 1
     return new_actuators, can_sends

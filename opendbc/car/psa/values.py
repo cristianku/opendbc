@@ -9,35 +9,46 @@ Ecu = CarParams.Ecu
 
 
 class CarControllerParams:
-  def __init__(self, CP):
-    if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-        # Steering torque limits and dynamics for the EPS controller
-        self.STEER_MAX = 200  # Maximum steering torque command that can be applied (unitless scaling factor)
-        # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
+  # STEER_MAX = 250  # Maximum steering torque command that can be applied (unitless scaling factor)
+  # # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
+  # STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
+  # STEER_DELTA_UP = 8  # Maximum allowed torque increase per control frame (prevents sudden jumps)
+  # STEER_DELTA_DOWN = 38  # Maximum allowed torque decrease per control frame (can be faster for quick release)
+  # STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
+  # STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
+  # STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
+  # MAX_TORQUE_FACTOR = 100
+  # MIN_TORQUE_FACTOR = 15
 
-        self.STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
+    # Steering torque limits and dynamics for the EPS controller
+    STEER_MAX = 150  # Maximum steering torque command that can be applied (unitless scaling factor)
+    # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
 
-        self.STEER_DELTA_UP = 22  # Maximum allowed torque increase per control frame (prevents sudden jumps)
-        self.STEER_DELTA_DOWN = 38  # Maximum allowed torque decrease per control frame (can be faster for quick release)
+    STEER_STEP = 5  # Control update frequency (every n frames) – 1 = update at each control loop (100 Hz)
 
-        self.STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
-        self.STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
-        self.STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
+    STEER_DELTA_UP = 8  # Maximum allowed torque increase per control frame (prevents sudden jumps)
+    STEER_DELTA_DOWN = 38  # Maximum allowed torque decrease per control frame (can be faster for quick release)
 
-        # Increasing STEER_MAX increases resolution (number of torque steps).
-        # MAX_TORQUE_FACTOR limits the effective range (percent of STEER_MAX).
-        # Example of total available steps:
-      #   -------------------------------------------------------------
-        #   STEER_MAX | MAX_TORQUE_FACTOR | Effective Range (±R) | Steps (±)
-        #   -----------+-------------------+---------------------+------------
-        #      100     |       100         |        ±100         |   ±100
-        #      200     |        50         |        ±100         |   ±200
-        #      400     |        25         |        ±100         |   ±400
-        #   -------------------------------------------------------------
-        # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
-        self.MAX_TORQUE_FACTOR = 100
-        self.MIN_TORQUE_FACTOR = 25
+    STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
+    STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
+    STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
 
+    # Increasing STEER_MAX increases resolution (number of torque steps).
+    # MAX_TORQUE_FACTOR limits the effective range (percent of STEER_MAX).
+    # Example of total available steps:
+  #   -------------------------------------------------------------
+    #   STEER_MAX | MAX_TORQUE_FACTOR | Effective Range (±R) | Steps (±)
+    #   -----------+-------------------+---------------------+------------
+    #      100     |       100         |        ±100         |   ±100
+    #      200     |        50         |        ±100         |   ±200
+    #      400     |        25         |        ±100         |   ±400
+    #   -------------------------------------------------------------
+    # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
+    MAX_TORQUE_FACTOR = 100
+    MIN_TORQUE_FACTOR = 25
+
+    def __init__(self, CP):
+      pass
 
 
 @dataclass
@@ -89,7 +100,6 @@ class LKAS_LIMITS:
   # Peugeot 3008
   # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
   # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
-  STEER_THRESHOLD = 5
   DISABLE_SPEED = 50    # kph
   ENABLE_SPEED = 50     # kph
 

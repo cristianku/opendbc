@@ -1,11 +1,12 @@
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.psa.values import CAR, DBC, CarControllerParams, LKAS_LIMITS
+from opendbc.car.psa.values import CAR, DBC, CarControllerParams
+# , LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 import copy
-# from openpilot.common.filter_simple import FirstOrderFilter
-# from opendbc.car import DT_CTRL
+from opendbc.car.common.filter_simple import FirstOrderFilter  # NB: version inside opendbc (like Toyota), NOT openpilot.common
+from opendbc.car import DT_CTRL
 # from collections import deque
 
 
@@ -14,7 +15,24 @@ TransmissionType = structs.CarParams.TransmissionType
 
 
 class CarState(CarStateBase):
-  def update(self, can_parsers) -> structs.CarState:
+  # Low-pass filter for the raw (noisy) DRIVER_TORQUE signal.
+  # The filter must live in __init__ (self.) so its state survives between update() calls.
+  # rc = tau [s]: reaches 63% of a step after tau, ~95% after 3*tau.
+  #   rc=0.05 -> kills most frame-to-frame noise, adds ~150 ms to full response. Tune in car.
+  # Activate together with the import at the top, AFTER the comparable unit scale (*3?) is confirmed.
+  def __init__(self, CP, CP_SP):
+    super().__init__(CP, CP_SP)
+    self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
+
+  # #HANDS-FREE - START: state for the EPS silent-dropout safety net
+  # def __init__(self, CP, CP_SP):
+  #   super().__init__(CP, CP_SP)
+  #   self.eps_state_last = 0
+  #   self.eps_fault_frames = 0
+  # #HANDS-FREE - END
+
+  # def update(self, can_parsers) -> structs.CarState:
+  def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
     cp = can_parsers[Bus.main]
     cp_adas = can_parsers[Bus.adas]
     cp_cam = can_parsers[Bus.cam]
@@ -30,7 +48,7 @@ class CarState(CarStateBase):
     )
     ret.yawRate = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VITESSE_LACET_BRUTE'] * CV.DEG_TO_RAD
     # versione cristian ret.standstill = cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'] < 0.1
-    # versione elkoled 
+    # versione elkoled
     ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
 
     # gas
@@ -70,9 +88,11 @@ class CarState(CarStateBase):
     if self.CP.carFingerprint in ( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER ):
       ret.genericToggle = (int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"]) == 1) # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
 
-      ret.steeringTorque  = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10
-      ret.steeringTorqueEps = 0.0
-      # ret.steeringPressed = (self._drv_press_cnt >= self._drv_press_frames)
+      # ret.steeringTorque  = cp.vl['STEERING']['DRIVER_TORQUE'] * 3   # raw (noisy) - sostituita dalla versione filtrata sotto
+      # ret.steeringTorqueEps = 0.0
+      # Low-pass sul DRIVER_TORQUE rumoroso (FirstOrderFilter, rc=0.05s ~150ms):
+      ret.steeringTorque = self.driver_torque_filter.update(cp.vl['STEERING']['DRIVER_TORQUE']) * 3
+      ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10 * 3
 
     else:
       ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
@@ -81,7 +101,9 @@ class CarState(CarStateBase):
     if self.CP.carFingerprint in ( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER ):
       # Peugeot 3008: EPS_TORQUE represents only driver-applied torque (no motor assist).
       # The signal is already smoothed by the EPS ECU, so update_steering_pressed is unnecessary.
-      ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
+      # ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
+      # ret.steeringPressed = abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE
+      ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
     else:
       ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
 
