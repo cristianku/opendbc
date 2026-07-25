@@ -47,6 +47,28 @@ class CarControllerParams:
     MAX_TORQUE_FACTOR = 100
     MIN_TORQUE_FACTOR = 25
 
+    # [CLAUDE eps-rearm] - START
+    # L'EPS smette di assistere dopo un po' di attivazione continua (visto in
+    # autostrada, rettilineo lungo = richiesta di coppia bassa e costante).
+    # Farlo uscire da ACTIVE per una frazione di secondo lo fa ri-armare.
+    # Solo in rettilineo e a velocita' autostradale: in curva perdere l'assist
+    # per 100 ms si sentirebbe.
+    # ATTENZIONE: questo e' l'enum del messaggio TX LANE_KEEP_ASSIST (1010):
+    #   0 UNAVAILABLE, 1 UNSELECTED, 2 SELECTED, 3 AUTHORIZED, 4 ACTIVE, 5 DEFECT
+    # NON quello RX di IS_DAT_DIRA.EPS_STATE_LKA (1173), che e' shiftato:
+    #   0 Unauthorised, 1 Authorised, 2 Available, 3 Active, 4 Defect
+    # STATUS mandato durante l'impulso: 2 SELECTED e' il gradino da cui _activate_eps
+    # risale sempre (quindi provato in auto). Se l'EPS non si ri-arma, provare 1
+    # UNSELECTED, poi 0 UNAVAILABLE (ultima spiaggia: sa di "sistema guasto", DTC).
+    EPS_REARM_STATUS = 2
+    EPS_REARM_PERIOD = 5.0            # s di EPS attivo prima di un impulso
+    EPS_REARM_LENGTH = 0.10           # s di impulso (2 msg LKA @20Hz)
+    EPS_REARM_MAX_CURVATURE = 0.001   # 1/m sulla curvatura richiesta -> raggio > 1000 m
+    EPS_REARM_MAX_ANGLE = 10.0        # deg volante, guardia per non scattare in curva
+    # EPS_REARM_MIN_SPEED = 22.0      # m/s (~80 km/h), solo autostrada
+    EPS_REARM_MIN_SPEED_KPH = 54.0    # km/h, solo autostrada (convertito in m/s nel CarController)
+    # [CLAUDE eps-rearm] - END
+
     def __init__(self, CP):
       pass
 

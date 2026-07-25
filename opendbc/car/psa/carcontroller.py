@@ -1,5 +1,9 @@
 from opendbc.can.packer import CANPacker
-from opendbc.car import Bus, structs, make_tester_present_msg
+# [CLAUDE eps-rearm] - START
+# from opendbc.car import Bus, structs, make_tester_present_msg
+from opendbc.car import Bus, structs, make_tester_present_msg, DT_CTRL
+from opendbc.car.common.conversions import Conversions as CV
+# [CLAUDE eps-rearm] - END
 from opendbc.car.carlog import carlog
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
@@ -36,12 +40,37 @@ class CarController(CarControllerBase):
     self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
     self.driver_torque_counter = 0
     self.next_driver_torque = random.randint(500, 800)  # 5–8 s @100 Hz
+    # [CLAUDE eps-rearm] - START
+    # Contatori in "invii LKA" (uno ogni STEER_STEP frame -> 20 Hz).
+    self.eps_rearm_step = DT_CTRL * self.params.STEER_STEP                                        # 0.05 s
+    self.eps_rearm_period = int(self.params.EPS_REARM_PERIOD / self.eps_rearm_step)                # 100 invii = 5 s
+    self.eps_rearm_len = max(1, int(round(self.params.EPS_REARM_LENGTH / self.eps_rearm_step)))    # 2 invii = 100 ms
+    self.eps_rearm_counter = 0   # invii LKA con EPS attivo dall'ultimo impulso
+    self.eps_rearm_pulse = 0     # invii LKA rimanenti dell'impulso in corso
+    # Soglia in km/h in values.py, convertita in m/s una volta sola qui (vEgo e' in m/s).
+    self.eps_rearm_min_speed = self.params.EPS_REARM_MIN_SPEED_KPH * CV.KPH_TO_MS    # 80 km/h = 22.2 m/s
+    # [CLAUDE eps-rearm] - END
 
   def _reset_lat_state(self):
     self.status = 2
     self.apply_torque_factor = 0
     self.takeover_req_sent = False
     self.lat_activation_frame = 0
+    # [CLAUDE eps-rearm] - START
+    self.eps_rearm_counter = 0
+    self.eps_rearm_pulse = 0
+    # [CLAUDE eps-rearm] - END
+
+  # [CLAUDE eps-rearm] - START
+  def _going_straight(self, CC, CS):
+    # Rettilineo + velocita' autostradale + mani a posto: l'unica condizione in cui
+    # mollare l'assist per una frazione di secondo e' innocuo.
+    return (abs(CC.actuators.curvature) < self.params.EPS_REARM_MAX_CURVATURE and
+            abs(CS.out.steeringAngleDeg) < self.params.EPS_REARM_MAX_ANGLE and
+            # CS.out.vEgo > self.params.EPS_REARM_MIN_SPEED and   # era in m/s
+            CS.out.vEgo > self.eps_rearm_min_speed and
+            not CS.out.steeringPressed)
+  # [CLAUDE eps-rearm] - END
 
   def _activate_eps(self, eps_active):
     # Save the frame number when the LKA (steering assist) button is first pressed on the car
@@ -99,6 +128,20 @@ class CarController(CarControllerBase):
             self.lat_activation_frame = 0
             self.status = 4 # 4: EPS ACTIVE
 
+            # [CLAUDE eps-rearm] - START
+            # Ogni EPS_REARM_PERIOD di assist ininterrotto in rettilineo, arma un
+            # impulso breve fuori da ACTIVE (EPS_REARM_STATUS) per far ri-armare l'EPS.
+            # Il contatore avanza solo qui (EPS attivo), quindi i 5 s ripartono dalla
+            # riattivazione. Se allo scadere non siamo in rettilineo resta carico e
+            # l'impulso parte al primo rettilineo utile.
+            if self.eps_rearm_pulse == 0:
+              self.eps_rearm_counter += 1
+              if self.eps_rearm_counter >= self.eps_rearm_period and self._going_straight(CC, CS):
+                self.eps_rearm_counter = 0
+                self.eps_rearm_pulse = self.eps_rearm_len
+                carlog.error(f"PSA_DEBUG eps_rearm curv={CC.actuators.curvature:.5f} angle={CS.out.steeringAngleDeg:.1f} v={CS.out.vEgo:.1f}")
+            # [CLAUDE eps-rearm] - END
+
             if (CS.out.steeringPressed):
               #### DRIVER STEERING DETECTED
               # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
@@ -149,7 +192,20 @@ class CarController(CarControllerBase):
         else:
           can_torque = 0
         # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status))
-        can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status,apply_new_torque_scaled))
+        # [CLAUDE eps-rearm] - START
+        # STATUS locale: self.status resta 4 e la macchina a stati 2->3->4 di
+        # _activate_eps non viene sporcata. Il decremento sta QUI (un invio LKA),
+        # cosi' l'impulso finisce sempre anche se l'EPS cade a meta'.
+        # TORQUE e TORQUE_FACTOR continuano a viaggiare: l'EPS con STATUS=1 li ignora,
+        # ma il rate-limiter del panda (lka_active = torque_factor != 0) non si resetta.
+        send_status = self.status
+        if self.eps_rearm_pulse > 0:
+          self.eps_rearm_pulse -= 1
+          # send_status = 1  # 1: UNSELECTED
+          send_status = self.params.EPS_REARM_STATUS  # default 2: SELECTED (enum TX 1010)
+        # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status,apply_new_torque_scaled))
+        can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, send_status, apply_new_torque_scaled))
+        # [CLAUDE eps-rearm] - END
         # Remember the effective (scaled) value for the next frame's rate limit.
         self.apply_torque_last = apply_new_torque_scaled
         self.apply_can_torque_last = can_torque
