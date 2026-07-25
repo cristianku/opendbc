@@ -57,12 +57,25 @@ class CarControllerParams:
     #   0 UNAVAILABLE, 1 UNSELECTED, 2 SELECTED, 3 AUTHORIZED, 4 ACTIVE, 5 DEFECT
     # NON quello RX di IS_DAT_DIRA.EPS_STATE_LKA (1173), che e' shiftato:
     #   0 Unauthorised, 1 Authorised, 2 Available, 3 Active, 4 Defect
-    # STATUS mandato durante l'impulso: 2 SELECTED e' il gradino da cui _activate_eps
-    # risale sempre (quindi provato in auto). Se l'EPS non si ri-arma, provare 1
-    # UNSELECTED, poi 0 UNAVAILABLE (ultima spiaggia: sa di "sistema guasto", DTC).
-    EPS_REARM_STATUS = 2
+    # STATUS mandato durante l'impulso.
+    # PROVATO IN AUTO 2026-07-25 (route ~t=459.7): con 2 SELECTED per 100 ms l'EPS
+    # NON reagisce affatto - EPS_STATE_LKA resta piatto su 3 (Active). Motivo: in
+    # guida normale la telecamera oscilla tra 2/3/4 di continuo (corsia rilevata o
+    # no), quindi l'EPS per progetto NON esce dalla sessione LKA quando vede un 2.
+    # La scala 2->3->4 di _activate_eps dimostra solo che 2 funziona come gradino
+    # verso l'ALTO partendo da stato non attivo, non che disattivi partendo da ACTIVE.
+    # 1 UNSELECTED = "il guidatore ha spento la funzione": l'unico che chiude la
+    # sessione. Se non basta nemmeno lui, resta 0 UNAVAILABLE (ultima spiaggia: sa
+    # di "sistema guasto", possibile DTC).
+    # EPS_REARM_STATUS = 2            # ignorato dall'EPS, vedi sopra
+    EPS_REARM_STATUS = 1
     EPS_REARM_PERIOD = 5.0            # s di EPS attivo prima di un impulso
-    EPS_REARM_LENGTH = 0.10           # s di impulso (2 msg LKA @20Hz)
+    # 100 ms erano 2 soli invii: sotto il debounce tipico di una ECU di sterzo (3-5
+    # frame consecutivi), e con IS_DAT_DIRA a ~10 Hz ci cadeva dentro un solo
+    # campione di risposta, quindi nemmeno misurabile. Se 0.25 funziona, riprovare
+    # ad accorciare (0.15, 0.10) per ridurre il buco al minimo accettato dall'EPS.
+    # EPS_REARM_LENGTH = 0.10         # s di impulso (2 msg LKA @20Hz)
+    EPS_REARM_LENGTH = 0.25           # s di impulso (5 msg LKA @20Hz)
     # Valori PERMISSIVI per i test (difficile trovare rettilinei veri): l'impulso
     # scatta anche in curva larga. Scostamento laterale nel caso peggiore (assist a
     # zero per 0.25 s = impulso + riattivazione): ~3.5 cm a 54 km/h, ~10 cm a 90 km/h.
