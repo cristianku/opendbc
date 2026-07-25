@@ -63,8 +63,16 @@ class CarControllerParams:
     EPS_REARM_STATUS = 2
     EPS_REARM_PERIOD = 5.0            # s di EPS attivo prima di un impulso
     EPS_REARM_LENGTH = 0.10           # s di impulso (2 msg LKA @20Hz)
-    EPS_REARM_MAX_CURVATURE = 0.001   # 1/m sulla curvatura richiesta -> raggio > 1000 m
-    EPS_REARM_MAX_ANGLE = 10.0        # deg volante, guardia per non scattare in curva
+    # Valori PERMISSIVI per i test (difficile trovare rettilinei veri): l'impulso
+    # scatta anche in curva larga. Scostamento laterale nel caso peggiore (assist a
+    # zero per 0.25 s = impulso + riattivazione): ~3.5 cm a 54 km/h, ~10 cm a 90 km/h.
+    # Per l'uso normale rimettere 0.001 / 5.0 (raggio > 1000 m, solo rettilineo).
+    # EPS_REARM_MAX_CURVATURE = 0.001 # 1/m sulla curvatura richiesta -> raggio > 1000 m
+    EPS_REARM_MAX_CURVATURE = 0.005   # 1/m -> raggio > 200 m (curva larga, 13.6 deg volante)
+    # NB: le due soglie vanno alzate INSIEME, altrimenti l'angolo diventa il vincolo
+    # vero (10 deg volante = curvatura 0.0037) e la curvatura sopra non ha effetto.
+    # EPS_REARM_MAX_ANGLE = 10.0      # deg volante (= curvatura 0.0037, raggio 271 m)
+    EPS_REARM_MAX_ANGLE = 20.0        # deg volante, resta solo rete di sicurezza
     # EPS_REARM_MIN_SPEED = 22.0      # m/s (~80 km/h), solo autostrada
     EPS_REARM_MIN_SPEED_KPH = 54.0    # km/h, solo autostrada (convertito in m/s nel CarController)
     # [CLAUDE eps-rearm] - END
