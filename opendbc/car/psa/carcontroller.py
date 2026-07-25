@@ -79,7 +79,6 @@ class CarController(CarControllerBase):
       self.lat_activation_frame = self.frame
       # self.takeover_req_sent = False
 
-
     if not eps_active: # and not CS.out.steeringPressed:
       #######
       # Alarm - Takeover request!
@@ -88,7 +87,7 @@ class CarController(CarControllerBase):
       # if not self.takeover_req_sent and self.frame % 2 == 0: # 50 Hz
       #   if (self.frame - self.lat_activation_frame) > 10:
         # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-          # self.takeover_req_sent = True
+        # self.takeover_req_sent = True
 
       ######
       # EPS activation sequence 2->3->4 to re-engage
@@ -292,15 +291,15 @@ class CarController(CarControllerBase):
     #     # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
         self.steering_hold_counter += 1
         if self.steering_hold_counter >= self.next_steering_hold:
-          # can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+          can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
           self.steering_hold_counter = 0
           self.next_steering_hold = random.randint(8, 12)
     #     # --- DRIVER TORQUE (ogni 5–8 s) ---
         self.driver_torque_counter += 1
         if self.driver_torque_counter >= self.next_driver_torque:
-          # msg = CS.steering
-          # counter = (msg['COUNTER'] + 1) % 16
-          # can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
+          msg = CS.steering
+          counter = (msg['COUNTER'] + 1) % 16
+          can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
           self.driver_torque_counter = 0
           self.next_driver_torque = random.randint(500, 800)
 
