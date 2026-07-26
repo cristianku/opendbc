@@ -135,13 +135,13 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
   values = dict(HS2_DYN_MDD_ETAT_2F6)
   values['REQUEST_TAKEOVER'] = type
   values['PROCESS_COUNTER_4B_ACC2'] = (int(values.get('PROCESS_COUNTER_4B_ACC2', 0)) + 1) % 16
-  msg = packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
+  address, dat, bus = packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
   # stesso conto di psa_checksum() con chk_ini di default 0xB: azzera il nibble del
   # checksum (basso, byte 6) e somma i nibble di tutto il frame
-  d = bytearray(msg.dat)
+  d = bytearray(dat)
   d[6] &= 0xF0
   d[6] |= (0xB - sum((b >> 4) + (b & 0xF) for b in d)) & 0xF
-  return CanData(msg.address, bytes(d), msg.src)
+  return CanData(address, bytes(d), bus)
 # [CLAUDE takeover-test] - END
 
 
@@ -167,4 +167,3 @@ def create_disable_radar():
   # Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
   # Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
   # Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
-

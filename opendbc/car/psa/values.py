@@ -118,20 +118,11 @@ class CarControllerParams:
     # HS2_DYN_MDD_ETAT_2F6. False durante il test radar-disable-only, così
     # openpilot non trasmette alcun 0x2F6 senza alterare i timing sottostanti.
     ENABLE_TAKEOVER_REQUEST = False
-    # TEST: se l'EPS non e' tornato ACTIVE entro questo tempo dall'inizio della
-    # scaletta, chiediamo al quadro il messaggio di takeover (REQUEST_TAKEOVER in
-    # HS2_DYN_MDD_ETAT_2F6, bus ADAS).
-    # ATTENZIONE: la scaletta manda il primo STATUS=4 dopo 300 ms (2 gradini da 150 ms)
-    # e l'EPS risponde 50-150 ms piu' tardi, quindi con 0.2 s il messaggio parte a OGNI
-    # impulso di re-arm (~12 volte al minuto). Per farlo scattare solo quando la
-    # riattivazione fallisce davvero serve >= 1.0 s. 0 = disattivato.
+    # Timeout dalla prima chiamata a _activate_eps(), valido sia alla prima
+    # attivazione sia durante il rearm. 0 = disattivato.
     EPS_TAKEOVER_AFTER = 0.2
     EPS_TAKEOVER_TYPE = 1             # 1 = richiesta non critica, 2 = critica
-    # MISURATO sul segmento 4: il radar ARTIV manda 0x2F6 a 50.0 Hz esatti (3001 frame
-    # in 60 s) con REQUEST_TAKEOVER sempre a 0. Mandare noi a 20 Hz vorrebbe dire un
-    # nostro frame ogni 2.5 suoi, quindi un "1" isolato: il quadro va tenuto su.
-    # Percio' il flag accende un invio a 50 Hz (frame % 2) per questa durata.
-    EPS_TAKEOVER_HOLD = 1.0           # s di invio a 50 Hz per ogni richiesta
+    # Il warning viene inviato a 50 Hz finché l'EPS non torna ACTIVE.
     # TEST DA FERMO: fa partire la richiesta a intervalli fissi anche quando openpilot
     # non sta sterzando. Serve perche' da fermo siamo sotto minSteerSpeed (50 km/h),
     # quindi latActive e' falso, l'EPS non si arma mai, la riattivazione non fallisce
