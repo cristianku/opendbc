@@ -114,6 +114,10 @@ class CarControllerParams:
     # [CLAUDE eps-rearm-ladder] - END
 
     # [CLAUDE takeover-test] - START
+    # Master switch per la trasmissione di REQUEST_TAKEOVER tramite
+    # HS2_DYN_MDD_ETAT_2F6. False durante il test radar-disable-only, così
+    # openpilot non trasmette alcun 0x2F6 senza alterare i timing sottostanti.
+    ENABLE_TAKEOVER_REQUEST = False
     # TEST: se l'EPS non e' tornato ACTIVE entro questo tempo dall'inizio della
     # scaletta, chiediamo al quadro il messaggio di takeover (REQUEST_TAKEOVER in
     # HS2_DYN_MDD_ETAT_2F6, bus ADAS).
@@ -163,7 +167,7 @@ class CarControllerParams:
     # USCITA: rimetti False e ricarica -> senza tester present il timer S3 dell'ECU
     # scade in ~5 s e il radar riprende a trasmettere. Poi ciclo di chiave.
     # Da usare SOLO fermi in parcheggio. Default False: non parte mai per sbaglio.
-    DISABLE_RADAR_TEST = False
+    DISABLE_RADAR_TEST = True
     # Ritardo dall'inizio del giro prima di zittire il radar: i primi secondi restano
     # come baseline col radar vivo, cosi' il confronto prima/dopo si fa dentro lo
     # stesso log invece che con una route di un altro giorno. 0 = subito.

@@ -367,7 +367,7 @@ class CarController(CarControllerBase):
     # blocco lo consuma e si spegne da solo.
     if self.takeover_req_frames > 0:
       self.takeover_req_frames -= 1
-      if self.frame % 2 == 0:
+      if self.params.ENABLE_TAKEOVER_REQUEST and self.frame % 2 == 0:
         can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.params.EPS_TAKEOVER_TYPE))
     # [CLAUDE takeover-test] - END
 
