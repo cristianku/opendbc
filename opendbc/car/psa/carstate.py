@@ -120,8 +120,8 @@ class CarState(CarStateBase):
     self.steering = copy.copy(cp.vl['STEERING'])
     self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
 
-    # Risposta diagnostica ARTIV su 0x696. I quattro byte bastano sia per la
-    # risposta positiva 06 50 02 ... sia per quella negativa 03 7F 10 <NRC>.
+    # Risposta diagnostica ARTIV su 0x696. I quattro segnali bastano sia per
+    # una risposta positiva 50 xx sia per quella negativa 7F 10 <NRC>.
     # Profilo ECU: https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
     artiv_services = cp_adas.vl_all["Rep_Diag_ARTIV"]["UDS_SERVICE"]
     self.artiv_diag_response_updated = len(artiv_services) > 0

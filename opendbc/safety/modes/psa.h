@@ -141,6 +141,15 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     }
   }
 
+  // Il probe ARTIV può inviare soltanto 02 10 03 00 00 00 00 00.
+  if (msg->addr == PSA_REQ_DIAG_ARTIV) {
+    bool is_artiv_extended_session_probe = (GET_BYTES(msg, 0, 4) == 0x00031002U) &&
+                                           (GET_BYTES(msg, 4, 4) == 0x0U);
+    if (!is_artiv_extended_session_probe) {
+      tx = false;
+    }
+  }
+
   return tx;
 }
 
@@ -156,13 +165,11 @@ static safety_config psa_init(uint16_t param) {
     // panda scarta il frame e non arriva mai sul bus. Da togliere a test finito.
     {PSA_HS2_DYN_MDD_ETAT_2F6, PSA_ADAS_BUS, 8, .check_relay = false}, // request takeover
     // [CLAUDE takeover-test] - END
-    // [CLAUDE radar-disable] - START
-    // Serve al TEST DA FERMO che mette l'ARTIV in sessione di programmazione: lo
-    // stesso ID 0x6B6 porta sia il frame di disable sia il tester present a 1 Hz
-    // (entrambi 8 byte). Senza questa riga il panda li scarta entrambi.
-    // Il test si accende con DISABLE_RADAR_TEST in values.py (default False).
-    {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 8, .check_relay = false}, // diagnostica radar (disable + tester present)
-    // [CLAUDE radar-disable] - END
+    // [artiv-diag-probe] - START
+    // Consente il singolo frame 0x6B6 del probe extendedSession 10 03.
+    // ARTIV_DIAG_PROBE in values.py abilita il test da fermo.
+    {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 8, .check_relay = false}, // diagnostica ARTIV
+    // [artiv-diag-probe] - END
     // {PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .check_relay = false}, // resume acc
     // {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 8, .check_relay = false},        // radar diagnostics TODO: check if reduce to 3 is ok
     // {PSA_HS2_SUPV_ARTIV_796, PSA_ADAS_BUS, 8, .check_relay = false},    // radar emulation

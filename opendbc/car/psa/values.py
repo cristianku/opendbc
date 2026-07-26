@@ -115,7 +115,7 @@ class CarControllerParams:
 
     # [takeover-test] - START
     # Master switch per la trasmissione di REQUEST_TAKEOVER tramite
-    # HS2_DYN_MDD_ETAT_2F6. False durante il test radar-disable-only, così
+    # HS2_DYN_MDD_ETAT_2F6. False durante il probe diagnostico ARTIV, così
     # openpilot non trasmette alcun 0x2F6 senza alterare i timing sottostanti.
     ENABLE_TAKEOVER_REQUEST = False
     # Timeout dalla prima chiamata a _activate_eps(), valido sia alla prima
@@ -146,31 +146,19 @@ class CarControllerParams:
     EPS_FAULT_HOLD = 1.5              # s
     # [eps-fault] - END
 
-    # [radar-disable] - START
-    # TEST DA FERMO. Mette l'ARTIV in sessione di programmazione (vedi
-    # psacan.create_disable_radar) e la tiene giu' con un tester present a 1 Hz.
-    # Serve per verificare se, zittito il radar, openpilot diventa l'unico mittente
-    # di HS2_DYN_MDD_ETAT_2F6 e quindi controlla davvero REQUEST_TAKEOVER.
-    # COSA SUCCEDE: dal bus ADAS spariscono 0x2B6 (50 Hz), 0x2F6 (50 Hz),
-    # 0x4F6 (10 Hz) e 0x796 (1 Hz) -> niente ACC, niente AEB, e il BSI vede una
-    # centralina ADAS che non risponde (attesi DTC e spie sul quadro).
-    # NB: noi emuliamo solo 2F6 e a raffica, non 4F6 ne' 796, quindi il buco resta.
-    # USCITA: rimetti False e ricarica -> senza tester present il timer S3 dell'ECU
-    # scade in ~5 s e il radar riprende a trasmettere. Poi ciclo di chiave.
-    # Da usare SOLO fermi in parcheggio. Default False: non parte mai per sbaglio.
-    DISABLE_RADAR_TEST = False
-    # Ritardo dall'inizio del giro prima di zittire il radar: i primi secondi restano
-    # come baseline col radar vivo, cosi' il confronto prima/dopo si fa dentro lo
-    # stesso log invece che con una route di un altro giorno. 0 = subito.
-    DISABLE_RADAR_AFTER = 10.0        # s
-    # Attesa massima della risposta 50 02 su 0x696. PyPSADiag considera aperta la
-    # programming session soltanto dopo quella risposta:
+    # [artiv-diag-probe] - START
+    # TEST DA FERMO sulla Peugeot 3008. Dopo il ritardo invia una sola
+    # DiagnosticSessionControl extendedSession (10 03) ad ARTIV su 0x6B6 e
+    # attende la risposta su 0x696. Non invia la programmingSession (10 02),
+    # non manda TesterPresent e non modifica la telecodifica. Serve soltanto
+    # a verificare indirizzo e bus.
+    ARTIV_DIAG_PROBE = True
+    # Ritardo dall'avvio del controller prima del probe.
+    ARTIV_DIAG_PROBE_AFTER = 10.0      # s
+    # Attesa massima della risposta 50 03 su 0x696:
     # https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
-    RADAR_DIAG_RESPONSE_TIMEOUT = 3.0  # s
-    # Invia una sola REQUEST_TAKEOVER dopo questo ritardo dal programming mode.
-    # 0 = test disattivato.
-    RADAR_TAKEOVER_TEST_AFTER = 3.0   # s
-    # [radar-disable] - END
+    ARTIV_DIAG_RESPONSE_TIMEOUT = 3.0  # s
+    # [artiv-diag-probe] - END
     # Valori PERMISSIVI per i test (difficile trovare rettilinei veri): l'impulso
     # scatta anche in curva larga. Scostamento laterale nel caso peggiore (assist a
     # zero per 0.25 s = impulso + riattivazione): ~3.5 cm a 54 km/h, ~10 cm a 90 km/h.
