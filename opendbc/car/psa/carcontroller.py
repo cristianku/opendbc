@@ -359,48 +359,48 @@ class CarController(CarControllerBase):
     # diventa effettiva solo dopo la risposta positiva 50 02 su 0x696.
     # Profilo ECU: https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
     # Perde ACC e AEB finche' e' attivo: vedi il commento esteso in values.py.
-    if self.params.DISABLE_RADAR_TEST and self.frame >= self.radar_disable_frame:
+    if self.params.DISABLE_RADAR_TEST:  #and self.frame >= self.radar_disable_frame:
       if not self.radar_disable_req_sent:
         can_sends.append(create_disable_radar())
         self.radar_disable_req_sent = True
         self.radar_disable_sent_frame = self.frame
         carlog.error("PSA_DEBUG radar_disable: richiesta programming session inviata ad ARTIV")
 
-      elif not self.radar_disabled and not self.radar_disable_failed:
-        if CS.artiv_diag_response_updated:
-          response = CS.artiv_diag_response
-          service = response["UDS_SERVICE"]
-          subfunction = response["UDS_SUBFUNCTION"]
+      # elif not self.radar_disabled and not self.radar_disable_failed:
+      #   if CS.artiv_diag_response_updated:
+      #     response = CS.artiv_diag_response
+      #     service = response["UDS_SERVICE"]
+      #     subfunction = response["UDS_SUBFUNCTION"]
 
-          if response["ISO_TP_LENGTH"] >= 2 and service == 0x50 and subfunction == 0x02:
-            self.radar_disabled = True
-            self.radar_disable_confirmed_frame = self.frame
-            carlog.error("PSA_DEBUG radar_disable: ARTIV ha confermato programming session (50 02)")
-          elif response["ISO_TP_LENGTH"] >= 3 and service == 0x7F and subfunction == 0x10:
-            nrc = response["UDS_NRC"]
-            if nrc == 0x78:
-              # ResponsePending: estende il timeout in attesa della risposta finale.
-              self.radar_disable_sent_frame = self.frame
-              carlog.error("PSA_DEBUG radar_disable: ARTIV response pending (7F 10 78)")
-            else:
-              self.radar_disable_failed = True
-              carlog.error(f"PSA_DEBUG radar_disable: ARTIV ha rifiutato programming session (7F 10 {nrc:02X})")
+      #     if response["ISO_TP_LENGTH"] >= 2 and service == 0x50 and subfunction == 0x02:
+      #       self.radar_disabled = True
+      #       self.radar_disable_confirmed_frame = self.frame
+      #       carlog.error("PSA_DEBUG radar_disable: ARTIV ha confermato programming session (50 02)")
+      #     elif response["ISO_TP_LENGTH"] >= 3 and service == 0x7F and subfunction == 0x10:
+      #       nrc = response["UDS_NRC"]
+      #       if nrc == 0x78:
+      #         # ResponsePending: estende il timeout in attesa della risposta finale.
+      #         self.radar_disable_sent_frame = self.frame
+      #         carlog.error("PSA_DEBUG radar_disable: ARTIV response pending (7F 10 78)")
+      #       else:
+      #         self.radar_disable_failed = True
+      #         carlog.error(f"PSA_DEBUG radar_disable: ARTIV ha rifiutato programming session (7F 10 {nrc:02X})")
 
-        if (not self.radar_disabled and not self.radar_disable_failed
-            and self.frame - self.radar_disable_sent_frame >= self.radar_diag_timeout_frames):
-          self.radar_disable_failed = True
-          carlog.error("PSA_DEBUG radar_disable: timeout, nessuna risposta 50 02 da ARTIV")
+      #   if (not self.radar_disabled and not self.radar_disable_failed
+      #       and self.frame - self.radar_disable_sent_frame >= self.radar_diag_timeout_frames):
+      #     self.radar_disable_failed = True
+      #     carlog.error("PSA_DEBUG radar_disable: timeout, nessuna risposta 50 02 da ARTIV")
 
-      elif self.radar_disabled:
-        if (self.frame - self.radar_disable_confirmed_frame) % 100 == 0:
+      if self.radar_disable_req_sent:
+        if (self.frame > self.radar_disable_confirmed_frame) and self.frame % 100 == 0:
           # PyPSADiag usa 3E 80: TesterPresent con risposta positiva soppressa.
-          can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=True))
+          can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
-        if (self.params.RADAR_TAKEOVER_TEST_AFTER > 0 and not self.radar_takeover_test_sent
-            and (self.frame - self.radar_disable_confirmed_frame) * DT_CTRL >= self.params.RADAR_TAKEOVER_TEST_AFTER):
-          can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.params.EPS_TAKEOVER_TYPE))
-          self.radar_takeover_test_sent = True
-          carlog.error("PSA_DEBUG radar_disable: inviato takeover test dopo programming mode")
+        # if (self.params.RADAR_TAKEOVER_TEST_AFTER > 0 and not self.radar_takeover_test_sent
+        #     and (self.frame - self.radar_disable_confirmed_frame) * DT_CTRL >= self.params.RADAR_TAKEOVER_TEST_AFTER):
+        #   can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.params.EPS_TAKEOVER_TYPE))
+        #   self.radar_takeover_test_sent = True
+        #   carlog.error("PSA_DEBUG radar_disable: inviato takeover test dopo programming mode")
     # [radar-disable] - END
 
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
