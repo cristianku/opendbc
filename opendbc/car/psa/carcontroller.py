@@ -17,14 +17,16 @@ from opendbc.car.psa.psacan import (create_lka_steering, create_driver_torque, c
 # [radar-disable] - END
 # [takeover-test] - END
 from opendbc.car.psa.values import CarControllerParams, CAR
-# from cereal import messaging
+from cereal import messaging
 # from numpy import interp
 
 import random
+
+from opendbc.sunnypilot.car.hyundai.tests.test_tuning_controller import CS
 # import math
 
 SteerControlType = structs.CarParams.SteerControlType
-# sm = messaging.SubMaster(['modelV2'], poll='modelV2')
+sm = messaging.SubMaster(['modelV2'], poll='modelV2')
 
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
@@ -428,20 +430,24 @@ class CarController(CarControllerBase):
     # torque = max(-400, min(torque_nm, 1000))
 
     # braking = accel_cmd < brake_accel and not CS.out.gasPressed
-    # if self.CP.openpilotLongitudinalControl:
-    #   if CC.hudControl.leadVisible:
-    #     sm.update(0)
-    #     leads_v3 = sm['modelV2'].leadsV3
-    #     if leads_v3 and leads_v3[0].x:
-    #       r = leads_v3[0].x[0] / (5 + CS.out.vEgo)
-    #       if self.bars > 3:  # initialize from "no lead"
-    #         self.bars = min(3, int(r))
-    #       elif r > self.bars + 1.2:
-    #         self.bars = min(3, self.bars + 1)
-    #       elif r < self.bars - 0.2:
-    #         self.bars = max(0, self.bars - 1)
-    #   else:
-    #     self.bars = 4
+    if self.CP.openpilotLongitudinalControl:
+      if CC.hudControl.leadVisible:
+        sm.update(0)
+        leads_v3 = sm['modelV2'].leadsV3
+
+        if leads_v3 and leads_v3[0].x:
+          lead_distance = leads_v3[0].x[0]
+          time_gap = lead_distance / max(CS.out.vEgo, 3.0)
+          HYSTERESIS = 0.2
+          if self.bars > 3:
+            self.bars = min(3, int(time_gap))
+          elif time_gap > self.bars + 1 + HYSTERESIS:
+            self.bars = min(3, self.bars + 1)
+          elif time_gap < self.bars - HYSTERESIS:
+            self.bars = max(0, self.bars - 1)
+
+      else:
+        self.bars = 4
 
     #   # disable radar ECU by setting to programming mode
     #   if self.radar_disabled == 0:

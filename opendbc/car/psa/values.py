@@ -158,7 +158,7 @@ class CarControllerParams:
     # USCITA: rimetti False e ricarica -> senza tester present il timer S3 dell'ECU
     # scade in ~5 s e il radar riprende a trasmettere. Poi ciclo di chiave.
     # Da usare SOLO fermi in parcheggio. Default False: non parte mai per sbaglio.
-    DISABLE_RADAR_TEST = True
+    DISABLE_RADAR_TEST = False
     # Ritardo dall'inizio del giro prima di zittire il radar: i primi secondi restano
     # come baseline col radar vivo, cosi' il confronto prima/dopo si fa dentro lo
     # stesso log invece che con una route di un altro giorno. 0 = subito.
