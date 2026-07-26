@@ -10,7 +10,11 @@ from opendbc.car.interfaces import CarControllerBase
 # from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 # [CLAUDE takeover-test] - START
 # from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc,  create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
-from opendbc.car.psa.psacan import (create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover)
+# [CLAUDE radar-disable] - START
+# from opendbc.car.psa.psacan import (create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover)
+from opendbc.car.psa.psacan import (create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover,
+                                    create_disable_radar)
+# [CLAUDE radar-disable] - END
 # [CLAUDE takeover-test] - END
 from opendbc.car.psa.values import CarControllerParams, CAR
 # from cereal import messaging
@@ -71,7 +75,12 @@ class CarController(CarControllerBase):
     # e lo consuma da solo (il radar manda lo stesso ID a 50 Hz, vedi values.py).
     self.takeover_req_frames = 0
     self.eps_takeover_hold_frames = int(round(self.params.EPS_TAKEOVER_HOLD / DT_CTRL))  # 100 frame = 1 s
+    # test da fermo: richiesta periodica anche senza latActive (0 = disattivato)
+    self.takeover_test_frames = int(round(self.params.TAKEOVER_TEST_PERIOD / DT_CTRL))   # 1000 frame = 10 s
     # [CLAUDE takeover-test] - END
+    # [CLAUDE radar-disable] - START
+    self.radar_disable_frame = int(round(self.params.DISABLE_RADAR_AFTER / DT_CTRL))     # 3000 frame = 30 s
+    # [CLAUDE radar-disable] - END
     # [CLAUDE eps-fault] - START
     self.eps_rearm_failed = False   # letto da interface.py -> ret.steerFaultTemporary
     self.eps_fault_sends = int(round(self.params.EPS_FAULT_AFTER / self.eps_rearm_step))     # 50 invii = 2.5 s
@@ -346,6 +355,12 @@ class CarController(CarControllerBase):
         ##########
 
     # [CLAUDE takeover-test] - START
+    # Innesco periodico per il test da fermo: alza il flag a intervalli fissi anche
+    # senza latActive, cosi' la richiesta si puo' provare in parcheggio.
+    if self.takeover_test_frames > 0 and self.frame > 0 and self.frame % self.takeover_test_frames == 0:
+      carlog.error(f"PSA_DEBUG takeover_test: richiesta periodica a t={self.frame * DT_CTRL:.0f}s")
+      self.takeover_req_frames = self.eps_takeover_hold_frames
+
     # Invio della richiesta di takeover: fuori dal blocco LKA (20 Hz) e a 50 Hz come
     # il radar, stessa cadenza dell'emulazione ARTIV di elkoled qui sotto
     # (self.frame % 2). Il flag lo alza chi rileva la mancata riattivazione, questo
@@ -355,6 +370,20 @@ class CarController(CarControllerBase):
       if self.frame % 2 == 0:
         can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.params.EPS_TAKEOVER_TYPE))
     # [CLAUDE takeover-test] - END
+
+    # [CLAUDE radar-disable] - START
+    # TEST DA FERMO, dietro flag (default False in values.py): zittisce il radar
+    # ARTIV mettendolo in sessione di programmazione e la tiene giu' a 1 Hz.
+    # Perde ACC e AEB finche' e' attivo: vedi il commento esteso in values.py.
+    if self.params.DISABLE_RADAR_TEST and self.frame >= self.radar_disable_frame:
+      if self.radar_disabled == 0:
+        can_sends.append(create_disable_radar())
+        self.radar_disabled = 1
+        carlog.error("PSA_DEBUG radar_disable: ARTIV messo in programming mode")
+      elif self.frame % 100 == 0:
+        # tester present: senza questo il radar si risveglia da solo dopo ~5 s
+        can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
+    # [CLAUDE radar-disable] - END
 
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
     #   if self.frame % 10 == 0:
@@ -425,7 +454,7 @@ class CarController(CarControllerBase):
 
     # #  ELKOLED LONGITUDINAL CONTROL
 
-    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,) and self.params.ENABLE_DRIVER_TORQUE:
       if not CC.latActive:
         self.driver_torque_counter = 0
         self.next_driver_torque = random.randint(500, 800)

@@ -20,6 +20,7 @@ class CarControllerParams:
   # MAX_TORQUE_FACTOR = 100
   # MIN_TORQUE_FACTOR = 15
 
+    ENABLE_DRIVER_TORQUE = False  # If True, create a simulated driver torque signal for testing purposes
     # Steering torque limits and dynamics for the EPS controller
     STEER_MAX = 150  # Maximum steering torque command that can be applied (unitless scaling factor)
     # STEER_MAX_LOOKUP = [speed_breakpoints], [torque_values]  # Optional dynamic torque map by vehicle speed
@@ -82,7 +83,7 @@ class CarControllerParams:
     # di "sistema guasto", possibile DTC).
     # EPS_REARM_STATUS = 2            # ignorato dall'EPS, vedi sopra
     EPS_REARM_STATUS = 1
-    EPS_REARM_PERIOD = 5.0            # s di EPS attivo prima di un impulso
+    EPS_REARM_PERIOD = 155.0            # s di EPS attivo prima di un impulso
     # 100 ms erano 2 soli invii: sotto il debounce tipico di una ECU di sterzo (3-5
     # frame consecutivi), e con IS_DAT_DIRA a ~10 Hz ci cadeva dentro un solo
     # campione di risposta, quindi nemmeno misurabile. Se 0.25 funziona, riprovare
@@ -127,6 +128,11 @@ class CarControllerParams:
     # nostro frame ogni 2.5 suoi, quindi un "1" isolato: il quadro va tenuto su.
     # Percio' il flag accende un invio a 50 Hz (frame % 2) per questa durata.
     EPS_TAKEOVER_HOLD = 1.0           # s di invio a 50 Hz per ogni richiesta
+    # TEST DA FERMO: fa partire la richiesta a intervalli fissi anche quando openpilot
+    # non sta sterzando. Serve perche' da fermo siamo sotto minSteerSpeed (50 km/h),
+    # quindi latActive e' falso, l'EPS non si arma mai, la riattivazione non fallisce
+    # mai e la richiesta normale non partirebbe. 0 = disattivato (uso normale).
+    TAKEOVER_TEST_PERIOD = 10.0       # s fra una richiesta e l'altra
     # [CLAUDE takeover-test] - END
 
     # [CLAUDE eps-fault] - START
@@ -144,6 +150,25 @@ class CarControllerParams:
     # soft disable: openpilot avvisa, poi il flag cade e la scaletta ritenta da capo.
     EPS_FAULT_HOLD = 1.5              # s
     # [CLAUDE eps-fault] - END
+
+    # [CLAUDE radar-disable] - START
+    # TEST DA FERMO. Mette l'ARTIV in sessione di programmazione (vedi
+    # psacan.create_disable_radar) e la tiene giu' con un tester present a 1 Hz.
+    # Serve per verificare se, zittito il radar, openpilot diventa l'unico mittente
+    # di HS2_DYN_MDD_ETAT_2F6 e quindi controlla davvero REQUEST_TAKEOVER.
+    # COSA SUCCEDE: dal bus ADAS spariscono 0x2B6 (50 Hz), 0x2F6 (50 Hz),
+    # 0x4F6 (10 Hz) e 0x796 (1 Hz) -> niente ACC, niente AEB, e il BSI vede una
+    # centralina ADAS che non risponde (attesi DTC e spie sul quadro).
+    # NB: noi emuliamo solo 2F6 e a raffica, non 4F6 ne' 796, quindi il buco resta.
+    # USCITA: rimetti False e ricarica -> senza tester present il timer S3 dell'ECU
+    # scade in ~5 s e il radar riprende a trasmettere. Poi ciclo di chiave.
+    # Da usare SOLO fermi in parcheggio. Default False: non parte mai per sbaglio.
+    DISABLE_RADAR_TEST = True
+    # Ritardo dall'inizio del giro prima di zittire il radar: i primi secondi restano
+    # come baseline col radar vivo, cosi' il confronto prima/dopo si fa dentro lo
+    # stesso log invece che con una route di un altro giorno. 0 = subito.
+    DISABLE_RADAR_AFTER = 30.0        # s
+    # [CLAUDE radar-disable] - END
     # Valori PERMISSIVI per i test (difficile trovare rettilinei veri): l'impulso
     # scatta anche in curva larga. Scostamento laterale nel caso peggiore (assist a
     # zero per 0.25 s = impulso + riattivazione): ~3.5 cm a 54 km/h, ~10 cm a 90 km/h.
