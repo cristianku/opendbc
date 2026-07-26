@@ -146,19 +146,21 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
 
 
 # [CLAUDE radar-disable] - START
-# Mette l'ARTIV (radar/ADAS, 0x6B6 sul bus ADAS) in sessione di programmazione, cosi'
-# smette di trasmettere. Ripresa dalla storia di questo repo (c44108b0 "port
-# longitudinal") e identica a quella del repo di elkoled, branch psa-sunny.
+# Chiede all'ARTIV (radar/ADAS, 0x6B6 sul bus ADAS) di entrare in programming
+# session. Riferimento profilo ECU PyPSADiag:
+# https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
+# PyPSADiag invia "1002" come ISO-TP single frame, con padding a zero fino a DLC 8.
 #   0x02 = ISO-TP single frame, 2 byte di payload
 #   0x10 0x02 = DiagnosticSessionControl, programmingSession
-# Va tenuta viva con un tester present a 1 Hz: senza, il timer S3 dell'ECU scade dopo
-# ~5 s e il radar riprende a trasmettere da solo (e' la via di uscita del test).
+# La richiesta e' accettata solo quando ARTIV risponde 0x50 0x02 su 0x696.
+# Dopo la conferma va tenuta viva con TesterPresent: senza, il timer S3 dell'ECU
+# scade e il radar riprende a trasmettere da solo (e' la via di uscita del test).
 # ATTENZIONE: mentre e' in programming mode spariscono dal bus ADAS 0x2B6 (50 Hz),
 # 0x2F6 (50 Hz), 0x4F6 (10 Hz) e 0x796 (1 Hz), quindi niente ACC e niente AEB.
 def create_disable_radar():
   addr = 0x6B6
   bus = 1
-  dat = [0x02, 0x10, 0x02, 0x80]
+  dat = [0x02, 0x10, 0x02]
   dat.extend([0x0] * (8 - len(dat)))
 
   return CanData(addr, bytes(dat), bus)

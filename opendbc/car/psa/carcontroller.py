@@ -42,7 +42,12 @@ class CarController(CarControllerBase):
     self.lat_active_last = False
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
-    self.radar_disabled = 0
+    self.radar_disable_req_sent = False
+    self.radar_disabled = False
+    self.radar_disable_failed = False
+    self.radar_disable_sent_frame = 0
+    self.radar_disable_confirmed_frame = 0
+    self.radar_takeover_test_sent = False
     self.bars = 4
     self.steering_hold_counter = 0
     self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
@@ -75,6 +80,7 @@ class CarController(CarControllerBase):
     # [takeover-test] - END
     # [radar-disable] - START
     self.radar_disable_frame = int(round(self.params.DISABLE_RADAR_AFTER / DT_CTRL))     # 3000 frame = 30 s
+    self.radar_diag_timeout_frames = int(round(self.params.RADAR_DIAG_RESPONSE_TIMEOUT / DT_CTRL))
     # [radar-disable] - END
     # [eps-fault] - START
     self.eps_rearm_failed = False   # letto da interface.py -> ret.steerFaultTemporary
@@ -349,17 +355,52 @@ class CarController(CarControllerBase):
     # [takeover-test] - END
 
     # [radar-disable] - START
-    # TEST DA FERMO, dietro flag (default False in values.py): zittisce il radar
-    # ARTIV mettendolo in sessione di programmazione e la tiene giu' a 1 Hz.
+    # TEST DA FERMO, dietro flag (default False in values.py). La richiesta 10 02
+    # diventa effettiva solo dopo la risposta positiva 50 02 su 0x696.
+    # Profilo ECU: https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
     # Perde ACC e AEB finche' e' attivo: vedi il commento esteso in values.py.
     if self.params.DISABLE_RADAR_TEST and self.frame >= self.radar_disable_frame:
-      if self.radar_disabled == 0:
+      if not self.radar_disable_req_sent:
         can_sends.append(create_disable_radar())
-        self.radar_disabled = 1
-        carlog.error("PSA_DEBUG radar_disable: ARTIV messo in programming mode")
-      elif self.frame % 100 == 0:
-        # tester present: senza questo il radar si risveglia da solo dopo ~5 s
-        can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
+        self.radar_disable_req_sent = True
+        self.radar_disable_sent_frame = self.frame
+        carlog.error("PSA_DEBUG radar_disable: richiesta programming session inviata ad ARTIV")
+
+      elif not self.radar_disabled and not self.radar_disable_failed:
+        if CS.artiv_diag_response_updated:
+          response = CS.artiv_diag_response
+          service = response["UDS_SERVICE"]
+          subfunction = response["UDS_SUBFUNCTION"]
+
+          if response["ISO_TP_LENGTH"] >= 2 and service == 0x50 and subfunction == 0x02:
+            self.radar_disabled = True
+            self.radar_disable_confirmed_frame = self.frame
+            carlog.error("PSA_DEBUG radar_disable: ARTIV ha confermato programming session (50 02)")
+          elif response["ISO_TP_LENGTH"] >= 3 and service == 0x7F and subfunction == 0x10:
+            nrc = response["UDS_NRC"]
+            if nrc == 0x78:
+              # ResponsePending: estende il timeout in attesa della risposta finale.
+              self.radar_disable_sent_frame = self.frame
+              carlog.error("PSA_DEBUG radar_disable: ARTIV response pending (7F 10 78)")
+            else:
+              self.radar_disable_failed = True
+              carlog.error(f"PSA_DEBUG radar_disable: ARTIV ha rifiutato programming session (7F 10 {nrc:02X})")
+
+        if (not self.radar_disabled and not self.radar_disable_failed
+            and self.frame - self.radar_disable_sent_frame >= self.radar_diag_timeout_frames):
+          self.radar_disable_failed = True
+          carlog.error("PSA_DEBUG radar_disable: timeout, nessuna risposta 50 02 da ARTIV")
+
+      elif self.radar_disabled:
+        if (self.frame - self.radar_disable_confirmed_frame) % 100 == 0:
+          # PyPSADiag usa 3E 80: TesterPresent con risposta positiva soppressa.
+          can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=True))
+
+        if (self.params.RADAR_TAKEOVER_TEST_AFTER > 0 and not self.radar_takeover_test_sent
+            and (self.frame - self.radar_disable_confirmed_frame) * DT_CTRL >= self.params.RADAR_TAKEOVER_TEST_AFTER):
+          can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.params.EPS_TAKEOVER_TYPE))
+          self.radar_takeover_test_sent = True
+          carlog.error("PSA_DEBUG radar_disable: inviato takeover test dopo programming mode")
     # [radar-disable] - END
 
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
@@ -436,13 +477,13 @@ class CarController(CarControllerBase):
         self.driver_torque_counter = 0
         self.next_driver_torque = random.randint(500, 800)
       else:
-    #     # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
+        # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
         self.steering_hold_counter += 1
         if self.steering_hold_counter >= self.next_steering_hold:
           can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
           self.steering_hold_counter = 0
           self.next_steering_hold = random.randint(8, 12)
-    #     # --- DRIVER TORQUE (ogni 5–8 s) ---
+        # --- DRIVER TORQUE (ogni 5–8 s) ---
         self.driver_torque_counter += 1
         if self.driver_torque_counter >= self.next_driver_torque:
           msg = CS.steering

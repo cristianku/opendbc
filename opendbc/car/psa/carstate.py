@@ -5,6 +5,7 @@ from opendbc.car.psa.values import CAR, DBC, CarControllerParams
 # , LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 import copy
+import math
 from opendbc.car.common.filter_simple import FirstOrderFilter  # NB: version inside opendbc (like Toyota), NOT openpilot.common
 from opendbc.car import DT_CTRL
 # from collections import deque
@@ -23,6 +24,13 @@ class CarState(CarStateBase):
   def __init__(self, CP, CP_SP):
     super().__init__(CP, CP_SP)
     self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
+    self.artiv_diag_response_updated = False
+    self.artiv_diag_response = {
+      "ISO_TP_LENGTH": 0,
+      "UDS_SERVICE": 0,
+      "UDS_SUBFUNCTION": 0,
+      "UDS_NRC": 0,
+    }
 
   # #HANDS-FREE - START: state for the EPS silent-dropout safety net
   # def __init__(self, CP, CP_SP):
@@ -112,6 +120,17 @@ class CarState(CarStateBase):
     self.steering = copy.copy(cp.vl['STEERING'])
     self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
 
+    # Risposta diagnostica ARTIV su 0x696. I quattro byte bastano sia per la
+    # risposta positiva 06 50 02 ... sia per quella negativa 03 7F 10 <NRC>.
+    # Profilo ECU: https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
+    artiv_services = cp_adas.vl_all["Rep_Diag_ARTIV"]["UDS_SERVICE"]
+    self.artiv_diag_response_updated = len(artiv_services) > 0
+    if self.artiv_diag_response_updated:
+      self.artiv_diag_response = {
+        signal: int(cp_adas.vl_all["Rep_Diag_ARTIV"][signal][-1])
+        for signal in self.artiv_diag_response
+      }
+
     # cruise
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed
     ret.cruiseState.enabled = cp_adas.vl['HS2_DAT_MDD_CMD_452']['RVV_ACC_ACTIVATION_REQ'] == 1
@@ -156,6 +175,8 @@ class CarState(CarStateBase):
   def get_can_parsers(CP, CP_SP):
     return {
       Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
-      Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
+      # Evento diagnostico: math.nan lo registra nel parser senza renderlo
+      # obbligatorio per canValid quando non stiamo eseguendo il test ARTIV.
+      Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [("Rep_Diag_ARTIV", math.nan)], 1),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
     }

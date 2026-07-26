@@ -163,6 +163,13 @@ class CarControllerParams:
     # come baseline col radar vivo, cosi' il confronto prima/dopo si fa dentro lo
     # stesso log invece che con una route di un altro giorno. 0 = subito.
     DISABLE_RADAR_AFTER = 30.0        # s
+    # Attesa massima della risposta 50 02 su 0x696. PyPSADiag considera aperta la
+    # programming session soltanto dopo quella risposta:
+    # https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
+    RADAR_DIAG_RESPONSE_TIMEOUT = 3.0  # s
+    # Invia una sola REQUEST_TAKEOVER dopo questo ritardo dal programming mode.
+    # 0 = test disattivato.
+    RADAR_TAKEOVER_TEST_AFTER = 3.0   # s
     # [CLAUDE radar-disable] - END
     # Valori PERMISSIVI per i test (difficile trovare rettilinei veri): l'impulso
     # scatta anche in curva larga. Scostamento laterale nel caso peggiore (assist a

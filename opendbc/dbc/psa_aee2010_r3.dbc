@@ -576,6 +576,10 @@ BO_ 1684 Rep_Diag_MSB: 7 XXX
 BO_ 1685 Rep_Diag_DIRECTN: 7 XXX
 
 BO_ 1686 Rep_Diag_ARTIV: 7 XXX
+ SG_ ISO_TP_LENGTH : 0|8@1+ (1,0) [0|255] "" XXX
+ SG_ UDS_SERVICE : 8|8@1+ (1,0) [0|255] "" XXX
+ SG_ UDS_SUBFUNCTION : 16|8@1+ (1,0) [0|255] "" XXX
+ SG_ UDS_NRC : 24|8@1+ (1,0) [0|255] "" XXX
 
 BO_ 1697 Req_Diag_SCR: 3 XXX
 
