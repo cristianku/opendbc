@@ -83,7 +83,7 @@ class CarControllerParams:
     # di "sistema guasto", possibile DTC).
     # EPS_REARM_STATUS = 2            # ignorato dall'EPS, vedi sopra
     EPS_REARM_STATUS = 1
-    EPS_REARM_PERIOD = 155.0            # s di EPS attivo prima di un impulso
+    EPS_REARM_PERIOD = 10.0            # s di EPS attivo prima di un impulso
     # 100 ms erano 2 soli invii: sotto il debounce tipico di una ECU di sterzo (3-5
     # frame consecutivi), e con IS_DAT_DIRA a ~10 Hz ci cadeva dentro un solo
     # campione di risposta, quindi nemmeno misurabile. Se 0.25 funziona, riprovare
