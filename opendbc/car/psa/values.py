@@ -162,7 +162,7 @@ class CarControllerParams:
     # Ritardo dall'inizio del giro prima di zittire il radar: i primi secondi restano
     # come baseline col radar vivo, cosi' il confronto prima/dopo si fa dentro lo
     # stesso log invece che con una route di un altro giorno. 0 = subito.
-    DISABLE_RADAR_AFTER = 30.0        # s
+    DISABLE_RADAR_AFTER = 10.0        # s
     # Attesa massima della risposta 50 02 su 0x696. PyPSADiag considera aperta la
     # programming session soltanto dopo quella risposta:
     # https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
