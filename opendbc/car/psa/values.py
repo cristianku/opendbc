@@ -32,7 +32,7 @@ class CarControllerParams:
 
     STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
     STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
-    # [CLAUDE driver-override] - START
+    # [driver-override] - START
     # STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
     # NB: carstate.py confronta questa soglia con DRIVER_TORQUE *3, quindi 50 = 16.7
     # grezzi e 70 = 23.3 grezzi. Baseline a mani ferme (route 00000015, 26 lug 2026):
@@ -45,7 +45,7 @@ class CarControllerParams:
     # Il panda tiene la sua .driver_torque_allowance = 50 in safety/modes/psa.h, ma
     # e' inerte: psa_rx_hook non aggiorna mai torque_driver.
     STEER_DRIVER_ALLOWANCE = 70  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
-    # [CLAUDE driver-override] - END
+    # [driver-override] - END
 
     # Increasing STEER_MAX increases resolution (number of torque steps).
     # MAX_TORQUE_FACTOR limits the effective range (percent of STEER_MAX).
@@ -61,7 +61,7 @@ class CarControllerParams:
     MAX_TORQUE_FACTOR = 100
     MIN_TORQUE_FACTOR = 25
 
-    # [CLAUDE eps-rearm] - START
+    # [eps-rearm] - START
     # L'EPS smette di assistere dopo un po' di attivazione continua (visto in
     # autostrada, rettilineo lungo = richiesta di coppia bassa e costante).
     # Farlo uscire da ACTIVE per una frazione di secondo lo fa ri-armare.
@@ -90,7 +90,7 @@ class CarControllerParams:
     # ad accorciare (0.15, 0.10) per ridurre il buco al minimo accettato dall'EPS.
     # EPS_REARM_LENGTH = 0.10         # s di impulso (2 msg LKA @20Hz)
     # EPS_REARM_LENGTH = 0.25         # s di impulso (5 msg LKA @20Hz)
-    # [CLAUDE eps-rearm-ladder] - START
+    # [eps-rearm-ladder] - START
     # MISURATO su route 00000015 (26 lug 2026, segmenti 4-5, 19 impulsi):
     # l'EPS esce da ACTIVE 20-33 ms dopo aver visto STATUS=1, quindi 5 messaggi
     # (200 ms) sono ~6 volte piu' del necessario. 2 messaggi bastano con margine.
@@ -111,9 +111,9 @@ class CarControllerParams:
     # Gradini della scaletta di riattivazione (enum TX LANE_KEEP_ASSIST 1010):
     # 2 SELECTED -> 3 AUTHORIZED -> 4 ACTIVE
     EPS_REARM_LADDER = (2, 3, 4)
-    # [CLAUDE eps-rearm-ladder] - END
+    # [eps-rearm-ladder] - END
 
-    # [CLAUDE takeover-test] - START
+    # [takeover-test] - START
     # Master switch per la trasmissione di REQUEST_TAKEOVER tramite
     # HS2_DYN_MDD_ETAT_2F6. False durante il test radar-disable-only, così
     # openpilot non trasmette alcun 0x2F6 senza alterare i timing sottostanti.
@@ -128,9 +128,9 @@ class CarControllerParams:
     # quindi latActive e' falso, l'EPS non si arma mai, la riattivazione non fallisce
     # mai e la richiesta normale non partirebbe. 0 = disattivato (uso normale).
     TAKEOVER_TEST_PERIOD = 10.0       # s fra una richiesta e l'altra
-    # [CLAUDE takeover-test] - END
+    # [takeover-test] - END
 
-    # [CLAUDE eps-fault] - START
+    # [eps-fault] - START
     # Caso estremo: la riattivazione non riesce proprio. Dopo questo tempo senza EPS
     # ACTIVE alziamo ret.steerFaultTemporary (travasato nel CarState da interface.py)
     # e openpilot avvisa il guidatore.
@@ -144,9 +144,9 @@ class CarControllerParams:
     # senza una durata propria il flag si spegnerebbe subito. Tenuta sotto i 3 s del
     # soft disable: openpilot avvisa, poi il flag cade e la scaletta ritenta da capo.
     EPS_FAULT_HOLD = 1.5              # s
-    # [CLAUDE eps-fault] - END
+    # [eps-fault] - END
 
-    # [CLAUDE radar-disable] - START
+    # [radar-disable] - START
     # TEST DA FERMO. Mette l'ARTIV in sessione di programmazione (vedi
     # psacan.create_disable_radar) e la tiene giu' con un tester present a 1 Hz.
     # Serve per verificare se, zittito il radar, openpilot diventa l'unico mittente
@@ -170,7 +170,7 @@ class CarControllerParams:
     # Invia una sola REQUEST_TAKEOVER dopo questo ritardo dal programming mode.
     # 0 = test disattivato.
     RADAR_TAKEOVER_TEST_AFTER = 3.0   # s
-    # [CLAUDE radar-disable] - END
+    # [radar-disable] - END
     # Valori PERMISSIVI per i test (difficile trovare rettilinei veri): l'impulso
     # scatta anche in curva larga. Scostamento laterale nel caso peggiore (assist a
     # zero per 0.25 s = impulso + riattivazione): ~3.5 cm a 54 km/h, ~10 cm a 90 km/h.
@@ -183,7 +183,7 @@ class CarControllerParams:
     EPS_REARM_MAX_ANGLE = 20.0        # deg volante, resta solo rete di sicurezza
     # EPS_REARM_MIN_SPEED = 22.0      # m/s (~80 km/h), solo autostrada
     EPS_REARM_MIN_SPEED_KPH = 54.0    # km/h, solo autostrada (convertito in m/s nel CarController)
-    # [CLAUDE eps-rearm] - END
+    # [eps-rearm] - END
 
     def __init__(self, CP):
       pass

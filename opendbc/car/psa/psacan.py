@@ -117,7 +117,7 @@ def create_steering_hold(packer, lat_active: bool, is_dat_dira):
     is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1
   return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
 
-# [CLAUDE takeover-test] - START
+# [takeover-test] - START
 # def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
 #   # HS2_DYN_MDD_ETAT_2F6
 #   #  1 = Non Critical Request
@@ -142,10 +142,10 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
   d[6] &= 0xF0
   d[6] |= (0xB - sum((b >> 4) + (b & 0xF) for b in d)) & 0xF
   return CanData(address, bytes(d), bus)
-# [CLAUDE takeover-test] - END
+# [takeover-test] - END
 
 
-# [CLAUDE radar-disable] - START
+# [radar-disable] - START
 # Chiede all'ARTIV (radar/ADAS, 0x6B6 sul bus ADAS) di entrare in programming
 # session. Riferimento profilo ECU PyPSADiag:
 # https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
@@ -164,7 +164,7 @@ def create_disable_radar():
   dat.extend([0x0] * (8 - len(dat)))
 
   return CanData(addr, bytes(dat), bus)
-# [CLAUDE radar-disable] - END
+# [radar-disable] - END
 
   # Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
   # Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
