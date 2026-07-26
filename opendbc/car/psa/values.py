@@ -31,7 +31,20 @@ class CarControllerParams:
 
     STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
     STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
-    STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
+    # [CLAUDE driver-override] - START
+    # STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
+    # NB: carstate.py confronta questa soglia con DRIVER_TORQUE *3, quindi 50 = 16.7
+    # grezzi e 70 = 23.3 grezzi. Baseline a mani ferme (route 00000015, 26 lug 2026):
+    # mediana 13.2, p90 38.6, massimo mai-pressed 57.3 in scala *3 -> 50 era a un soffio.
+    # MISURATO sui 25 segmenti (24 min): 51 eventi steeringPressed sopra i 50 km/h
+    # (dove il lateral e' attivo), 69 s totali = 8% del tempo con assist a zero.
+    # Di questi solo 15 erano riprese vere (volante 6-26 deg, picco coppia 62-90);
+    # gli altri 36 erano mani appoggiate (volante < 6 deg, picco medio 60).
+    # Con 70: 15 eventi, 13 riprese vere su 15 e solo 2 falsi.
+    # Il panda tiene la sua .driver_torque_allowance = 50 in safety/modes/psa.h, ma
+    # e' inerte: psa_rx_hook non aggiorna mai torque_driver.
+    STEER_DRIVER_ALLOWANCE = 70  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
+    # [CLAUDE driver-override] - END
 
     # Increasing STEER_MAX increases resolution (number of torque steps).
     # MAX_TORQUE_FACTOR limits the effective range (percent of STEER_MAX).
@@ -75,7 +88,62 @@ class CarControllerParams:
     # campione di risposta, quindi nemmeno misurabile. Se 0.25 funziona, riprovare
     # ad accorciare (0.15, 0.10) per ridurre il buco al minimo accettato dall'EPS.
     # EPS_REARM_LENGTH = 0.10         # s di impulso (2 msg LKA @20Hz)
-    EPS_REARM_LENGTH = 0.25           # s di impulso (5 msg LKA @20Hz)
+    # EPS_REARM_LENGTH = 0.25         # s di impulso (5 msg LKA @20Hz)
+    # [CLAUDE eps-rearm-ladder] - START
+    # MISURATO su route 00000015 (26 lug 2026, segmenti 4-5, 19 impulsi):
+    # l'EPS esce da ACTIVE 20-33 ms dopo aver visto STATUS=1, quindi 5 messaggi
+    # (200 ms) sono ~6 volte piu' del necessario. 2 messaggi bastano con margine.
+    EPS_REARM_LENGTH = 0.10           # s di impulso (2 msg LKA @20Hz)
+    # RIATTIVAZIONE. La macchina a stati LKA dell'EPS gira a ~10 Hz (IS_DAT_DIRA
+    # arriva ogni 100 ms) mentre noi mandiamo LANE_KEEP_ASSIST a 20 Hz. Con la
+    # vecchia scaletta (un gradino per invio, 50 ms, e ciclo infinito 2->3->4->2)
+    # l'EPS campionava un nostro messaggio su due e vedeva la sequenza scombinata
+    # (3,2,4,3,2,4...): si riarmava solo quando le due fasi si allineavano per
+    # caso -> buco misurato 499-2021 ms, media 968 ms.
+    # Nei log l'EPS passa a 1 (Authorised) subito dopo aver campionato 2 e poi 3,
+    # e a 3 (Active) subito dopo aver visto 4: il protocollo va bene, servono solo
+    # gradini abbastanza lunghi da non poter essere saltati dal suo campionamento.
+    EPS_REARM_STEP_HOLD = 0.15        # s per gradino della scaletta (3 invii LKA)
+    # Arrivati a 4 si TIENE 4 (il ciclo 4->2 era proprio quello che scombinava la
+    # sequenza). Solo se dopo questo tempo l'EPS non e' tornato ACTIVE si riparte da 2.
+    EPS_REARM_LADDER_TIMEOUT = 0.6    # s prima di ricominciare la scaletta da 2
+    # Gradini della scaletta di riattivazione (enum TX LANE_KEEP_ASSIST 1010):
+    # 2 SELECTED -> 3 AUTHORIZED -> 4 ACTIVE
+    EPS_REARM_LADDER = (2, 3, 4)
+    # [CLAUDE eps-rearm-ladder] - END
+
+    # [CLAUDE takeover-test] - START
+    # TEST: se l'EPS non e' tornato ACTIVE entro questo tempo dall'inizio della
+    # scaletta, chiediamo al quadro il messaggio di takeover (REQUEST_TAKEOVER in
+    # HS2_DYN_MDD_ETAT_2F6, bus ADAS).
+    # ATTENZIONE: la scaletta manda il primo STATUS=4 dopo 300 ms (2 gradini da 150 ms)
+    # e l'EPS risponde 50-150 ms piu' tardi, quindi con 0.2 s il messaggio parte a OGNI
+    # impulso di re-arm (~12 volte al minuto). Per farlo scattare solo quando la
+    # riattivazione fallisce davvero serve >= 1.0 s. 0 = disattivato.
+    EPS_TAKEOVER_AFTER = 0.2
+    EPS_TAKEOVER_TYPE = 1             # 1 = richiesta non critica, 2 = critica
+    # MISURATO sul segmento 4: il radar ARTIV manda 0x2F6 a 50.0 Hz esatti (3001 frame
+    # in 60 s) con REQUEST_TAKEOVER sempre a 0. Mandare noi a 20 Hz vorrebbe dire un
+    # nostro frame ogni 2.5 suoi, quindi un "1" isolato: il quadro va tenuto su.
+    # Percio' il flag accende un invio a 50 Hz (frame % 2) per questa durata.
+    EPS_TAKEOVER_HOLD = 1.0           # s di invio a 50 Hz per ogni richiesta
+    # [CLAUDE takeover-test] - END
+
+    # [CLAUDE eps-fault] - START
+    # Caso estremo: la riattivazione non riesce proprio. Dopo questo tempo senza EPS
+    # ACTIVE alziamo ret.steerFaultTemporary (travasato nel CarState da interface.py)
+    # e openpilot avvisa il guidatore.
+    # NB: controlsd fa latActive = ... and not steerFaultTemporary, quindi il lateral
+    # si spegne subito. E car_specific.py genera steerTempUnavailableSilent (solo
+    # avviso) se il guidatore ha toccato il volante da meno di 1.5 s, altrimenti
+    # steerTempUnavailable = SOFT_DISABLE, che dopo SOFT_DISABLE_TIME=3 s sgancia.
+    EPS_FAULT_AFTER = 2.5             # s senza EPS attivo prima di avvisare openpilot
+    # Durata minima dell'avviso. Serve perche' appena il flag sale latActive va a
+    # False, il ramo laterale non gira piu' e _reset_lat_state azzera i contatori:
+    # senza una durata propria il flag si spegnerebbe subito. Tenuta sotto i 3 s del
+    # soft disable: openpilot avvisa, poi il flag cade e la scaletta ritenta da capo.
+    EPS_FAULT_HOLD = 1.5              # s
+    # [CLAUDE eps-fault] - END
     # Valori PERMISSIVI per i test (difficile trovare rettilinei veri): l'impulso
     # scatta anche in curva larga. Scostamento laterale nel caso peggiore (assist a
     # zero per 0.25 s = impulso + riattivazione): ~3.5 cm a 54 km/h, ~10 cm a 90 km/h.

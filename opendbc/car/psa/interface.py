@@ -13,6 +13,17 @@ class CarInterface(CarInterfaceBase):
   CarState = CarState
   CarController = CarController
 
+  # [CLAUDE eps-fault] - START
+  def update(self, can_packets):
+    ret, ret_sp = super().update(can_packets)
+    # Il flag vive nel CarController, che e' l'unico a sapere se stiamo comandando
+    # (latActive) e a che punto e' la scaletta di riattivazione. openpilot pero' lo
+    # legge dal CarState, quindi lo travasiamo qui: e' l'unico punto dove esistono
+    # sia self.CC che self.CS.
+    ret.steerFaultTemporary = ret.steerFaultTemporary or self.CC.eps_rearm_failed
+    return ret, ret_sp
+  # [CLAUDE eps-fault] - END
+
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
     ret.brand = 'psa'
