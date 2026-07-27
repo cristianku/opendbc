@@ -65,19 +65,12 @@ class CarController(CarControllerBase):
     self.apply_torque_factor = 0
     self.takeover_req = False
     self.lat_activation_frame = 0
-    # [CLAUDE eps-rearm] - START
-    # self.last_status_change_frame = 0
-    # Timer fermo mentre siamo disingaggiati: il primo stacco arriva
-    # EPS_REARM_PERIOD dopo l'ingaggio, non subito.
     self.last_status_change_frame = 0
     self.activation_request_frame = 0
     self.deactivation_in_progress = False
-    # Azzerato anche qui: se ingaggi con l'EPS gia' attivo, _activate_eps non gira
-    # e il riferimento resterebbe quello vecchio -> stacco immediato all'ingaggio.
     self.lateral_activation_frame = 0
-    # [CLAUDE eps-rearm] - END
 
-  def _deactivate_eps(self, eps_active):
+  def _deactivate_eps(self):
     self.eps_was_active = False
     self.status = 1
     self.apply_torque_factor = 0
@@ -86,35 +79,40 @@ class CarController(CarControllerBase):
     self.last_status_change_frame = self.frame
     self.activation_request_frame = 0
     self.lateral_activation_frame = 0
-    # [CLAUDE eps-rearm] - START
-    # Da qui si resta su status 1 finche' l'EPS non molla davvero (vedi update).
     self.deactivation_in_progress = True
-    # [CLAUDE eps-rearm] - END
 
-  def _activate_eps(self, eps_active):
-    # [CLAUDE eps-rearm] - START
-    # Riga tolta: il riferimento del periodo di stacco lo gestiscono _deactivate_eps /
-    # _reset_lat_state (che lo azzerano) e il ramo EPS attivo (che lo fissa se e' 0).
-    # self.lateral_activation_frame = self.frame
-    # [CLAUDE eps-rearm] - END
-    # Save the frame number when the LKA (steering assist) button is first pressed on the car
+  def _activate_eps(self, CARSTATE):
+    eps_active = CARSTATE.eps_active
+    eps_state_lka = CARSTATE.eps_state_lka
     self.eps_was_active = False
     if self.activation_request_frame == 0:
       # first frame the EPS activate or re activate is sent
       self.activation_request_frame = self.frame
       # self.takeover_req_sent = False
     if self.frame > self.activation_request_frame + self.eps_activate_takeover_frames:
+      carlog.error("PSA_DEBUG self.takeover_req = True")
       self.takeover_req = True
 
     if not eps_active: # and not CS.out.steeringPressed:
-      # EPS activation sequence 2->3->4 to re-engage
-      # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
+      # IS_DAT_DIRA.EPS_STATE_LKA
+      # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
 
-      if self.frame > self.eps_activate_keep_status_frames + self.last_status_change_frame:
-        # gradino tenuto abbastanza: si sale (4 = ultimo, si ricomincia da 2)
-        self.status = 2 if self.status == 4 else self.status + 1
-        self.last_status_change_frame = self.frame
-      # [CLAUDE eps-rearm] - END
+      # LANE_KEEP_ASSIST.STATUS
+      #  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
+      if eps_state_lka == 0: # EPS 0 = Unauthorized
+        self.status = 1      # LKS 1 = UNSELECTED
+
+      elif eps_state_lka == 1: # EPS 1 = Authorized
+        self.status = 2        # LKS 2 = READY
+
+      elif eps_state_lka == 2: # EPS 2 = Available
+        self.status = 3        # LKS 3 = AUTHORIZED
+
+      elif eps_state_lka == 3: # EPS 3 = Active
+        self.status = 4        # LKS 4 = ACTIVE
+
+      elif eps_state_lka == 4: # EPS 4 = Defect
+        self.status = 0        # LKS 0 = UNAVAILABLE
 
       # EPS likes a progressive activation of the Torque Factor
       self.apply_torque_factor += 10
@@ -141,29 +139,18 @@ class CarController(CarControllerBase):
              self.takeover_req = True
           self._reset_lat_state()
         else:
-          # if not CS.eps_active: # and not CS.out.steeringPressed:
-          #   self._activate_eps( CS.eps_active)
           if not CS.eps_active:
             self.deactivation_in_progress = False   # ha mollato: la scaletta puo' ripartire
-            self._activate_eps(CS.eps_active)
+            self._activate_eps(CS)
 
           else:
-            # [CLAUDE eps-rearm] - START
-            # Spostato qui dal ramo "EPS ACTIVE" piu' sotto: _deactivate_eps azzera
-            # lateral_activation_frame, quindi 0 significa "EPS non ancora riattivato".
-            # Letto dall'elif mentre vale 0, il confronto era sempre vero (frame > 0 + 500)
-            # e si staccava all'infinito senza mai sterzare.
             if self.lateral_activation_frame == 0:
               self.lateral_activation_frame = self.frame
 
             if self.deactivation_in_progress:
-              self._deactivate_eps(CS.eps_active)     # ancora attivo: si insiste su 1
+              self._deactivate_eps()     # ancora attivo: si insiste su 1
             elif self.frame > self.lateral_activation_frame + self.eps_rearm_frames:
-              # Riga sostituita (commento fuorviante): non e' "non ha mollato",
-              # e' "EPS attivo da EPS_REARM_PERIOD, e' ora di staccare".
-              # EPS non ha mollato entro il periodo di stacco: si forza lo stacco
-              self._deactivate_eps(CS.eps_active)
-            # [CLAUDE eps-rearm] - END
+              self._deactivate_eps()
             else:
               ##########
               ### START EPS ACTIVE
@@ -171,12 +158,6 @@ class CarController(CarControllerBase):
               # EPS is active, proceed with lateral control
               self.eps_was_active = True
               self.takeover_req = False
-
-              # [CLAUDE eps-rearm] - START
-              # Righe spostate in cima al ramo (vedi sopra):
-              # if self.lateral_activation_frame == 0:
-              #   self.lateral_activation_frame = self.frame
-              # [CLAUDE eps-rearm] - END
               self.activation_request_frame = 0
               self.status = 4 # 4: EPS ACTIVE
 
@@ -329,6 +310,7 @@ class CarController(CarControllerBase):
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if self.takeover_req and self.frame % 2 == 0: # 50 Hz
         can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+        carlog.error("PSA_DEBUG create_request_takeover")
         if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
           self.takeover_req = False
           self.takeover_start_msg_frame = 0

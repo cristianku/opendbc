@@ -24,6 +24,12 @@ class CarState(CarStateBase):
   def __init__(self, CP, CP_SP):
     super().__init__(CP, CP_SP)
     self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
+    # [CLAUDE eps-closed-loop] - START
+    # Stato grezzo dell'EPS, creato qui e non al primo update: il carcontroller lo
+    # legge ad ogni giro e un attributo nato dentro update() sarebbe un AttributeError
+    # se il primo giro fosse quello del controller. 0 = Unauthorised.
+    self.eps_state = 0
+    # [CLAUDE eps-closed-loop] - END
     self.artiv_diag_response_updated = False
     self.artiv_diag_response = {
       "ISO_TP_LENGTH": 0,
@@ -116,6 +122,12 @@ class CarState(CarStateBase):
       ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
 
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
+    # [CLAUDE eps-closed-loop] - START
+    # Valore grezzo, non solo "e' Active": la scaletta di riattivazione sale di
+    # gradino solo quando l'EPS ha confermato quello precedente (vedi EPS_STATUS_ACK
+    # in carcontroller.py).
+    self.eps_state = int(cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'])
+    # [CLAUDE eps-closed-loop] - END
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
     self.steering = copy.copy(cp.vl['STEERING'])
     self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])

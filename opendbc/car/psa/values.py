@@ -59,6 +59,13 @@ class CarControllerParams:
     EPS_ACTIVATE_TAKEOVER_PERIOD = 0.1
     TAKEOVER_MSG_DURATION = 1
 
+    # [CLAUDE eps-closed-loop] - START
+    # Quanto aspettare la conferma dell'EPS su un gradino prima di rigenerare il fronte.
+    # Misurato su route 0000002a--baede4ffa4: quando l'EPS accetta, ricopia il gradino
+    # in 50-110 ms (IS_DAT_DIRA arriva ogni 100 ms). 0.3 s = 3 frame EPS di margine.
+    EPS_ACK_TIMEOUT = 0.3  # s
+    # [CLAUDE eps-closed-loop] - END
+
     def __init__(self, CP):
       pass
 
