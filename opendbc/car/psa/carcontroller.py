@@ -326,7 +326,7 @@ class CarController(CarControllerBase):
           self.driver_torque_counter = 0
           self.next_driver_torque = random.randint(500, 800)
 
-    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if self.takeover_req and self.frame % 2 == 0: # 50 Hz
         can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
         if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
