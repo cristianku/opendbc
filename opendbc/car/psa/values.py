@@ -83,7 +83,17 @@ class CarControllerParams:
     # di "sistema guasto", possibile DTC).
     # EPS_REARM_STATUS = 2            # ignorato dall'EPS, vedi sopra
     EPS_REARM_STATUS = 1
-    EPS_REARM_PERIOD = 10.0            # s di EPS attivo prima di un impulso
+    # [CLAUDE misura-fade] - START
+    # VALORE DI PROVA, DA RIMETTERE A 10.0 DOPO LA GUIDA DI MISURA.
+    # 300 s = 5 minuti di assist ININTERROTTO prima di un impulso: il contatore avanza
+    # solo con EPS attivo e si azzera a ogni disingaggio, quindi in pratica l'impulso
+    # non parte mai. Serve a misurare l'unico numero che non abbiamo: dopo quanto
+    # l'EPS smette di assistere DA SOLO. Il 10.0 era messo a occhio, e ci fa pagare
+    # ~1.3 s di buco ogni 10 s (13% del tempo senza assist).
+    # Riga sostituita:
+    # EPS_REARM_PERIOD = 10.0            # s di EPS attivo prima di un impulso
+    EPS_REARM_PERIOD = 300.0           # s di EPS attivo prima di un impulso (PROVA: impulso di fatto spento)
+    # [CLAUDE misura-fade] - END
     # 100 ms erano 2 soli invii: sotto il debounce tipico di una ECU di sterzo (3-5
     # frame consecutivi), e con IS_DAT_DIRA a ~10 Hz ci cadeva dentro un solo
     # campione di risposta, quindi nemmeno misurabile. Se 0.25 funziona, riprovare
@@ -114,11 +124,28 @@ class CarControllerParams:
     EPS_REARM_LADDER = (2, 3, 4)
     # [eps-rearm-ladder] - END
 
+    # [CLAUDE eps-rearm-blackout] - START
+    # MISURATO (grafico cabana ~t=335.4): fra la fine dell'impulso e il momento in cui
+    # CS.eps_active diventa False passa piu' di un invio LKA, perche' IS_DAT_DIRA arriva
+    # a 10 Hz mentre noi mandiamo a 20 Hz. Nel frattempo il ramo "EPS attivo" gira lo
+    # stesso e spara un 4 ACTIVE: l'EPS vede 1 -> 4 -> 2 proprio mentre decide se
+    # chiudere la sessione. Per questo tempo dopo l'impulso eps_active viene forzato a
+    # False, cosi' la scaletta parte pulita dal gradino 2. Si sblocca prima se il calo
+    # dell'EPS arriva davvero (caso normale, ~2-3 invii).
+    # DIMENSIONAMENTO (simulato su fase di campionamento 0/1 x ritardo di trasporto
+    # 0-3 invii): 4 invii bastano solo col RX veloce, si rompono in 9 casi su 24 - il 4
+    # spurio non sparisce, ricompare piu' avanti in mezzo alla scaletta. Il minimo che
+    # regge ovunque e' 6 invii; 8 tiene un periodo intero di IS_DAT_DIRA di margine.
+    # Si paga solo nel caso mai osservato in cui l'EPS ignori l'impulso e non cali:
+    # li' si spende questo tempo a coppia zero prima di tornare al controllo normale.
+    EPS_REARM_BLACKOUT = 0.40         # s max di eps_active forzato a False dopo l'impulso
+    # [CLAUDE eps-rearm-blackout] - END
+
     # [takeover-test] - START
     # Master switch per la trasmissione di REQUEST_TAKEOVER tramite
     # HS2_DYN_MDD_ETAT_2F6. False durante il probe diagnostico ARTIV, così
     # openpilot non trasmette alcun 0x2F6 senza alterare i timing sottostanti.
-    ENABLE_TAKEOVER_REQUEST = False
+    ENABLE_TAKEOVER_REQUEST = True
     # Timeout dalla prima chiamata a _activate_eps(), valido sia alla prima
     # attivazione sia durante il rearm. 0 = disattivato.
     EPS_TAKEOVER_AFTER = 0.2

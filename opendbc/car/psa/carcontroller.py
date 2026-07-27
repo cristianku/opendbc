@@ -86,6 +86,12 @@ class CarController(CarControllerBase):
                                    + self.eps_rearm_top_hold)                                          # 12 invii = 600 ms
     self.rearm_tick = 0   # invii dall'inizio della scaletta; gradino e factor si ricavano da qui
     # [eps-rearm-ladder] - END
+    # [CLAUDE eps-rearm-blackout] - START
+    # Invii per cui, finito l'impulso, eps_active va considerato False comunque:
+    # il dato RX e' piu' lento dell'impulso stesso (vedi values.py).
+    self.eps_rearm_blackout = max(1, int(round(self.params.EPS_REARM_BLACKOUT / self.eps_rearm_step)))   # 8 invii = 400 ms
+    self.eps_rearm_confirm = 0   # invii rimanenti di blackout; 0 = ci si fida di CS.eps_active
+    # [CLAUDE eps-rearm-blackout] - END
     # [takeover-test] - START
     # Tempo totale in cui l'EPS non e' tornato ACTIVE, usato dal timeout EPS fault.
     self.eps_rearm_wait = 0
@@ -113,6 +119,9 @@ class CarController(CarControllerBase):
     self.eps_rearm_counter = 0
     self.eps_rearm_pulse = 0
     # [eps-rearm] - END
+    # [CLAUDE eps-rearm-blackout] - START
+    self.eps_rearm_confirm = 0
+    # [CLAUDE eps-rearm-blackout] - END
     # [eps-rearm-ladder] - START
     self._reset_rearm_ladder()
     # [eps-rearm-ladder] - END
@@ -141,9 +150,10 @@ class CarController(CarControllerBase):
     if self.lat_activation_frame == 0:
       self.lat_activation_frame = self.frame
 
-    if (self.params.EPS_TAKEOVER_AFTER > 0 and not self.takeover_req_sent and not self.send_takeover_req
-        and (self.frame - self.lat_activation_frame) * DT_CTRL >= self.params.EPS_TAKEOVER_AFTER):
-      self.send_takeover_req = True
+    # if (self.params.EPS_TAKEOVER_AFTER > 0 and not self.takeover_req_sent and not self.send_takeover_req
+    #     and (self.frame - self.lat_activation_frame) * DT_CTRL >= self.params.EPS_TAKEOVER_AFTER):
+    #   self.send_takeover_req = True
+    self.send_takeover_req = True
 
     # Scaletta di riattivazione 2 SELECTED -> 3 AUTHORIZED -> 4 ACTIVE. rearm_tick =
     # invii dall'inizio: un gradino ogni eps_rearm_hold invii, il 4 tenuto per
@@ -183,30 +193,46 @@ class CarController(CarControllerBase):
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
       # disable radar ECU by setting to programming mode
-      if self.radar_disabled == 0 and self.frame > 200:
-        can_sends.append(create_disable_radar(1))
-        carlog.error("PSA_DEBUG create_disable_radar")
-        self.radar_disabled = 1
+      # if self.radar_disabled == 0 and self.frame > 200:
+      #   can_sends.append(create_disable_radar(1))
+      #   carlog.error("PSA_DEBUG create_disable_radar")
+      #   self.radar_disabled = 1
 
-      # keep radar ECU disabled by sending tester present
-      # [CLAUDE artiv-nopad] - START
-      # Riga sostituita (paddava a DLC 8, formato diverso da create_disable_radar):
-      #   can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
-      if self.frame % 100 == 0 and self.frame>201: # TODO check if disable_radar is sent 100 frames before
-        can_sends.append(create_tester_present(1))
-        carlog.error("PSA_DEBUG create_tester_present")
-        if not self.first_message and self.frame > 1000:
-          carlog.error("PSA_DEBUG create_tester_present first_message")
-          can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.params.EPS_TAKEOVER_TYPE))
-          self.first_message = True
-      # [CLAUDE artiv-nopad] - END
-
+      # # keep radar ECU disabled by sending tester present
+      # # [CLAUDE artiv-nopad] - START
+      # # Riga sostituita (paddava a DLC 8, formato diverso da create_disable_radar):
+      # #   can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
+      # if self.frame % 100 == 0 and self.frame>201: # TODO check if disable_radar is sent 100 frames before
+      #   can_sends.append(create_tester_present(1))
+      #   carlog.error("PSA_DEBUG create_tester_present")
+      #   if not self.first_message and self.frame > 1000:
+      #     carlog.error("PSA_DEBUG create_tester_present first_message")
+      #     can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.params.EPS_TAKEOVER_TYPE))
+      #     self.first_message = True
+      # # [CLAUDE artiv-nopad] - END
 
       if self.frame % self.params.STEER_STEP == 0:
+        # [CLAUDE eps-rearm-blackout] - START
+        # eps_active "effettivo". Subito dopo l'impulso CS.eps_active e' ancora il
+        # valore vecchio (IS_DAT_DIRA a 10 Hz, impulso da 100 ms): senza questo il
+        # ramo "EPS attivo" gira lo stesso e manda un 4 ACTIVE fra l'1 dell'impulso e
+        # il 2 della scaletta. Appena il calo dell'EPS arriva davvero il blackout si
+        # chiude in anticipo, cosi' nel caso normale non costa nulla.
+        if self.eps_rearm_confirm > 0:
+          if not CS.eps_active:
+            self.eps_rearm_confirm = 0   # calo confermato, si torna a fidarsi del CAN
+          else:
+            self.eps_rearm_confirm -= 1
+        eps_active = CS.eps_active and self.eps_rearm_confirm == 0
+        # [CLAUDE eps-rearm-blackout] - END
         if not CC.latActive:
           self._reset_lat_state()
         else:
-          if not CS.eps_active: # and not CS.out.steeringPressed:
+          # [CLAUDE eps-rearm-blackout] - START
+          # Riga sostituita (usava CS.eps_active grezzo):
+          #   if not CS.eps_active: # and not CS.out.steeringPressed:
+          # [CLAUDE eps-rearm-blackout] - END
+          if not eps_active: # and not CS.out.steeringPressed:
             # [eps-rearm-ladder] - START
             # self._activate_eps( CS.eps_active)
             # Durante l'impulso l'uscita da ACTIVE e' voluta: la scaletta resta ferma
@@ -242,6 +268,11 @@ class CarController(CarControllerBase):
               if self.eps_rearm_counter >= self.eps_rearm_period and self._going_straight(CC, CS):
                 self.eps_rearm_counter = 0
                 self.eps_rearm_pulse = self.eps_rearm_len
+                # [CLAUDE eps-rearm-blackout] - START
+                # Parte da qui: l'impulso e' piu' corto della latenza con cui l'EPS ci
+                # riporta il calo, quindi per i prossimi invii eps_active non e' fidato.
+                self.eps_rearm_confirm = self.eps_rearm_blackout
+                # [CLAUDE eps-rearm-blackout] - END
                 carlog.error(f"PSA_DEBUG eps_rearm curv={CC.actuators.curvature:.5f} angle={CS.out.steeringAngleDeg:.1f} v={CS.out.vEgo:.1f}")
             # [eps-rearm] - END
 
@@ -310,7 +341,11 @@ class CarController(CarControllerBase):
         # openpilot (interface.py lo travasa in ret.steerFaultTemporary). Il flag si
         # rilascia da solo nel blocco in cima a update(), non qui: appena sale,
         # latActive va a False e questo ramo non gira piu'.
-        if (self.eps_fault_sends > 0 and CC.latActive and not CS.eps_active
+        # [CLAUDE eps-rearm-blackout] - START
+        # Riga sostituita (usava CS.eps_active grezzo: durante il blackout il conto
+        # eps_rearm_wait avanza gia', quindi qui va usato lo stesso eps_active):
+        #   if (self.eps_fault_sends > 0 and CC.latActive and not CS.eps_active
+        if (self.eps_fault_sends > 0 and CC.latActive and not eps_active
             and self.eps_rearm_wait >= self.eps_fault_sends and not self.eps_rearm_failed):
           self.eps_rearm_failed = True
           self.eps_fault_hold_cnt = self.eps_fault_hold_frames
@@ -324,11 +359,13 @@ class CarController(CarControllerBase):
 
     # [takeover-test] - START
     # Invia una volta la richiesta armata da _activate_eps().
-    if (self.params.ENABLE_TAKEOVER_REQUEST and self.send_takeover_req
-        and not self.takeover_req_sent and self.frame % 2 == 0):
-      can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.params.EPS_TAKEOVER_TYPE))
-      self.send_takeover_req = False
-      self.takeover_req_sent = True
+    if (self.params.ENABLE_TAKEOVER_REQUEST and self.send_takeover_req):
+      if self.frame % 2 == 0:
+        carlog.error("PSA_DEBUG create_request_takeover")
+        can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.params.EPS_TAKEOVER_TYPE))
+        self.send_takeover_req = False
+    #   self.send_takeover_req = False
+    #   self.takeover_req_sent = True
     # [takeover-test] - END
 
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
