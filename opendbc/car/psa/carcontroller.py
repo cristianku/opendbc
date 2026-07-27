@@ -152,7 +152,7 @@ class CarController(CarControllerBase):
 
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
-      # if self.frame % self.params.STEER_STEP == 0:
+      if self.frame % self.params.STEER_STEP == 0:
         if not CC.latActive:
           if self.eps_was_active:
              self.takeover_req = True
@@ -171,55 +171,54 @@ class CarController(CarControllerBase):
             elif self.frame > self.lateral_activation_frame + self.eps_rearm_frames:
               self._deactivate_eps()
             else:
-              if self.frame % self.params.STEER_STEP == 0:
-                ##########
-                ### START EPS ACTIVE
-                ######
-                # EPS is active, proceed with lateral control
-                self.eps_was_active = True
-                self.takeover_req = False
-                self.activation_request_frame = 0
-                self.status = 4 # 4: EPS ACTIVE
+              ##########
+              ### START EPS ACTIVE
+              ######
+              # EPS is active, proceed with lateral control
+              self.eps_was_active = True
+              self.takeover_req = False
+              self.activation_request_frame = 0
+              self.status = 4 # 4: EPS ACTIVE
 
-                if (CS.out.steeringPressed):
-                  #### DRIVER STEERING DETECTED
-                  # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
-                  self.apply_torque_factor = 0
-                  apply_new_torque_scaled = 0
-                  # apply_new_torque = 0
-                else:
-                  # --- Requested torque (raw, still float) ------------------------------
-                  # actuators.torque is the model output in -1..1; scale to counts (x STEER_MAX).
-                  # Kept as a float here: it feeds the torque-factor curve below.
-                  #   ex: 0.25 * 250 = 62.5
-                  actuatorsRequestedTorque = CC.actuators.torque * self.params.STEER_MAX
+              if (CS.out.steeringPressed):
+                #### DRIVER STEERING DETECTED
+                # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
+                self.apply_torque_factor = 0
+                apply_new_torque_scaled = 0
+                # apply_new_torque = 0
+              else:
+                # --- Requested torque (raw, still float) ------------------------------
+                # actuators.torque is the model output in -1..1; scale to counts (x STEER_MAX).
+                # Kept as a float here: it feeds the torque-factor curve below.
+                #   ex: 0.25 * 250 = 62.5
+                actuatorsRequestedTorque = CC.actuators.torque * self.params.STEER_MAX
 
-                  # --- Torque factor (dynamic EPS gain, MIN..MAX) -----------------------
-                  # The EPS multiplies our command by factor/100. Small requests get a low
-                  # factor (gentle), big ones a high factor, via a slightly convex curve.
-                  # ratio = normalized request magnitude, clamped 0..1, raised to 1.2.
-                  #   ex: (62.5/250) ** 1.2 = 0.25 ** 1.2 = 0.19
-                  ratio = min(1.0, (abs(actuatorsRequestedTorque) / float(self.params.STEER_MAX)) * 1.0) **1.2
+                # --- Torque factor (dynamic EPS gain, MIN..MAX) -----------------------
+                # The EPS multiplies our command by factor/100. Small requests get a low
+                # factor (gentle), big ones a high factor, via a slightly convex curve.
+                # ratio = normalized request magnitude, clamped 0..1, raised to 1.2.
+                #   ex: (62.5/250) ** 1.2 = 0.25 ** 1.2 = 0.19
+                ratio = min(1.0, (abs(actuatorsRequestedTorque) / float(self.params.STEER_MAX)) * 1.0) **1.2
 
-                  # Lerp ratio onto [MIN_TORQUE_FACTOR, MAX_TORQUE_FACTOR], then clamp.
-                  #   ex: 15 + 0.19 * (100 - 15) = 31
-                  self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
-                  self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
+                # Lerp ratio onto [MIN_TORQUE_FACTOR, MAX_TORQUE_FACTOR], then clamp.
+                #   ex: 15 + 0.19 * (100 - 15) = 31
+                self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
+                self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
 
-                  # --- Effective (scaled) torque ---------------------------------------
-                  # What the wheel actually gets = request * factor/100. Same "force at the
-                  # wheel" domain as the driver torque, so this is what the limiter compares.
-                  #   ex: round(62.5 * 31/100) = 19
-                  new_torque_scaled = int(round(actuatorsRequestedTorque * self.apply_torque_factor / 100))
+                # --- Effective (scaled) torque ---------------------------------------
+                # What the wheel actually gets = request * factor/100. Same "force at the
+                # wheel" domain as the driver torque, so this is what the limiter compares.
+                #   ex: round(62.5 * 31/100) = 19
+                new_torque_scaled = int(round(actuatorsRequestedTorque * self.apply_torque_factor / 100))
 
-                  # --- Driver-aware rate/override limiter -------------------------------
-                  # Feed the EFFECTIVE (scaled) command: it is already in the driver-torque
-                  # domain, so the driver signal needs no conversion. The limiter rate-limits
-                  # the ramp (STEER_DELTA_UP/DOWN) and backs off when the driver pushes.
-                  # It always returns an int (see lateral.py).
-                  temp_driverSteeringTorque = CS.out.steeringTorque
-                  apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
-                                                                  temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
+                # --- Driver-aware rate/override limiter -------------------------------
+                # Feed the EFFECTIVE (scaled) command: it is already in the driver-torque
+                # domain, so the driver signal needs no conversion. The limiter rate-limits
+                # the ramp (STEER_DELTA_UP/DOWN) and backs off when the driver pushes.
+                # It always returns an int (see lateral.py).
+                temp_driverSteeringTorque = CS.out.steeringTorque
+                apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
+                                                                temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
 
         # --- Back to a raw CAN command ----------------------------------------
         # The EPS re-applies factor/100, so undo the scaling to recover the raw value
