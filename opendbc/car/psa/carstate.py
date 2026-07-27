@@ -28,7 +28,7 @@ class CarState(CarStateBase):
     # Stato grezzo dell'EPS, creato qui e non al primo update: il carcontroller lo
     # legge ad ogni giro e un attributo nato dentro update() sarebbe un AttributeError
     # se il primo giro fosse quello del controller. 0 = Unauthorised.
-    self.eps_state = 0
+    self.eps_state_lka = 0
     # [CLAUDE eps-closed-loop] - END
     self.artiv_diag_response_updated = False
     self.artiv_diag_response = {

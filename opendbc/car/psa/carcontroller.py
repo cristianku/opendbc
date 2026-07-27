@@ -30,7 +30,6 @@ class CarController(CarControllerBase):
     self.takeover_req = False
     # this is the frame when the latactive is being pressed
     self.lat_activation_frame  = 0
-    self.lat_active_last = False
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
     self.radar_disabled = 0
@@ -54,6 +53,11 @@ class CarController(CarControllerBase):
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)   # 5 s = 500 frame
     self.eps_activate_keep_status_frames = int(self.params.EPS_KEEP_STATUS_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
     self.eps_activate_takeover_frames = int(self.params.EPS_ACTIVATE_TAKEOVER_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
+    # [CLAUDE eps-closed-loop] - START
+    # Ultimo stato dell'EPS visto dalla scaletta: creato QUI, non al primo uso, se no
+    # e' AttributeError al primo giro (stessa trappola di eps_rearm_failed).
+    self.eps_state_last = 0
+    # [CLAUDE eps-closed-loop] - END
     self.takeover_msg_duration = int(self.params.TAKEOVER_MSG_DURATION / DT_CTRL)   # 0.1 s = 10 frame
     # Riga rimossa: la scaletta conta frame (last_status_change_frame), non cicli LKA.
     # self.eps_status_hold_cycles = max(1, int(round(self.params.EPS_STATUS_HOLD / (DT_CTRL * self.params.STEER_STEP))))
@@ -99,20 +103,38 @@ class CarController(CarControllerBase):
 
       # LANE_KEEP_ASSIST.STATUS
       #  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
-      if eps_state_lka == 0: # EPS 0 = Unauthorized
-        self.status = 1      # LKS 1 = UNSELECTED
+      # [CLAUDE eps-closed-loop] - START
+      # Riga sostituita: assegnare lo stato dell'EPS + 1 non arriva mai in cima.
+      # Per chiedere 4 servirebbe che l'EPS fosse gia' a 3 (Active), ma lui va ad
+      # Active solo se noi chiediamo 4: si aspettano a vicenda. Misurato sulla route
+      # 0000002e--d3fa08e80d: 6 minuti, mai chiesto STATUS 4, EPS mai andato Active.
+      #   self.status = min(4, max(2, self.status, eps_state_lka + 1))
+      #
+      # Il +1 deve essere un INCREMENTO, non un'assegnazione: la nostra richiesta guida
+      # di un gradino e sale ogni volta che l'EPS si muove. Non serve sapere quale valore
+      # dell'EPS significhi cosa, basta che sia cambiato (la sequenza misurata e' 2,1,3,
+      # non monotona). Non scende mai: il reset a 1 lo fa _deactivate_eps allo stacco.
+      if self.status < 2:
+        self.status = 2                          # si parte sempre dal primo gradino
+      elif eps_state_lka != self.eps_state_last:
+        self.status = min(4, self.status + 1)    # l'EPS si e' mosso: saliamo di uno
+      self.eps_state_last = eps_state_lka
+      # [CLAUDE eps-closed-loop] - END
 
-      elif eps_state_lka == 1: # EPS 1 = Authorized
-        self.status = 2        # LKS 2 = READY
+      # if eps_state_lka == 0: # EPS 0 = Unauthorized
+      #   self.status = 1      # LKS 1 = UNSELECTED
 
-      elif eps_state_lka == 2: # EPS 2 = Available
-        self.status = 3        # LKS 3 = AUTHORIZED
+      # elif eps_state_lka == 1: # EPS 1 = Authorized
+      #   self.status = 2        # LKS 2 = READY
 
-      elif eps_state_lka == 3: # EPS 3 = Active
-        self.status = 4        # LKS 4 = ACTIVE
+      # elif eps_state_lka == 2: # EPS 2 = Available
+      #   self.status = 3        # LKS 3 = AUTHORIZED
 
-      elif eps_state_lka == 4: # EPS 4 = Defect
-        self.status = 0        # LKS 0 = UNAVAILABLE
+      # elif eps_state_lka == 3: # EPS 3 = Active
+      #   self.status = 4        # LKS 4 = ACTIVE
+
+      # elif eps_state_lka == 4: # EPS 4 = Defect
+      #   self.status = 0        # LKS 0 = UNAVAILABLE
 
       # EPS likes a progressive activation of the Torque Factor
       self.apply_torque_factor += 10
@@ -127,9 +149,6 @@ class CarController(CarControllerBase):
     new_torque_scaled = 0
     apply_new_torque_scaled = 0
     can_torque = 0
-    if CC.latActive != self.lat_active_last:
-      carlog.error(f"PSA_DEBUG latActive={CC.latActive}")
-      self.lat_active_last = CC.latActive
 
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
@@ -307,13 +326,13 @@ class CarController(CarControllerBase):
           self.driver_torque_counter = 0
           self.next_driver_torque = random.randint(500, 800)
 
-    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      if self.takeover_req and self.frame % 2 == 0: # 50 Hz
-        can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-        carlog.error("PSA_DEBUG create_request_takeover")
-        if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
-          self.takeover_req = False
-          self.takeover_start_msg_frame = 0
+    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+    #   if self.takeover_req and self.frame % 2 == 0: # 50 Hz
+    #     # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+    #     # carlog.error("PSA_DEBUG create_request_takeover")
+    #     if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
+    #       self.takeover_req = False
+    #       self.takeover_start_msg_frame = 0
 
     # Actuators output
     new_actuators = actuators.as_builder()
