@@ -142,13 +142,13 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
   }
 
   // Il probe ARTIV può inviare soltanto 02 10 03 00 00 00 00 00.
-  if (msg->addr == PSA_REQ_DIAG_ARTIV) {
-    bool is_artiv_extended_session_probe = (GET_BYTES(msg, 0, 4) == 0x00031002U) &&
-                                           (GET_BYTES(msg, 4, 4) == 0x0U);
-    if (!is_artiv_extended_session_probe) {
-      tx = false;
-    }
-  }
+  // if (msg->addr == PSA_REQ_DIAG_ARTIV) {
+  //   bool is_artiv_extended_session_probe = (GET_BYTES(msg, 0, 4) == 0x00031002U) &&
+  //                                          (GET_BYTES(msg, 4, 4) == 0x0U);
+  //   if (!is_artiv_extended_session_probe) {
+  //     tx = false;
+  //   }
+  // }
 
   return tx;
 }
@@ -168,7 +168,7 @@ static safety_config psa_init(uint16_t param) {
     // [artiv-diag-probe] - START
     // Consente il singolo frame 0x6B6 del probe extendedSession 10 03.
     // ARTIV_DIAG_PROBE in values.py abilita il test da fermo.
-    {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 8, .check_relay = false}, // diagnostica ARTIV
+    {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 8, .check_relay = false},        // radar diagnostics TODO: check if reduce to 3 is ok
     // [artiv-diag-probe] - END
     // {PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .check_relay = false}, // resume acc
     // {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 8, .check_relay = false},        // radar diagnostics TODO: check if reduce to 3 is ok
