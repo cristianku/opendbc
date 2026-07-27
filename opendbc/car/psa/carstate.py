@@ -126,7 +126,7 @@ class CarState(CarStateBase):
     # Valore grezzo, non solo "e' Active": la scaletta di riattivazione sale di
     # gradino solo quando l'EPS ha confermato quello precedente (vedi EPS_STATUS_ACK
     # in carcontroller.py).
-    self.eps_state = int(cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'])
+    self.eps_state_lka = int(cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'])
     # [CLAUDE eps-closed-loop] - END
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
     self.steering = copy.copy(cp.vl['STEERING'])
