@@ -125,7 +125,7 @@ def create_steering_hold(packer, lat_active: bool, is_dat_dira):
 #   HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = type
 #
 #   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
-def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
+def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, takeover_type):
   # 1 = Non Critical Request, 2 = Critical request
   # Il packer NON riempie ne' counter ne' checksum di questo messaggio: dbc.py tagga
   # solo i segnali chiamati esattamente COUNTER e CHECKSUM, mentre qui si chiamano
@@ -133,7 +133,7 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
   # rimanderemmo il counter fermo e un checksum sbagliato (cambiamo REQUEST_TAKEOVER),
   # e il ricevitore scarterebbe il frame.
   values = dict(HS2_DYN_MDD_ETAT_2F6)
-  values['REQUEST_TAKEOVER'] = type
+  values['REQUEST_TAKEOVER'] = takeover_type
   values['PROCESS_COUNTER_4B_ACC2'] = (int(values.get('PROCESS_COUNTER_4B_ACC2', 0)) + 1) % 16
   address, dat, bus = packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
   # stesso conto di psa_checksum() con chk_ini di default 0xB: azzera il nibble del
