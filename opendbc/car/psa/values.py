@@ -33,21 +33,9 @@ class CarControllerParams:
     STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
     STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
 
-    # Increasing STEER_MAX increases resolution (number of torque steps).
-    # MAX_TORQUE_FACTOR limits the effective range (percent of STEER_MAX).
-    # Example of total available steps:
-  #   -------------------------------------------------------------
-    #   STEER_MAX | MAX_TORQUE_FACTOR | Effective Range (±R) | Steps (±)
-    #   -----------+-------------------+---------------------+------------
-    #      100     |       100         |        ±100         |   ±100
-    #      200     |        50         |        ±100         |   ±200
-    #      400     |        25         |        ±100         |   ±400
-    #   -------------------------------------------------------------
-    # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
     MAX_TORQUE_FACTOR = 100
     MIN_TORQUE_FACTOR = 25
 
-    # [CLAUDE eps-rearm] - START
     # Ogni quanto staccare l'EPS per costringerlo a riarmarsi, in SECONDI.
     # Il carcontroller lo converte in frame con DT_CTRL (100 Hz -> 1 frame = 10 ms).
     EPS_REARM_PERIOD = 5.0  # s
