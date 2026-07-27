@@ -1,7 +1,7 @@
 from opendbc.can.packer import CANPacker
 # [eps-rearm] - START
 # from opendbc.car import Bus, structs
-from opendbc.car import Bus, structs, DT_CTRL
+from opendbc.car import Bus, structs, DT_CTRL, make_tester_present_msg
 from opendbc.car.common.conversions import Conversions as CV
 # [eps-rearm] - END
 from opendbc.car.carlog import carlog
@@ -13,7 +13,7 @@ from opendbc.car.interfaces import CarControllerBase
 # [artiv-diag-probe] - START
 # from opendbc.car.psa.psacan import (create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover)
 from opendbc.car.psa.psacan import (create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover,
-                                    create_artiv_extended_session_probe)
+                                    create_disable_radar)
 # [artiv-diag-probe] - END
 # [takeover-test] - END
 from opendbc.car.psa.values import CarControllerParams, CAR
@@ -47,6 +47,9 @@ class CarController(CarControllerBase):
     self.artiv_diag_probe_sent = False
     self.artiv_diag_probe_done = False
     self.artiv_diag_probe_sent_frame = 0
+    # [radar-disable] - START
+    self.radar_disabled = 0   # 0 = ancora da disabilitare; il 10 02 parte una volta a frame 0
+    # [radar-disable] - END
     self.bars = 4
     self.steering_hold_counter = 0
     self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
@@ -65,11 +68,12 @@ class CarController(CarControllerBase):
     # [eps-rearm-ladder] - START
     # Scaletta di riattivazione deterministica: ogni gradino tenuto per piu' invii,
     # cosi' l'EPS (che campiona a ~10 Hz) non puo' saltarne uno. Vedi values.py.
-    self.eps_rearm_hold = max(1, int(round(self.params.EPS_REARM_STEP_HOLD / self.eps_rearm_step)))              # 3 invii = 150 ms
-    self.eps_rearm_ladder_timeout = max(1, int(round(self.params.EPS_REARM_LADDER_TIMEOUT / self.eps_rearm_step)))  # 12 invii = 600 ms
-    self.rearm_ladder_pos = None   # None = scaletta ferma; 0/1/2 = gradino 2/3/4
-    self.rearm_hold_cnt = 0        # invii gia' fatti sul gradino corrente
-    self.rearm_ladder_frames = 0   # invii dall'inizio della scaletta (per il timeout)
+    # Tutto in "invii LKA": 1 invio = STEER_STEP frame = 50 ms.
+    self.eps_rearm_hold = max(1, int(round(self.params.EPS_REARM_STEP_HOLD / self.eps_rearm_step)))     # 3 invii = 150 ms
+    self.eps_rearm_top_hold = max(1, int(round(self.params.EPS_REARM_TOP_HOLD / self.eps_rearm_step)))  # 6 invii = 300 ms
+    self.eps_rearm_ladder_cycle = ((len(self.params.EPS_REARM_LADDER) - 1) * self.eps_rearm_hold
+                                   + self.eps_rearm_top_hold)                                          # 12 invii = 600 ms
+    self.rearm_tick = 0   # invii dall'inizio della scaletta; gradino e factor si ricavano da qui
     # [eps-rearm-ladder] - END
     # [takeover-test] - START
     # Tempo totale in cui l'EPS non e' tornato ACTIVE, usato dal timeout EPS fault.
@@ -104,9 +108,7 @@ class CarController(CarControllerBase):
 
   # [eps-rearm-ladder] - START
   def _reset_rearm_ladder(self):
-    self.rearm_ladder_pos = None
-    self.rearm_hold_cnt = 0
-    self.rearm_ladder_frames = 0
+    self.rearm_tick = 0   # prossima partenza dal gradino 2, factor basso
     self.eps_rearm_wait = 0
     self.send_takeover_req = False
     self.takeover_req_sent = False
@@ -123,61 +125,27 @@ class CarController(CarControllerBase):
             not CS.out.steeringPressed)
   # [eps-rearm] - END
 
-  def _activate_eps(self, eps_active):
+  # [eps-rearm-ladder] - START
+  def _activate_eps(self):
     if self.lat_activation_frame == 0:
       self.lat_activation_frame = self.frame
 
-    if not eps_active:
-      if not self.takeover_req_sent:
-        if (self.params.EPS_TAKEOVER_AFTER > 0 and not self.send_takeover_req
-            and (self.frame - self.lat_activation_frame) * DT_CTRL >= self.params.EPS_TAKEOVER_AFTER):
-          self.send_takeover_req = True
+    if (self.params.EPS_TAKEOVER_AFTER > 0 and not self.takeover_req_sent and not self.send_takeover_req
+        and (self.frame - self.lat_activation_frame) * DT_CTRL >= self.params.EPS_TAKEOVER_AFTER):
+      self.send_takeover_req = True
 
-      ######
-      # EPS activation sequence 2->3->4 to re-engage
-      # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
-      ######
-      # [eps-rearm-ladder] - START
-      # Vecchia scaletta: un gradino per ogni invio (50 ms) e ciclo infinito
-      # 2->3->4->2. L'EPS campiona a ~10 Hz, quindi ne vedeva uno su due e in
-      # ordine sparso -> si riarmava solo per allineamento fortuito di fase
-      # (buco misurato 499-2021 ms). Vedi il commento in values.py.
-      # self.status = 2 if self.status == 4 else self.status + 1
-      # # EPS likes a progressive activation of the Torque Factor
-      # self.apply_torque_factor += 10
-      # self.apply_torque_factor = min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
-      ladder = self.params.EPS_REARM_LADDER   # (2 SELECTED, 3 AUTHORIZED, 4 ACTIVE)
-      if self.rearm_ladder_pos is None:
-        # primo invio della scaletta: si riparte sempre dal gradino 2, fase nota
-        self.rearm_ladder_pos = 0
-        self.rearm_hold_cnt = 0
-        self.rearm_ladder_frames = 0
-        # Anche il torque factor riparte dal basso, se no la "salita progressiva"
-        # non esiste: prima ripartiva dal valore in corso (27-43) e saliva a 100 a
-        # vuoto. 10 = primo gradino, come faceva l'aggancio da fermo (0 poi +10).
-        self.apply_torque_factor = 10
-      else:
-        self.rearm_hold_cnt += 1
-        self.rearm_ladder_frames += 1
-        # [takeover-test] - START
-        self.eps_rearm_wait += 1   # non si azzera al restart della scaletta
-        # [takeover-test] - END
-        if self.rearm_hold_cnt >= self.eps_rearm_hold:
-          # gradino tenuto abbastanza a lungo: si sale. Arrivati a 4 si TIENE 4.
-          self.rearm_hold_cnt = 0
-          if self.rearm_ladder_pos < len(ladder) - 1:
-            self.rearm_ladder_pos += 1
-            # EPS likes a progressive activation of the Torque Factor: ora un passo
-            # per gradino e non uno per invio, cosi' non arriva a 100 a vuoto
-            self.apply_torque_factor = min(self.apply_torque_factor + 10, self.params.MAX_TORQUE_FACTOR)
-        if self.rearm_ladder_frames >= self.eps_rearm_ladder_timeout:
-          # tenere il 4 non e' bastato: si ricomincia la scaletta da 2
-          self.rearm_ladder_pos = 0
-          self.rearm_hold_cnt = 0
-          self.rearm_ladder_frames = 0
-      self.status = ladder[self.rearm_ladder_pos]
-
-      # [eps-rearm-ladder] - END
+    # Scaletta di riattivazione 2 SELECTED -> 3 AUTHORIZED -> 4 ACTIVE. rearm_tick =
+    # invii dall'inizio: un gradino ogni eps_rearm_hold invii, il 4 tenuto per
+    # eps_rearm_top_hold, poi si riparte da 2 (factor incluso, si ricava dal gradino).
+    ladder = self.params.EPS_REARM_LADDER
+    if self.rearm_tick >= self.eps_rearm_ladder_cycle:
+      self.rearm_tick = 0
+    pos = min(self.rearm_tick // self.eps_rearm_hold, len(ladder) - 1)
+    self.status = ladder[pos]
+    self.apply_torque_factor = min(10 * (pos + 1), self.params.MAX_TORQUE_FACTOR)
+    self.rearm_tick += 1
+    self.eps_rearm_wait += 1
+  # [eps-rearm-ladder] - END
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
@@ -203,6 +171,16 @@ class CarController(CarControllerBase):
 
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
+      # disable radar ECU by setting to programming mode
+      if self.radar_disabled == 0:
+        can_sends.append(create_disable_radar())
+        self.radar_disabled = 1
+
+      # keep radar ECU disabled by sending tester present
+      if self.frame % 100 == 0 and self.frame>0: # TODO check if disable_radar is sent 100 frames before
+        can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
+
+
       if self.frame % self.params.STEER_STEP == 0:
         if not CC.latActive:
           self._reset_lat_state()
@@ -214,7 +192,7 @@ class CarController(CarControllerBase):
             # e riparte dal gradino 2 solo a impulso finito. Prima partiva al 2o-3o
             # frame dell'impulso, quindi a fine impulso era a una fase casuale.
             if self.eps_rearm_pulse == 0:
-              self._activate_eps(CS.eps_active)
+              self._activate_eps()
             # [eps-rearm-ladder] - END
 
           else:
@@ -248,22 +226,6 @@ class CarController(CarControllerBase):
 
             if (CS.out.steeringPressed):
               #### DRIVER STEERING DETECTED
-              # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
-              # [driver-override] - START
-              # Il gradino secco a zero azzerava anche apply_torque_last (al rilascio la
-              # coppia ripartiva da 0 a STEER_DELTA_UP=8 per invio) e mandava
-              # TORQUE_FACTOR=0, che per il panda (lka_active = torque_factor != 0) e a
-              # quanto pare anche per l'EPS vale "LKA spento".
-              # MISURATO su route 00000015 (26 lug 2026, segm. 4-5): steeringPressed e'
-              # scattato 3 volte in 120 s (baseline driver torque 36-46 contro soglia 50)
-              # e in 1 caso su 3 l'EPS e' uscito da Active proprio al rientro
-              # (factor 0 -> 59), costando piu' di un secondo di riattivazione.
-              # self.apply_torque_factor = 0
-              # apply_new_torque_scaled = 0
-              # # apply_new_torque = 0
-              # Si cede lo stesso il volante, ma con il target a 0 passato dal rate
-              # limiter (scende di STEER_DELTA_DOWN=38 per invio, 1-2 invii) e con il
-              # factor tenuto al minimo invece che a zero.
               self.apply_torque_factor = self.params.MIN_TORQUE_FACTOR
               temp_driverSteeringTorque = CS.out.steeringTorque
               apply_new_torque_scaled = apply_driver_steer_torque_limits(0, self.apply_torque_last,
@@ -314,11 +276,6 @@ class CarController(CarControllerBase):
           can_torque = 0
         # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status))
         # [eps-rearm] - START
-        # STATUS locale: self.status resta 4 e la macchina a stati 2->3->4 di
-        # _activate_eps non viene sporcata. Il decremento sta QUI (un invio LKA),
-        # cosi' l'impulso finisce sempre anche se l'EPS cade a meta'.
-        # TORQUE e TORQUE_FACTOR continuano a viaggiare: l'EPS con STATUS=1 li ignora,
-        # ma il rate-limiter del panda (lka_active = torque_factor != 0) non si resetta.
         send_status = self.status
         if self.eps_rearm_pulse > 0:
           self.eps_rearm_pulse -= 1
@@ -352,45 +309,6 @@ class CarController(CarControllerBase):
       self.send_takeover_req = False
       self.takeover_req_sent = True
     # [takeover-test] - END
-
-    # [artiv-diag-probe] - START
-    # TEST DA FERMO: dopo il ritardo invia una sola richiesta 10 03 e osserva
-    # l'eventuale risposta ARTIV su 0x696. Non invia 10 02 ne' TesterPresent.
-    # Profilo ECU: https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
-    if (self.params.ARTIV_DIAG_PROBE and self.frame >= self.artiv_diag_probe_frame
-        and not self.artiv_diag_probe_done):
-      if not self.artiv_diag_probe_sent:
-        if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and CS.out.standstill:
-          can_sends.append(create_artiv_extended_session_probe())
-          self.artiv_diag_probe_sent = True
-          self.artiv_diag_probe_sent_frame = self.frame
-          carlog.error("PSA_DEBUG artiv_diag_probe: inviata richiesta extended session 10 03")
-
-      elif CS.artiv_diag_response_updated:
-        response = CS.artiv_diag_response
-        length = response["ISO_TP_LENGTH"]
-        service = response["UDS_SERVICE"]
-        subfunction = response["UDS_SUBFUNCTION"]
-        detail = response["UDS_NRC"]
-
-        if length >= 2 and service == 0x50 and subfunction == 0x03:
-          self.artiv_diag_probe_done = True
-          carlog.error("PSA_DEBUG artiv_diag_probe: ARTIV raggiungibile, risposta positiva 50 03")
-        elif length >= 3 and service == 0x7F and subfunction == 0x10 and detail == 0x78:
-          self.artiv_diag_probe_sent_frame = self.frame
-          carlog.error("PSA_DEBUG artiv_diag_probe: ARTIV response pending 7F 10 78")
-        elif length >= 3 and service == 0x7F and subfunction == 0x10:
-          self.artiv_diag_probe_done = True
-          carlog.error(f"PSA_DEBUG artiv_diag_probe: ARTIV raggiungibile, 10 03 rifiutato (7F 10 {detail:02X})")
-        else:
-          self.artiv_diag_probe_done = True
-          response_summary = f"len={length} service=0x{service:02X} sub=0x{subfunction:02X} detail=0x{detail:02X}"
-          carlog.error(f"PSA_DEBUG artiv_diag_probe: risposta inattesa {response_summary}")
-
-      elif self.frame - self.artiv_diag_probe_sent_frame >= self.artiv_diag_probe_timeout_frames:
-        self.artiv_diag_probe_done = True
-        carlog.error("PSA_DEBUG artiv_diag_probe: timeout, nessuna risposta da ARTIV su 0x696")
-    # [artiv-diag-probe] - END
 
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
     #   if self.frame % 10 == 0:
@@ -435,6 +353,11 @@ class CarController(CarControllerBase):
 
       else:
         self.bars = 4
+
+      # disable radar ECU by setting to programming mode
+      # if self.radar_disabled == 0:
+      #   can_sends.append(create_disable_radar())
+      #   self.radar_disabled = 1
 
     #   # Highest torque seen without gas input: ~1000
     #   # Lowest torque seen without break mode: -560 (but only when transitioning from brake to accel mode, else -248)

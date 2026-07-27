@@ -146,17 +146,22 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
 
 
 # [artiv-diag-probe] - START
-# Probe di raggiungibilita' diagnostica ARTIV (0x6B6 sul bus ADAS).
+# Disabilita ARTIV (radar) mettendolo in programming session su 0x6B6, bus ADAS.
 # Riferimento profilo ECU PyPSADiag:
 # https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
 #   0x02 = ISO-TP single frame, 2 byte di payload
-#   0x10 0x03 = DiagnosticSessionControl, extendedDiagnosticSession
+#   0x10 0x02 = DiagnosticSessionControl, programmingSession -> l'ECU smette di
+#               trasmettere i suoi messaggi normali (radar "zitto") finche' resta li'.
+# La sessione decade dopo il timeout S3 (~5 s): il CarController la tiene viva con
+# TesterPresent periodico. Entrare in programming NON richiede security access (27);
+# quello servirebbe solo per erase/write. Risposta lasciata attiva (50 02 vs 7F 10 xx)
+# per vedere nei log se ARTIV ha accettato; per sopprimerla userei 0x10 0x82.
 # PyPSADiag completa il single frame con padding a zero fino a DLC 8.
-# Questo probe non chiede la programming session e non invia TesterPresent.
-def create_artiv_extended_session_probe():
+def create_disable_radar():
   addr = 0x6B6
   bus = 1
-  dat = [0x02, 0x10, 0x03]
+  # dat = [0x02, 0x10, 0x03]   # era il probe di raggiungibilita' (extended session)
+  dat = [0x02, 0x10, 0x02]
   dat.extend([0x0] * (8 - len(dat)))
 
   return CanData(addr, bytes(dat), bus)

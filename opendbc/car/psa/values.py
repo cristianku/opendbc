@@ -104,10 +104,11 @@ class CarControllerParams:
     # Nei log l'EPS passa a 1 (Authorised) subito dopo aver campionato 2 e poi 3,
     # e a 3 (Active) subito dopo aver visto 4: il protocollo va bene, servono solo
     # gradini abbastanza lunghi da non poter essere saltati dal suo campionamento.
-    EPS_REARM_STEP_HOLD = 0.15        # s per gradino della scaletta (3 invii LKA)
+    # Ogni parametro dice quanto si TIENE un gradino. 1 invio LKA = STEER_STEP frame = 50 ms.
+    EPS_REARM_STEP_HOLD = 0.15        # s su ogni gradino della salita, 2 e 3 (3 invii LKA)
     # Arrivati a 4 si TIENE 4 (il ciclo 4->2 era proprio quello che scombinava la
     # sequenza). Solo se dopo questo tempo l'EPS non e' tornato ACTIVE si riparte da 2.
-    EPS_REARM_LADDER_TIMEOUT = 0.6    # s prima di ricominciare la scaletta da 2
+    EPS_REARM_TOP_HOLD = 0.30         # s sull'ultimo gradino (4) prima di ricominciare da 2
     # Gradini della scaletta di riattivazione (enum TX LANE_KEEP_ASSIST 1010):
     # 2 SELECTED -> 3 AUTHORIZED -> 4 ACTIVE
     EPS_REARM_LADDER = (2, 3, 4)
