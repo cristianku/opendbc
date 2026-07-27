@@ -172,12 +172,12 @@ class CarController(CarControllerBase):
     # lateral control
     if self.CP.steerControlType == SteerControlType.torque:
       # disable radar ECU by setting to programming mode
-      if self.radar_disabled == 0:
+      if self.radar_disabled == 0 and self.frame > 200:
         can_sends.append(create_disable_radar())
         self.radar_disabled = 1
 
       # keep radar ECU disabled by sending tester present
-      if self.frame % 100 == 0 and self.frame>0: # TODO check if disable_radar is sent 100 frames before
+      if self.frame % 100 == 0 and self.frame>201: # TODO check if disable_radar is sent 100 frames before
         can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
 
