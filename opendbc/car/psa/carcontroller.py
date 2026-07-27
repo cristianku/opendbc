@@ -9,11 +9,11 @@ from opendbc.car.interfaces import CarControllerBase
 # from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc,  create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, create_request_takeover
 from opendbc.car.psa.values import CarControllerParams, CAR
-from cereal import messaging
-from numpy import interp
+# from cereal import messaging
+# from numpy import interp
 
 import random
-import math
+# import math
 
 SteerControlType = structs.CarParams.SteerControlType
 sm = messaging.SubMaster(['modelV2'], poll='modelV2')
@@ -314,15 +314,15 @@ class CarController(CarControllerBase):
         # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
         self.steering_hold_counter += 1
         if self.steering_hold_counter >= self.next_steering_hold:
-          # can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+          can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
           self.steering_hold_counter = 0
           self.next_steering_hold = random.randint(8, 12)
         # --- DRIVER TORQUE (ogni 5–8 s) ---
         self.driver_torque_counter += 1
         if self.driver_torque_counter >= self.next_driver_torque:
-          # msg = CS.steering
-          # counter = (msg['COUNTER'] + 1) % 16
-          # can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
+          msg = CS.steering
+          counter = (msg['COUNTER'] + 1) % 16
+          can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
           self.driver_torque_counter = 0
           self.next_driver_torque = random.randint(500, 800)
 
