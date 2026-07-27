@@ -42,6 +42,7 @@ class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
     super().__init__(dbc_names, CP, CP_SP)
     self.packer = CANPacker(dbc_names[Bus.main])
+    self.first_message = False
     self.apply_torque_last = 0
     self.apply_can_torque_last = 0  # raw CAN torque logged to steeringAngleDeg (debug); init so it always exists
     self.apply_torque_factor = 0
@@ -194,6 +195,9 @@ class CarController(CarControllerBase):
       if self.frame % 100 == 0 and self.frame>201: # TODO check if disable_radar is sent 100 frames before
         can_sends.append(create_tester_present(1))
         carlog.error("PSA_DEBUG create_tester_present")
+        if not self.first_message:
+          can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6, self.params.EPS_TAKEOVER_TYPE))
+          self.first_message = True
       # [CLAUDE artiv-nopad] - END
 
 
