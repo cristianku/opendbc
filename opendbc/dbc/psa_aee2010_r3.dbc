@@ -575,7 +575,7 @@ BO_ 1684 Rep_Diag_MSB: 7 XXX
 
 BO_ 1685 Rep_Diag_DIRECTN: 7 XXX
 
-BO_ 1686 Rep_Diag_ARTIV: 7 XXX
+BO_ 1686 Rep_Diag_ARTIV: 8 XXX
  SG_ ISO_TP_LENGTH : 0|8@1+ (1,0) [0|255] "" XXX
  SG_ UDS_SERVICE : 8|8@1+ (1,0) [0|255] "" XXX
  SG_ UDS_SUBFUNCTION : 16|8@1+ (1,0) [0|255] "" XXX
@@ -597,7 +597,7 @@ BO_ 1716 Req_Diag_MSB: 3 XXX
 
 BO_ 1717 Req_Diag_DIRECTN: 3 XXX
 
-BO_ 1718 Req_Diag_ARTIV: 3 XXX
+BO_ 1718 Req_Diag_ARTIV: 8 XXX
 
 BO_ 1719 Req_Diag_CORPRO: 3 XXX
 
@@ -935,7 +935,8 @@ CM_ BO_ 1670 "HCU2";
 CM_ BO_ 1677 "ABS81, ESP81, ABS8_BOSCH, ESP8_BOSCH, ESP90, ABSMK100, ESPMK100, ESP_KP1, ABS_KP1, ASC, ABS, ESP, ABS80, ESP80, ASR80, ABS90_D, ESP90_D, ESP90_F, ESPMK100_UDS, ESP_EBC_440_CAN, ESP_EBC_440_K, ESP_EBC_440, ABSMK70_1, ESPMK60_O, ABSMK100_UDS, ABS90_T, ABS_8_0_C1, ESP_8_0_C1, ABS_4x4, ESP_4x4, ABS81_BOSCH, ESP81_BOSCH, ABS90_F, RBV";
 CM_ BO_ 1684 "TBMU, TBMU_PHEV, BMU_CTE1";
 CM_ BO_ 1685 "GEP, DAE_BVH2, DAE, DAE_A515, DAE_UDS, EPS, SSCU, DAE_D, GEP_UDS, EPS_T";
-CM_ BO_ 1686 "ARTIV, RADAR_AV_4, LIDAR, ARTIV_UDS";
+CM_ BO_ 1686 "ARTIV, RADAR_AV_4, LIDAR, ARTIV_UDS. [CLAUDE artiv-diag-dlc] DLC 7 -> 8: sul bus ADAS questa risposta usa frame da 3,4,6,7 e 8 byte (i multiframe ISO-TP sono da 8); con DLC 7 i tool che rispettano il DLC troncavano l'ultimo byte. I segnali ISO_TP_LENGTH/UDS_SERVICE/UDS_SUBFUNCTION/UDS_NRC sono validi solo sui Single Frame: sui Consecutive Frame (byte 0 = 0x21,0x22,...) decodificano dati grezzi come se fossero campi UDS.";
+CM_ BO_ 1718 "ARTIV_UDS, richiesta diagnostica verso il radar ARTIV (0x6B6). [CLAUDE artiv-diag-dlc] DLC 3 -> 8: le richieste reali arrivano a 5 byte (es. 04 14 FF FF FF, ClearDiagnosticInformation) e il transport ISO-TP ammette fino a 8; con DLC 3 venivano troncate. Nessun SG_ definito di proposito: e' un canale ISO-TP, il significato del byte 0 cambia per tipo di frame (SF/FF/CF/FC) e non e' esprimibile come segnale a posizione fissa.";
 CM_ BO_ 1704 "Le mécanisme d'émission utilisé est événementiel de l'outil vers le calculateur via la BSI
 Trame question pour le téléchargement et le Diag On CAN.";
 CM_ BO_ 1810 "BAAST";

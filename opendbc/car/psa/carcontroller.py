@@ -1,7 +1,12 @@
 from opendbc.can.packer import CANPacker
 # [eps-rearm] - START
 # from opendbc.car import Bus, structs
-from opendbc.car import Bus, structs, DT_CTRL, make_tester_present_msg
+# [CLAUDE artiv-nopad] - START
+# Riga sostituita (make_tester_present_msg non piu' usato: padda a DLC 8,
+# sostituito da psacan.create_tester_present):
+# from opendbc.car import Bus, structs, DT_CTRL, make_tester_present_msg
+from opendbc.car import Bus, structs, DT_CTRL
+# [CLAUDE artiv-nopad] - END
 from opendbc.car.common.conversions import Conversions as CV
 # [eps-rearm] - END
 from opendbc.car.carlog import carlog
@@ -12,8 +17,13 @@ from opendbc.car.interfaces import CarControllerBase
 # from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc,  create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 # [artiv-diag-probe] - START
 # from opendbc.car.psa.psacan import (create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover)
+# [CLAUDE artiv-nopad] - START
+# Riga sostituita (aggiunto create_tester_present, versione senza padding):
+# from opendbc.car.psa.psacan import (create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover,
+#                                     create_disable_radar)
 from opendbc.car.psa.psacan import (create_lka_steering, create_driver_torque, create_steering_hold, create_request_takeover,
-                                    create_disable_radar)
+                                    create_disable_radar, create_tester_present)
+# [CLAUDE artiv-nopad] - END
 # [artiv-diag-probe] - END
 # [takeover-test] - END
 from opendbc.car.psa.values import CarControllerParams, CAR
@@ -173,12 +183,18 @@ class CarController(CarControllerBase):
     if self.CP.steerControlType == SteerControlType.torque:
       # disable radar ECU by setting to programming mode
       if self.radar_disabled == 0 and self.frame > 200:
-        can_sends.append(create_disable_radar())
+        can_sends.append(create_disable_radar(1))
+        carlog.error("PSA_DEBUG create_disable_radar")
         self.radar_disabled = 1
 
       # keep radar ECU disabled by sending tester present
+      # [CLAUDE artiv-nopad] - START
+      # Riga sostituita (paddava a DLC 8, formato diverso da create_disable_radar):
+      #   can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
       if self.frame % 100 == 0 and self.frame>201: # TODO check if disable_radar is sent 100 frames before
-        can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
+        can_sends.append(create_tester_present(1))
+        carlog.error("PSA_DEBUG create_tester_present")
+      # [CLAUDE artiv-nopad] - END
 
 
       if self.frame % self.params.STEER_STEP == 0:

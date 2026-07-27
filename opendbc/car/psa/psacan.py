@@ -156,15 +156,40 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
 # TesterPresent periodico. Entrare in programming NON richiede security access (27);
 # quello servirebbe solo per erase/write. Risposta lasciata attiva (50 02 vs 7F 10 xx)
 # per vedere nei log se ARTIV ha accettato; per sopprimerla userei 0x10 0x82.
-# PyPSADiag completa il single frame con padding a zero fino a DLC 8.
-def create_disable_radar():
+#
+# [CLAUDE artiv-nopad] - START
+# Niente padding a DLC 8. Nel log della sessione Kingbolen del 24/03
+# (route 00000023--3b5e225f94, bus1) le richieste verso ARTIV sono lunghe
+# 3, 4 o 5 byte e MAI 8, e l'ECU risponde sempre:
+#   02 10 03    (3 byte) -> 50 03 00 C8 00 14
+#   02 3E 00    (3 byte) -> 7E 00
+#   03 22 F0 80 (4 byte) -> 62 F0 80 ...
+# Il padding e' opzionale in ISO 15765-2 (il ricevente usa la lunghezza dal
+# PCI), quindi il frame corto e' l'unico formato di cui abbiamo prova su
+# questo radar. Il frame paddato a 8 non e' mai stato testato sull'ARTIV.
+# Riga sostituita:
+#   dat.extend([0x0] * (8 - len(dat)))   # padding a DLC 8 come PyPSADiag
+def create_disable_radar(bus: int):
   addr = 0x6B6
-  bus = 1
+  # bus = 1
   # dat = [0x02, 0x10, 0x03]   # era il probe di raggiungibilita' (extended session)
   dat = [0x02, 0x10, 0x02]
-  dat.extend([0x0] * (8 - len(dat)))
 
   return CanData(addr, bytes(dat), bus)
+
+
+def create_tester_present(bus: int, addr: int = 0x6B6, suppress_response: bool = False):
+  """TesterPresent senza padding, come lo manda il Kingbolen.
+
+  make_tester_present_msg() di opendbc padda sempre a DLC 8
+  (opendbc/car/__init__.py), quindi aprire la sessione con un frame corto e
+  mantenerla con uno paddato userebbe due formati diversi nella stessa
+  sessione. Qui il formato resta identico a create_disable_radar().
+  """
+  dat = [0x02, 0x3E, 0x80 if suppress_response else 0x00]
+
+  return CanData(addr, bytes(dat), bus)
+# [CLAUDE artiv-nopad] - END
 # [artiv-diag-probe] - END
 
   # Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
