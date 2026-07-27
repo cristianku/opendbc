@@ -16,7 +16,7 @@ import random
 # import math
 
 SteerControlType = structs.CarParams.SteerControlType
-sm = messaging.SubMaster(['modelV2'], poll='modelV2')
+# sm = messaging.SubMaster(['modelV2'], poll='modelV2')
 
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
