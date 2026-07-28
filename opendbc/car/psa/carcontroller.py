@@ -203,6 +203,13 @@ class CarController(CarControllerBase):
         # to send. can_torque and factor travel as two separate CAN signals. Sent
         # every STEER_STEP frames; psa.h check_relay is set for PSA_LANE_KEEP_ASSIST.
         #   ex: round(19 / 31 * 100) = 61  ->  EPS redoes 61 * 31/100 = 19 (effective)
+        if self.frame % 300 in (0, 5, 10):
+          apply_new_torque_scaled = 0
+          self.apply_torque_factor = 0
+
+        if self.frame % 600 in (0, 5, 10):
+          self.takeover_req = True
+
         if self.apply_torque_factor > 0 and apply_new_torque_scaled != 0:
           can_torque = int(round(apply_new_torque_scaled / self.apply_torque_factor *100))
         else:
@@ -346,6 +353,8 @@ class CarController(CarControllerBase):
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if self.takeover_req and self.frame % 2 == 0: # 50 Hz
+        if self.takeover_start_msg_frame == 0:
+          self.takeover_start_msg_frame = self.frame
         can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
         carlog.error("PSA_DEBUG create_request_takeover")
         if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
