@@ -152,7 +152,7 @@ class CarController(CarControllerBase):
               ### START EPS ACTIVE
               ######
               # EPS is active, proceed with lateral control
-              self.lateral_activation_frame = self.frame
+              # self.lateral_activation_frame = self.frame
               self.eps_was_active = True
               self.takeover_req = False
               self.activation_request_frame = 0
