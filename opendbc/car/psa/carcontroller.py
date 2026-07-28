@@ -322,7 +322,7 @@ class CarController(CarControllerBase):
       # if CC.latActive and CS.out.standstill: # and CC.hudControl.leadVisible:
       # if CC.enabled and CS.out.standstill: # and CC.hudControl.leadVisible:
       #   phase = self.frame % 300
-      if CC.enabled and CS.out.vEgo < self.params.RESUME_ACC_SPEED:
+      if CC.enabled and CS.out.vEgo < self.params.RESUME_ACC_SPEED and CC.hudControl.leadVisible:
         if self.creep_start_frame == 0:
           self.creep_start_frame = self.frame     # primo frame dentro la finestra
         phase = (self.frame - self.creep_start_frame) % 300
