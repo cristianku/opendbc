@@ -61,12 +61,16 @@ class CarState(CarStateBase):
       cp.vl['Dyn4_FRE']['P266_VehV_VPsvValWhlBckR'],
     )
     ret.yawRate = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VITESSE_LACET_BRUTE'] * CV.DEG_TO_RAD
-    # versione cristian ret.standstill = cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'] < 0.1
-    # versione elkoled
-    ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
+    if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
+      # ret.standstill = ret.vEgoRaw <= 0
+      ret.standstill = ret.vEgoRaw <= 0.1 * CV.KPH_TO_MS
+    else:
+      # versione elkoled
+      ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
+    # [CLAUDE standstill-threshold] - END
 
     # gas
-    if self.CP.carFingerprint in( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
+    if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
       ret.gasPressed = cp.vl['Dyn5_CMM']['P334_ACCPed_Position'] > 0
     else:
       ret.gasPressed = cp_cam.vl['DRIVER']['GAS_PEDAL'] > 0
@@ -99,7 +103,7 @@ class CarState(CarStateBase):
       # Standard convention: 0 → left (negative), 1 → right (positive)
       ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1)
 
-    if self.CP.carFingerprint in ( CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER ):
+    if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER ):
       ret.genericToggle = (int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"]) == 1) # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
 
       # ret.steeringTorque  = cp.vl['STEERING']['DRIVER_TORQUE'] * 3   # raw (noisy) - sostituita dalla versione filtrata sotto

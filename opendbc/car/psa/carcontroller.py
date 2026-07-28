@@ -87,58 +87,17 @@ class CarController(CarControllerBase):
 
   def _activate_eps(self, CARSTATE):
     eps_active = CARSTATE.eps_active
-    eps_state_lka = CARSTATE.eps_state_lka
     self.eps_was_active = False
     if self.activation_request_frame == 0:
       # first frame the EPS activate or re activate is sent
       self.activation_request_frame = self.frame
       # self.takeover_req_sent = False
-    if self.frame > self.activation_request_frame + self.eps_activate_takeover_frames:
-      carlog.error("PSA_DEBUG self.takeover_req = True")
-      self.takeover_req = True
+    # if self.frame > self.activation_request_frame + self.eps_activate_takeover_frames:
+    #   carlog.error("PSA_DEBUG self.takeover_req = True")
+    #   self.takeover_req = True
 
     if not eps_active: # and not CS.out.steeringPressed:
-      # IS_DAT_DIRA.EPS_STATE_LKA
-      # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
-
-      # LANE_KEEP_ASSIST.STATUS
-      #  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
-      # [CLAUDE eps-closed-loop] - START
-      # Riga sostituita: assegnare lo stato dell'EPS + 1 non arriva mai in cima.
-      # Per chiedere 4 servirebbe che l'EPS fosse gia' a 3 (Active), ma lui va ad
-      # Active solo se noi chiediamo 4: si aspettano a vicenda. Misurato sulla route
-      # 0000002e--d3fa08e80d: 6 minuti, mai chiesto STATUS 4, EPS mai andato Active.
-      #   self.status = min(4, max(2, self.status, eps_state_lka + 1))
-      #
-      # Il +1 deve essere un INCREMENTO, non un'assegnazione: la nostra richiesta guida
-      # di un gradino e sale ogni volta che l'EPS si muove. Non serve sapere quale valore
-      # dell'EPS significhi cosa, basta che sia cambiato (la sequenza misurata e' 2,1,3,
-      # non monotona). Non scende mai: il reset a 1 lo fa _deactivate_eps allo stacco.
-
       self.status = 2 if self.status == 4 else self.status + 1
-
-      # if self.status < 2:
-      #   self.status = 2                          # si parte sempre dal primo gradino
-      # elif eps_state_lka != self.eps_state_last:
-      #   self.status = min(4, self.status + 1)    # l'EPS si e' mosso: saliamo di uno
-      # self.eps_state_last = eps_state_lka
-
-      # [CLAUDE eps-closed-loop] - END
-
-      # if eps_state_lka == 0: # EPS 0 = Unauthorized
-      #   self.status = 1      # LKS 1 = UNSELECTED
-
-      # elif eps_state_lka == 1: # EPS 1 = Authorized
-      #   self.status = 2        # LKS 2 = READY
-
-      # elif eps_state_lka == 2: # EPS 2 = Available
-      #   self.status = 3        # LKS 3 = AUTHORIZED
-
-      # elif eps_state_lka == 3: # EPS 3 = Active
-      #   self.status = 4        # LKS 4 = ACTIVE
-
-      # elif eps_state_lka == 4: # EPS 4 = Defect
-      #   self.status = 0        # LKS 0 = UNAVAILABLE
 
       # EPS likes a progressive activation of the Torque Factor
       self.apply_torque_factor += 10
@@ -164,6 +123,16 @@ class CarController(CarControllerBase):
         else:
           if not CS.eps_active:
             self.deactivation_in_progress = False   # ha mollato: la scaletta puo' ripartire
+            # [CLAUDE rearm-doppio-buco] - START
+            # Azzerare qui e' obbligatorio: senza, dopo uno stacco SPONTANEO dell'EPS
+            # (non chiesto da noi) il contatore resta quello vecchio, e appena l'EPS
+            # torna Active la condizione dei 10 s e' gia' scaduta -> lo stacchiamo
+            # subito di nuovo, due buchi attaccati. Misurato sul route 00000037:
+            # 8 stacchi spontanei su 81 (intervalli 2.5-8.8 s invece dei 10 s nostri),
+            # e i buchi piu' lunghi (1.7-2.4 s contro una mediana di 0.49 s) sono questi.
+            # Cosi' i 10 s ripartono da quando l'EPS torna davvero Active.
+            self.lateral_activation_frame = 0
+            # [CLAUDE rearm-doppio-buco] - END
             self._activate_eps(CS)
 
           else:
@@ -330,13 +299,22 @@ class CarController(CarControllerBase):
           self.driver_torque_counter = 0
           self.next_driver_torque = random.randint(500, 800)
 
-    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-    #   if self.takeover_req and self.frame % 2 == 0: # 50 Hz
-    #     # can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-    #     # carlog.error("PSA_DEBUG create_request_takeover")
-    #     if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
-    #       self.takeover_req = False
-    #       self.takeover_start_msg_frame = 0
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+      if CC.latActive and CS.out.standstill: # and CC.hudControl.leadVisible:
+        phase = self.frame % 300
+        if phase in (0, 5):
+          pressed = 1 if phase == 5 else 0
+          msg = CS.hs2_dat_mdd_cmd_452
+          counter = (msg['COUNTER'] + 1) % 16
+          can_sends.append(create_resume_acc(self.packer, counter, pressed, msg))
+
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+      if self.takeover_req and self.frame % 2 == 0: # 50 Hz
+        can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
+        carlog.error("PSA_DEBUG create_request_takeover")
+        if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
+          self.takeover_req = False
+          self.takeover_start_msg_frame = 0
 
     # Actuators output
     new_actuators = actuators.as_builder()
