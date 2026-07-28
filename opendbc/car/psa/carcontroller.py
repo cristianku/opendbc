@@ -114,11 +114,15 @@ class CarController(CarControllerBase):
       # di un gradino e sale ogni volta che l'EPS si muove. Non serve sapere quale valore
       # dell'EPS significhi cosa, basta che sia cambiato (la sequenza misurata e' 2,1,3,
       # non monotona). Non scende mai: il reset a 1 lo fa _deactivate_eps allo stacco.
-      if self.status < 2:
-        self.status = 2                          # si parte sempre dal primo gradino
-      elif eps_state_lka != self.eps_state_last:
-        self.status = min(4, self.status + 1)    # l'EPS si e' mosso: saliamo di uno
-      self.eps_state_last = eps_state_lka
+
+      self.status = 2 if self.status == 4 else self.status + 1
+
+      # if self.status < 2:
+      #   self.status = 2                          # si parte sempre dal primo gradino
+      # elif eps_state_lka != self.eps_state_last:
+      #   self.status = min(4, self.status + 1)    # l'EPS si e' mosso: saliamo di uno
+      # self.eps_state_last = eps_state_lka
+
       # [CLAUDE eps-closed-loop] - END
 
       # if eps_state_lka == 0: # EPS 0 = Unauthorized
