@@ -72,7 +72,7 @@ class CarController(CarControllerBase):
     self.eps_was_active = False
     self.status = 2
     self.apply_torque_factor = 0
-    self.takeover_req = False
+    # self.takeover_req = False
     self.lat_activation_frame = 0
     self.last_status_change_frame = 0
     self.activation_request_frame = 0
@@ -81,7 +81,8 @@ class CarController(CarControllerBase):
 
   def _deactivate_eps(self):
     self.eps_was_active = False
-    self.status = 2
+    # self.status = 2
+    self.status = 3
     self.apply_torque_factor = 0
     self.takeover_req = False
     self.lat_activation_frame = 0
@@ -97,9 +98,9 @@ class CarController(CarControllerBase):
       # first frame the EPS activate or re activate is sent
       self.activation_request_frame = self.frame
       # self.takeover_req_sent = False
-    # if self.frame > self.activation_request_frame + self.eps_activate_takeover_frames:
-    #   carlog.error("PSA_DEBUG self.takeover_req = True")
-    #   self.takeover_req = True
+    if self.frame > self.activation_request_frame + self.eps_activate_takeover_frames:
+      carlog.error("PSA_DEBUG _activate_eps - too long to activate - self.takeover_req = True")
+      self.takeover_req = True
 
     if not eps_active: # and not CS.out.steeringPressed:
       self.status = 2 if self.status == 4 else self.status + 1

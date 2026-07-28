@@ -44,7 +44,7 @@ class CarControllerParams:
     # L'EPS campiona a ~10 Hz: sotto ~0.1 s per gradino rischia di saltarne uno.
     # EPS_STATUS_HOLD = 0.15  # s = 3 cicli LKA a 20 Hz = 15 frame
     # EPS_KEEP_STATUS_PERIOD = 0.05
-    EPS_ACTIVATE_TAKEOVER_PERIOD = 0.1
+    EPS_ACTIVATE_TAKEOVER_PERIOD = 0.6
     TAKEOVER_MSG_DURATION = 1
 
     # [CLAUDE eps-closed-loop] - START
