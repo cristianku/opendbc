@@ -300,7 +300,8 @@ class CarController(CarControllerBase):
           self.next_driver_torque = random.randint(500, 800)
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      if CC.latActive and CS.out.standstill: # and CC.hudControl.leadVisible:
+      # if CC.latActive and CS.out.standstill: # and CC.hudControl.leadVisible:
+      if CC.enabled and CS.out.standstill: # and CC.hudControl.leadVisible:
         phase = self.frame % 300
         if phase in (0, 5):
           pressed = 1 if phase == 5 else 0
