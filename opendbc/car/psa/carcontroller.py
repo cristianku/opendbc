@@ -56,7 +56,7 @@ class CarController(CarControllerBase):
     # Periodo di stacco EPS: da secondi a frame. self.frame gira a 100 Hz (DT_CTRL = 0.01 s),
     # quindi frame = secondi / DT_CTRL.
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)   # 5 s = 500 frame
-    self.eps_activate_keep_status_frames = int(self.params.EPS_KEEP_STATUS_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
+    # self.eps_activate_keep_status_frames = int(self.params.EPS_KEEP_STATUS_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
     self.eps_activate_takeover_frames = int(self.params.EPS_ACTIVATE_TAKEOVER_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
     # [CLAUDE eps-closed-loop] - START
     # Ultimo stato dell'EPS visto dalla scaletta: creato QUI, non al primo uso, se no
@@ -285,9 +285,18 @@ class CarController(CarControllerBase):
     # #  ELKOLED LONGITUDINAL CONTROL
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      if not CC.latActive:
+      # [CLAUDE stop-finti-durante-riarmo] - START
+      # Durante il riarmo dell'EPS questi due messaggi vanno sospesi: gli stiamo
+      # chiedendo di mollare e riprendere, e nel frattempo gli inietteremmo
+      # "mani sul volante" e una coppia guidatore finta, cioe' proprio i segnali
+      # che possono fargli rifiutare la riautorizzazione.
+      # Riarmo = stacco in corso, oppure EPS non ancora tornato Active.
+      if not CC.latActive or self.deactivation_in_progress or not CS.eps_active:
+        self.steering_hold_counter = 0                       # alla ripresa il primo
+        self.next_steering_hold = random.randint(8, 12)      # hold-hands parte subito
         self.driver_torque_counter = 0
         self.next_driver_torque = random.randint(500, 800)
+      # [CLAUDE stop-finti-durante-riarmo] - END
       else:
         # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
         self.steering_hold_counter += 1
