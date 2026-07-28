@@ -54,6 +54,15 @@ class CarControllerParams:
     EPS_ACK_TIMEOUT = 0.3  # s
     # [CLAUDE eps-closed-loop] - END
 
+    # [CLAUDE resume-acc-anticipato] - START
+    # Sotto quale velocita' iniziare a mandare il finto tasto resume, in m/s.
+    # L'ACC di serie della 3008 resta agganciato finche' c'e' un filo di movimento
+    # e molla allo zero esatto; da fermo non si riattiva piu' sotto i 30 km/h.
+    # Quindi l'impulso deve partire mentre si striscia ancora, non a fermo.
+    # 0.56 m/s = 2 km/h. Alzare se il messaggio arriva ancora troppo tardi.
+    RESUME_ACC_SPEED = 0.56  # m/s
+    # [CLAUDE resume-acc-anticipato] - END
+
     def __init__(self, CP):
       pass
 

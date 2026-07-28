@@ -43,6 +43,11 @@ class CarController(CarControllerBase):
     self.activation_request_frame = 0
     self.eps_was_active = False
     self.takeover_start_msg_frame = 0
+    # [CLAUDE resume-acc-anticipato] - START
+    # Frame di ingresso nella finestra di creep, creato QUI e non al primo uso
+    # (attributo nato dentro update() = AttributeError se quel giro non parte per primo).
+    self.creep_start_frame = 0
+    # [CLAUDE resume-acc-anticipato] - END
     # [CLAUDE eps-rearm] - START
     # Stato della scaletta e dello stacco: tutti creati qui, mai al primo uso
     # (attributo nato dentro un metodo = AttributeError se quel metodo non gira per primo).
@@ -300,14 +305,35 @@ class CarController(CarControllerBase):
           self.next_driver_torque = random.randint(500, 800)
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+      # [CLAUDE resume-acc-anticipato] - START
+      # Due correzioni rispetto alla versione precedente:
+      #
+      # 1) NON si usa piu' CS.out.standstill. Sulla 3008 l'ACC resta agganciato
+      #    finche' c'e' un filo di movimento e molla allo zero esatto; da li' serve
+      #    risalire a 30 km/h per riattivarlo. Quindi il resume va mandato MENTRE
+      #    si striscia ancora, non a fermo, che e' gia' troppo tardi.
+      #    ret.standstill non si tocca: deve restare il complemento esatto di
+      #    vehicle_moving nel panda (test_models.py lo verifica).
+      #
+      # 2) La fase parte dall'ingresso nella finestra, non da self.frame assoluto.
+      #    Con `self.frame % 300` il primo impulso poteva arrivare fino a 3 s dopo
+      #    (1.5 s in media), quando l'ACC si era gia' sganciato.
+      #
       # if CC.latActive and CS.out.standstill: # and CC.hudControl.leadVisible:
-      if CC.enabled and CS.out.standstill: # and CC.hudControl.leadVisible:
-        phase = self.frame % 300
+      # if CC.enabled and CS.out.standstill: # and CC.hudControl.leadVisible:
+      #   phase = self.frame % 300
+      if CC.enabled and CS.out.vEgo < self.params.RESUME_ACC_SPEED:
+        if self.creep_start_frame == 0:
+          self.creep_start_frame = self.frame     # primo frame dentro la finestra
+        phase = (self.frame - self.creep_start_frame) % 300
         if phase in (0, 5):
           pressed = 1 if phase == 5 else 0
           msg = CS.hs2_dat_mdd_cmd_452
           counter = (msg['COUNTER'] + 1) % 16
           can_sends.append(create_resume_acc(self.packer, counter, pressed, msg))
+      else:
+        self.creep_start_frame = 0
+      # [CLAUDE resume-acc-anticipato] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if self.takeover_req and self.frame % 2 == 0: # 50 Hz
