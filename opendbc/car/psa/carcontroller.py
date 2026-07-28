@@ -73,7 +73,6 @@ class CarController(CarControllerBase):
     self.status = 2
     self.apply_torque_factor = 0
     # self.takeover_req = False
-    self.lat_activation_frame = 0
     self.last_status_change_frame = 0
     self.activation_request_frame = 0
     self.deactivation_in_progress = False
@@ -84,16 +83,16 @@ class CarController(CarControllerBase):
     # self.status = 2
     self.status = 3
     self.apply_torque_factor = 0
-    self.takeover_req = False
-    self.lat_activation_frame = 0
+    # self.takeover_req = False
     self.last_status_change_frame = self.frame
     self.activation_request_frame = 0
-    self.lateral_activation_frame = 0
+    self.lateral_activation_frame = self.frame
     self.deactivation_in_progress = True
 
   def _activate_eps(self, CARSTATE):
     eps_active = CARSTATE.eps_active
     self.eps_was_active = False
+    self.deactivation_in_progress = False
     if self.activation_request_frame == 0:
       # first frame the EPS activate or re activate is sent
       self.activation_request_frame = self.frame
@@ -142,18 +141,18 @@ class CarController(CarControllerBase):
             self._activate_eps(CS)
 
           else:
+            # first time it enters in the lateral active state, store the frame to check the rearm period
             if self.lateral_activation_frame == 0:
               self.lateral_activation_frame = self.frame
 
-            if self.deactivation_in_progress:
-              self._deactivate_eps()     # ancora attivo: si insiste su 1
-            elif self.frame > self.lateral_activation_frame + self.eps_rearm_frames:
+            if (self.frame > self.lateral_activation_frame + self.eps_rearm_frames) or self.deactivation_in_progress:
               self._deactivate_eps()
             else:
               ##########
               ### START EPS ACTIVE
               ######
               # EPS is active, proceed with lateral control
+              self.lateral_activation_frame = self.frame
               self.eps_was_active = True
               self.takeover_req = False
               self.activation_request_frame = 0
