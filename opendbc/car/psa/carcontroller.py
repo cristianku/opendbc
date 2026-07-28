@@ -198,11 +198,6 @@ class CarController(CarControllerBase):
                 apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
                                                                 temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
 
-        # --- Back to a raw CAN command ----------------------------------------
-        # The EPS re-applies factor/100, so undo the scaling to recover the raw value
-        # to send. can_torque and factor travel as two separate CAN signals. Sent
-        # every STEER_STEP frames; psa.h check_relay is set for PSA_LANE_KEEP_ASSIST.
-        #   ex: round(19 / 31 * 100) = 61  ->  EPS redoes 61 * 31/100 = 19 (effective)
         if self.frame % 300 in (0, 5, 10):
           apply_new_torque_scaled = 0
           self.apply_torque_factor = 0
