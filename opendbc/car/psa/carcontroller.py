@@ -76,7 +76,7 @@ class CarController(CarControllerBase):
 
   def _deactivate_eps(self):
     self.eps_was_active = False
-    self.status = 1
+    self.status = 2
     self.apply_torque_factor = 0
     self.takeover_req = False
     self.lat_activation_frame = 0
