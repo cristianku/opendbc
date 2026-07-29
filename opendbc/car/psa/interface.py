@@ -33,6 +33,7 @@ class CarInterface(CarInterfaceBase):
       ret.steerLimitTimer = 0.1
       ret.steerAtStandstill = False
       ret.openpilotLongitudinalControl = False
+      ret.enableBsm = True
     else:
       ret.steerAtStandstill = True
       ret.steerLimitTimer = 0.1
