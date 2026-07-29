@@ -8,6 +8,7 @@
 #define PSA_DYN4_FRE              781U  // RX from CDS, wheel speeds
 #define PSA_HS2_DYN_UCF_MDD_32D   813U  // RX from UC_FREIN, standstill
 #define PSA_HS2_DYN_ABR_38D       909U  // RX from UC_FREIN, speed
+#define PSA_NEW_MSG_42D           1069U // RX, ACC related
 #define PSA_HS2_DAT_MDD_CMD_452   1106U // RX from BSI, cruise state
 #define PSA_DAT_BSI               1042U // RX from BSI, brake
 #define PSA_LANE_KEEP_ASSIST      1010U // TX from OP,  EPS
@@ -31,6 +32,12 @@ static uint8_t psa_get_counter(const CANPacket_t *msg) {
     cnt = (msg->data[5] >> 4) & 0xFU;
   } else if (msg->addr == PSA_STEERING) {
     cnt = msg->data[0] & 0xFU;  // DBC: COUNTER 3|4@0+ -> low nibble of byte 0 (no >>4 here)
+  } else if (msg->addr == PSA_HS2_DYN1_MDD_ETAT_2B6) {
+    cnt = (msg->data[7] >> 4) & 0xFU;  // DBC: COUNTER 63|4@0+ -> high nibble of byte 7
+  } else if (msg->addr == PSA_HS2_DYN_MDD_ETAT_2F6) {
+    cnt = (msg->data[6] >> 4) & 0xFU;  // DBC: COUNTER 55|4@0+ -> high nibble of byte 6
+  } else if (msg->addr == PSA_NEW_MSG_42D) {
+    cnt = msg->data[2] & 0xFU;  // DBC: COUNTER 16|4@1+ -> low nibble of byte 2
   } else {
   }
   return cnt;
@@ -44,6 +51,12 @@ static uint32_t psa_get_checksum(const CANPacket_t *msg) {
     chksum = msg->data[5] & 0xFU;
   } else if (msg->addr == PSA_STEERING) {
     chksum = (msg->data[0] >> 4) & 0xFU;  // DBC: CHECKSUM 7|4@0+ -> HIGH nibble of byte 0
+  } else if (msg->addr == PSA_HS2_DYN1_MDD_ETAT_2B6) {
+    chksum = msg->data[7] & 0xFU;  // DBC: CHECKSUM 59|4@0+ -> low nibble of byte 7
+  } else if (msg->addr == PSA_HS2_DYN_MDD_ETAT_2F6) {
+    chksum = msg->data[6] & 0xFU;  // DBC: CHECKSUM 51|4@0+ -> low nibble of byte 6
+  } else if (msg->addr == PSA_NEW_MSG_42D) {
+    chksum = (msg->data[2] >> 4) & 0xFU;  // DBC: CHECKSUM 20|4@1+ -> high nibble of byte 2
   } else {
   }
   return chksum;
@@ -75,6 +88,12 @@ static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
     chk = _psa_compute_checksum(msg, 0x7, 5, false);   // checksum in LOW nibble of byte 5
   } else if (msg->addr == PSA_STEERING) {
     chk = _psa_compute_checksum(msg, 0xB, 0, true);    // default init 0xB, checksum in HIGH nibble of byte 0
+  } else if (msg->addr == PSA_HS2_DYN1_MDD_ETAT_2B6) {
+    chk = _psa_compute_checksum(msg, 0xC, 7, false);   // checksum in LOW nibble of byte 7
+  } else if (msg->addr == PSA_HS2_DYN_MDD_ETAT_2F6) {
+    chk = _psa_compute_checksum(msg, 0x8, 6, false);   // checksum in LOW nibble of byte 6
+  } else if (msg->addr == PSA_NEW_MSG_42D) {
+    chk = _psa_compute_checksum(msg, 0xC, 2, true);    // checksum in HIGH nibble of byte 2
   } else {
   }
   return chk;

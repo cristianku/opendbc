@@ -2,7 +2,7 @@ import random
 
 from opendbc.car.can_definitions import CanData
 def psa_checksum(address: int, sig, d: bytearray) -> int:
-  chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
+  chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x2f6: 0x8, 0x2b6: 0xC, 0x42D: 0xC}.get(address, 0xB)
   byte = sig.start_bit // 8
   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
   checksum = sum((b >> 4) + (b & 0xF) for b in d)
@@ -117,32 +117,10 @@ def create_steering_hold(packer, lat_active: bool, is_dat_dira):
     is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1
   return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
 
-# [takeover-test] - START
-# def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
-#   # HS2_DYN_MDD_ETAT_2F6
-#   #  1 = Non Critical Request
-#   #  2 = Critical request
-#   HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = type
-#
-#   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
 def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, takeover_type):
-  # 1 = Non Critical Request, 2 = Critical request
-  # Il packer NON riempie ne' counter ne' checksum di questo messaggio: dbc.py tagga
-  # solo i segnali chiamati esattamente COUNTER e CHECKSUM, mentre qui si chiamano
-  # PROCESS_COUNTER_4B_ACC2 (55|4) e CHECKSUM_TRANSM_DYN_ACC2 (51|4). Senza questo
-  # rimanderemmo il counter fermo e un checksum sbagliato (cambiamo REQUEST_TAKEOVER),
-  # e il ricevitore scarterebbe il frame.
-  values = dict(HS2_DYN_MDD_ETAT_2F6)
-  values['REQUEST_TAKEOVER'] = takeover_type
-  values['PROCESS_COUNTER_4B_ACC2'] = (int(values.get('PROCESS_COUNTER_4B_ACC2', 0)) + 1) % 16
+  HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = takeover_type
   address, dat, bus = packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
-  # stesso conto di psa_checksum() con chk_ini di default 0xB: azzera il nibble del
-  # checksum (basso, byte 6) e somma i nibble di tutto il frame
-  d = bytearray(dat)
-  d[6] &= 0xF0
-  d[6] |= (0xB - sum((b >> 4) + (b & 0xF) for b in d)) & 0xF
-  return CanData(address, bytes(d), bus)
-# [takeover-test] - END
+  return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
 
 
 # [artiv-diag-probe] - START
