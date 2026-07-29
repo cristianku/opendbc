@@ -52,7 +52,9 @@ class CarController(CarControllerBase):
     # Stato della scaletta e dello stacco: tutti creati qui, mai al primo uso
     # (attributo nato dentro un metodo = AttributeError se quel metodo non gira per primo).
     self.last_status_change_frame = 0     # frame dell'ultimo cambio di gradino
-    self.deactivation_in_progress = False # True da quando chiediamo lo stacco a quando l'EPS molla davvero
+    # True durante la scaletta forzata 2->3->4. Non aspetta piu' che l'EPS
+    # confermi la disattivazione: ogni gradino dura un invio LKA (50 ms).
+    self.deactivation_in_progress = False
     # Periodo di stacco EPS: da secondi a frame. self.frame gira a 100 Hz (DT_CTRL = 0.01 s),
     # quindi frame = secondi / DT_CTRL.
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)   # 5 s = 500 frame
@@ -80,14 +82,27 @@ class CarController(CarControllerBase):
 
   def _deactivate_eps(self):
     self.eps_was_active = False
-    # self.status = 2
-    self.status = 3
+    # Primo gradino della scaletta forzata. I due invii successivi salgono a 3 e 4
+    # anche se CS.eps_active non e' ancora sceso.
+    self.status = 2
     self.apply_torque_factor = 0
     # self.takeover_req = 0
     self.last_status_change_frame = self.frame
     self.activation_request_frame = 0
     self.lateral_activation_frame = self.frame
     self.deactivation_in_progress = True
+
+  def _advance_forced_rearm(self):
+    self.eps_was_active = False
+    self.status = min(self.status + 1, 4)
+    self.apply_torque_factor = min(self.apply_torque_factor + 10, self.params.MAX_TORQUE_FACTOR)
+    self.last_status_change_frame = self.frame
+
+    if self.status == 4:
+      # Scaletta completata senza attendere l'ACK di disattivazione dell'EPS.
+      self.deactivation_in_progress = False
+      self.activation_request_frame = 0
+      self.lateral_activation_frame = self.frame
 
   def _activate_eps(self, CARSTATE):
     eps_active = CARSTATE.eps_active
@@ -125,19 +140,13 @@ class CarController(CarControllerBase):
           if self.eps_was_active:
              self.takeover_req = 2
           self._reset_lat_state()
+        elif self.deactivation_in_progress:
+          # Completa 2->3->4 a tempo fisso, anche se EPS_STATE_LKA e' ancora Active.
+          # apply_new_torque_scaled resta 0 per tutta la scaletta.
+          self._advance_forced_rearm()
         else:
           if not CS.eps_active:
-            self.deactivation_in_progress = False   # ha mollato: la scaletta puo' ripartire
-            # [CLAUDE rearm-doppio-buco] - START
-            # Azzerare qui e' obbligatorio: senza, dopo uno stacco SPONTANEO dell'EPS
-            # (non chiesto da noi) il contatore resta quello vecchio, e appena l'EPS
-            # torna Active la condizione dei 10 s e' gia' scaduta -> lo stacchiamo
-            # subito di nuovo, due buchi attaccati. Misurato sul route 00000037:
-            # 8 stacchi spontanei su 81 (intervalli 2.5-8.8 s invece dei 10 s nostri),
-            # e i buchi piu' lunghi (1.7-2.4 s contro una mediana di 0.49 s) sono questi.
-            # Cosi' i 10 s ripartono da quando l'EPS torna davvero Active.
             self.lateral_activation_frame = 0
-            # [CLAUDE rearm-doppio-buco] - END
             self._activate_eps(CS)
 
           else:
@@ -145,7 +154,7 @@ class CarController(CarControllerBase):
             if self.lateral_activation_frame == 0:
               self.lateral_activation_frame = self.frame
 
-            if (self.frame > self.lateral_activation_frame + self.eps_rearm_frames) or self.deactivation_in_progress:
+            if self.frame > self.lateral_activation_frame + self.eps_rearm_frames:
               self._deactivate_eps()
             else:
               ##########
@@ -198,7 +207,7 @@ class CarController(CarControllerBase):
                 apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
                                                                 temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
 
-        if CC.latActive and CS.eps_active and self.frame % 300 in (0, 5, 10):
+        if CC.latActive and CS.eps_active and self.frame % 500 in (0, 5, 10):
           apply_new_torque_scaled = 0
           self.apply_torque_factor = 0
           carlog.error(f"PSA_DEBUG sending empty torque apply_new_torque_scaled={apply_new_torque_scaled} ")
