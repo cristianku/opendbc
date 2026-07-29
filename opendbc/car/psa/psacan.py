@@ -119,7 +119,6 @@ def create_steering_hold(packer, lat_active: bool, is_dat_dira):
 
 def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, takeover_type):
   HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = takeover_type
-  address, dat, bus = packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
 
 
