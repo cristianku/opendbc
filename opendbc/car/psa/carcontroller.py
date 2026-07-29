@@ -21,6 +21,7 @@ SteerControlType = structs.CarParams.SteerControlType
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
     super().__init__(dbc_names, CP, CP_SP)
+    self.lat_active_last = False
     self.packer = CANPacker(dbc_names[Bus.main])
     self.apply_torque_scaled_last = 0
     self.apply_can_torque_last = 0  # raw CAN torque logged to steeringAngleDeg (debug); init so it always exists
@@ -29,7 +30,6 @@ class CarController(CarControllerBase):
     self.status = 2
     self.takeover_req = 0
     # this is the frame when the latactive is being pressed
-    self.lat_activation_frame  = 0
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
     self.radar_disabled = 0
