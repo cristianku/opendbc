@@ -137,7 +137,7 @@ class CarController(CarControllerBase):
     if self.CP.steerControlType == SteerControlType.torque:
       if self.frame % self.params.STEER_STEP == 0:
         if not CC.latActive:
-          if self.eps_was_active:
+          if self.lat_active_last:
              self.takeover_req = 2
           self._reset_lat_state()
         elif self.deactivation_in_progress:
@@ -297,12 +297,6 @@ class CarController(CarControllerBase):
     # #  ELKOLED LONGITUDINAL CONTROL
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      # [CLAUDE stop-finti-durante-riarmo] - START
-      # Durante il riarmo dell'EPS questi due messaggi vanno sospesi: gli stiamo
-      # chiedendo di mollare e riprendere, e nel frattempo gli inietteremmo
-      # "mani sul volante" e una coppia guidatore finta, cioe' proprio i segnali
-      # che possono fargli rifiutare la riautorizzazione.
-      # Riarmo = stacco in corso, oppure EPS non ancora tornato Active.
       if not CC.latActive or self.deactivation_in_progress or not CS.eps_active:
         self.steering_hold_counter = 0                       # alla ripresa il primo
         self.next_steering_hold = random.randint(8, 12)      # hold-hands parte subito
@@ -326,23 +320,6 @@ class CarController(CarControllerBase):
           self.next_driver_torque = random.randint(500, 800)
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      # [CLAUDE resume-acc-anticipato] - START
-      # Due correzioni rispetto alla versione precedente:
-      #
-      # 1) NON si usa piu' CS.out.standstill. Sulla 3008 l'ACC resta agganciato
-      #    finche' c'e' un filo di movimento e molla allo zero esatto; da li' serve
-      #    risalire a 30 km/h per riattivarlo. Quindi il resume va mandato MENTRE
-      #    si striscia ancora, non a fermo, che e' gia' troppo tardi.
-      #    ret.standstill non si tocca: deve restare il complemento esatto di
-      #    vehicle_moving nel panda (test_models.py lo verifica).
-      #
-      # 2) La fase parte dall'ingresso nella finestra, non da self.frame assoluto.
-      #    Con `self.frame % 300` il primo impulso poteva arrivare fino a 3 s dopo
-      #    (1.5 s in media), quando l'ACC si era gia' sganciato.
-      #
-      # if CC.latActive and CS.out.standstill: # and CC.hudControl.leadVisible:
-      # if CC.enabled and CS.out.standstill: # and CC.hudControl.leadVisible:
-      #   phase = self.frame % 300
       if CC.enabled and CS.out.vEgo < self.params.RESUME_ACC_SPEED and CC.hudControl.leadVisible:
         if self.creep_start_frame == 0:
           self.creep_start_frame = self.frame     # primo frame dentro la finestra
@@ -354,7 +331,6 @@ class CarController(CarControllerBase):
           can_sends.append(create_resume_acc(self.packer, counter, pressed, msg))
       else:
         self.creep_start_frame = 0
-      # [CLAUDE resume-acc-anticipato] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if self.takeover_req > 0 and self.frame % 2 == 0: # 50 Hz
@@ -380,6 +356,6 @@ class CarController(CarControllerBase):
 
       # if self.frame % 100 == 0:
       #   carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_scaled_last}")
-
+    self.lat_active_last = CC.latActive
     self.frame += 1
     return new_actuators, can_sends

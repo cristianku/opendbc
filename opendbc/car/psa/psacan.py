@@ -146,29 +146,10 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, takeover_type):
 # questo radar. Il frame paddato a 8 non e' mai stato testato sull'ARTIV.
 # Riga sostituita:
 #   dat.extend([0x0] * (8 - len(dat)))   # padding a DLC 8 come PyPSADiag
-def create_disable_radar(bus: int):
+def create_disable_radar():
   addr = 0x6B6
-  # bus = 1
-  # dat = [0x02, 0x10, 0x03]   # era il probe di raggiungibilita' (extended session)
-  dat = [0x02, 0x10, 0x02]
+  bus = 1
+  dat = [0x02, 0x10, 0x02, 0x80]
+  dat.extend([0x0] * (8 - len(dat)))
 
   return CanData(addr, bytes(dat), bus)
-
-
-def create_tester_present(bus: int, addr: int = 0x6B6, suppress_response: bool = False):
-  """TesterPresent senza padding, come lo manda il Kingbolen.
-
-  make_tester_present_msg() di opendbc padda sempre a DLC 8
-  (opendbc/car/__init__.py), quindi aprire la sessione con un frame corto e
-  mantenerla con uno paddato userebbe due formati diversi nella stessa
-  sessione. Qui il formato resta identico a create_disable_radar().
-  """
-  dat = [0x02, 0x3E, 0x80 if suppress_response else 0x00]
-
-  return CanData(addr, bytes(dat), bus)
-# [CLAUDE artiv-nopad] - END
-# [artiv-diag-probe] - END
-
-  # Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
-  # Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
-  # Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
