@@ -212,8 +212,8 @@ class CarController(CarControllerBase):
           self.apply_torque_factor = 0
           carlog.error(f"PSA_DEBUG sending empty torque apply_new_torque_scaled={apply_new_torque_scaled} ")
 
-        if CC.latActive and CS.eps_active and self.frame % 3000 in (0, 5, 10):
-          self.takeover_req = 1
+        # if CC.latActive and CS.eps_active and self.frame % 3000 in (0, 5, 10):
+        #   self.takeover_req = 1
 
         if self.apply_torque_factor > 0 and apply_new_torque_scaled != 0:
           can_torque = int(round(apply_new_torque_scaled / self.apply_torque_factor *100))
@@ -361,9 +361,9 @@ class CarController(CarControllerBase):
         if self.takeover_start_msg_frame == 0:
           self.takeover_start_msg_frame = self.frame
         can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,self.takeover_req))
-        carlog.error("PSA_DEBUG sending to CAN create_request_takeover")
+        # carlog.error("PSA_DEBUG sending to CAN create_request_takeover")
         if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
-          carlog.error("PSA_DEBUG takeover_req = False")
+          # carlog.error("PSA_DEBUG takeover_req = False")
           self.takeover_req = 0
           self.takeover_start_msg_frame = 0
 
