@@ -27,7 +27,7 @@ class CarController(CarControllerBase):
     self.apply_torque_factor = 0
     self.apply_torque = 0
     self.status = 2
-    self.takeover_req = False
+    self.takeover_req = 0
     # this is the frame when the latactive is being pressed
     self.lat_activation_frame  = 0
     self.car_fingerprint = CP.carFingerprint
@@ -72,7 +72,7 @@ class CarController(CarControllerBase):
     self.eps_was_active = False
     self.status = 2
     self.apply_torque_factor = 0
-    # self.takeover_req = False
+    # self.takeover_req = 0
     self.last_status_change_frame = 0
     self.activation_request_frame = 0
     self.deactivation_in_progress = False
@@ -83,7 +83,7 @@ class CarController(CarControllerBase):
     # self.status = 2
     self.status = 3
     self.apply_torque_factor = 0
-    # self.takeover_req = False
+    # self.takeover_req = 0
     self.last_status_change_frame = self.frame
     self.activation_request_frame = 0
     self.lateral_activation_frame = self.frame
@@ -96,10 +96,10 @@ class CarController(CarControllerBase):
     if self.activation_request_frame == 0:
       # first frame the EPS activate or re activate is sent
       self.activation_request_frame = self.frame
-      # self.takeover_req_sent = False
+      # self.takeover_req_sent = 0
     if self.frame > self.activation_request_frame + self.eps_activate_takeover_frames:
       carlog.error("PSA_DEBUG _activate_eps - too long to activate - self.takeover_req = True")
-      self.takeover_req = True
+      self.takeover_req = 2
 
     if not eps_active: # and not CS.out.steeringPressed:
       self.status = 2 if self.status == 4 else self.status + 1
@@ -123,7 +123,7 @@ class CarController(CarControllerBase):
       if self.frame % self.params.STEER_STEP == 0:
         if not CC.latActive:
           if self.eps_was_active:
-             self.takeover_req = True
+             self.takeover_req = 2
           self._reset_lat_state()
         else:
           if not CS.eps_active:
@@ -154,7 +154,7 @@ class CarController(CarControllerBase):
               # EPS is active, proceed with lateral control
               # self.lateral_activation_frame = self.frame
               self.eps_was_active = True
-              self.takeover_req = False
+              self.takeover_req = 0
               self.activation_request_frame = 0
               self.status = 4 # 4: EPS ACTIVE
 
@@ -202,8 +202,8 @@ class CarController(CarControllerBase):
           apply_new_torque_scaled = 0
           self.apply_torque_factor = 0
 
-        if self.frame % 600 in (0, 5, 10):
-          self.takeover_req = True
+        # if self.frame % 600 in (0, 5, 10):
+        #   self.takeover_req = 2
 
         if self.apply_torque_factor > 0 and apply_new_torque_scaled != 0:
           can_torque = int(round(apply_new_torque_scaled / self.apply_torque_factor *100))
@@ -347,13 +347,14 @@ class CarController(CarControllerBase):
       # [CLAUDE resume-acc-anticipato] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      if self.takeover_req and self.frame % 2 == 0: # 50 Hz
+      if self.takeover_req > 0 and self.frame % 2 == 0: # 50 Hz
         if self.takeover_start_msg_frame == 0:
           self.takeover_start_msg_frame = self.frame
-        can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,1))
-        carlog.error("PSA_DEBUG create_request_takeover")
+        can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,self.takeover_req))
+        carlog.error("PSA_DEBUG sending to CAN create_request_takeover")
         if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
-          self.takeover_req = False
+          carlog.error("PSA_DEBUG takeover_req = False")
+          self.takeover_req = 0
           self.takeover_start_msg_frame = 0
 
     # Actuators output
