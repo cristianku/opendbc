@@ -918,7 +918,7 @@ CM_ SG_ 1101 P331_VehV_vWhlRrR "P010  vehicle speed of ABS. This signal is loade
 CM_ SG_ 1106 LONGITUDINAL_REGULATION_TYPE "Defines if the system is in RVV (Vehicle Speed Governor) or LVV (Vehicle Speed Limiter) or ACC (Adaptive Cruise Control) or without regulation.";
 CM_ SG_ 1106 FRONT_WIPER_STATUS "Emitted when the rain sensor is active.";
 CM_ SG_ 1106 SPEED_SETPOINT "Setpoint or limit: based on the value of the 'requested speed type' bit.";
-CM_ SG_ 1106 CHECKSUM_CONS_RVV_LVV2 "Used to secure the RVV or LVV setpoint sent via the CAN network (signal SPEED_SETPOINT).";
+CM_ SG_ 1106 CHECKSUM_CONS_RVV_LVV2 "Encodes the bit parity of each 4-bit nibble of SPEED_SETPOINT: bit 1 indicates odd parity in the most significant nibble and bit 0 indicates odd parity in the least significant nibble.";
 CM_ SG_ 1106 CHECKSUM "CHK_INI = 0xB";
 CM_ SG_ 1128 P247_Com_stStaFunc "CMM DAMP function state";
 CM_ SG_ 1128 P246_Com_bStaPrt "Starter protection";
@@ -1044,7 +1044,7 @@ VAL_ 1010 STATUS 0 "UNAVAILABLE" 1 "UNSELECTED" 2 "SELECTED" 3 "AUTHORIZED" 4 "A
 VAL_ 1106 LONGITUDINAL_REGULATION_TYPE 0 "None" 1 "RVV: Vehicle Speed Governor" 2 "LVV: Vehicle Speed Limiter" 3 "ACC: Adaptive Cruise Control";
 VAL_ 1106 TURN_SIGNAL_STATUS 0 "Turn signal inactive" 1 "Right turn signal active" 2 "Left turn signal active" 3 "Both turn signals active";
 VAL_ 1106 FRONT_WIPER_STATUS 0 "Off" 1 "Front wiper confirmed" 2 "Low speed" 3 "High speed";
-VAL_ 1106 CHECKSUM_CONS_RVV_LVV2 0 "Most significant nibble of SPEED_SETPOINT is even AND least significant nibble of SPEED_SETPOINT is even" 1 "Most significant nibble of SPEED_SETPOINT is even AND least significant nibble of SPEED_SETPOINT is odd" 2 "Most significant nibble of SPEED_SETPOINT is odd AND least significant nibble of SPEED_SETPOINT is even" 3 "Most significant nibble of SPEED_SETPOINT is odd AND least significant nibble of SPEED_SETPOINT is odd";
+VAL_ 1106 CHECKSUM_CONS_RVV_LVV2 0 "Most significant nibble has even bit parity AND least significant nibble has even bit parity" 1 "Most significant nibble has even bit parity AND least significant nibble has odd bit parity" 2 "Most significant nibble has odd bit parity AND least significant nibble has even bit parity" 3 "Most significant nibble has odd bit parity AND least significant nibble has odd bit parity";
 VAL_ 1106 BRAKE_ONLY_CMD_BSI 0 "No brake-only command requested by BSI" 1 "Brake-only command requested by BSI";
 VAL_ 1106 LVV_ACTIVATION_REQ 0 "No LVV activation request" 1 "LVV activation requested";
 VAL_ 1106 RVV_ACC_ACTIVATION_REQ 0 "No RVV/ACC activation request" 1 "RVV/ACC activation requested";

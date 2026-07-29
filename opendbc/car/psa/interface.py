@@ -47,3 +47,11 @@ class CarInterface(CarInterfaceBase):
     ret.startAccel = 1.0
 
     return ret
+
+  @staticmethod
+  def _get_params_sp(stock_cp, ret, candidate, fingerprint, car_fw,
+                    alpha_long, is_release_sp, docs):
+    if candidate in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
+      ret.pcmCruiseSpeed = False
+
+    return ret

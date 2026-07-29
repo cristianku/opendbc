@@ -338,12 +338,17 @@ class CarController(CarControllerBase):
         self.takeover_req = 0
         # self.takeover_start_msg_frame = 0
 
-    if self.frame % self.params.STEER_STEP == 0:
+    if (self.frame % self.params.STEER_STEP == 0
+        and CC.enabled
+        and CC.hudControl.speedVisible
+        and CS.out.cruiseState.enabled
+        and CS.out.vEgo > 1.0):
       set_speed_kph = round(CC.hudControl.setSpeed * CV.MS_TO_KPH)
-      if set_speed_kph in (50, 60, 70, 80):
+      if 0 < set_speed_kph < 255:
+        if set_speed_kph in (50, 60, 70, 80):
           set_speed_kph += 3
 
-      can_sends.append(
+        can_sends.append(
           set_speed(self.packer, CS.hs2_dat_mdd_cmd_452, set_speed_kph)
         )
 
