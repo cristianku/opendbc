@@ -32,7 +32,7 @@ class CarInterface(CarInterfaceBase):
       ret.steerActuatorDelay = 0.15
       ret.steerLimitTimer = 0.1
       ret.steerAtStandstill = False
-      ret.openpilotLongitudinalControl = False
+      ret.openpilotLongitudinalControl = True
       ret.enableBsm = True
     else:
       ret.steerAtStandstill = True
@@ -52,6 +52,6 @@ class CarInterface(CarInterfaceBase):
   def _get_params_sp(stock_cp, ret, candidate, fingerprint, car_fw,
                     alpha_long, is_release_sp, docs):
     if candidate in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
-      ret.pcmCruiseSpeed = False
+      ret.intelligentCruiseButtonManagementAvailable = True
 
     return ret

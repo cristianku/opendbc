@@ -1,7 +1,7 @@
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.psa.values import CAR, DBC, CarControllerParams
+from opendbc.car.psa.values import CAR, DBC, CarControllerParams, PSA_CRUISE_CLUSTER_OFFSET_KPH
 # , LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 import copy
@@ -145,7 +145,11 @@ class CarState(CarStateBase):
       }
 
     # cruise
-    ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed
+    cruise_speed_kph = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT']
+    ret.cruiseState.speed = cruise_speed_kph * CV.KPH_TO_MS  # set to 255 when ACC is off
+    ret.cruiseState.speedCluster = (
+      cruise_speed_kph if cruise_speed_kph == 255 else cruise_speed_kph + PSA_CRUISE_CLUSTER_OFFSET_KPH
+    ) * CV.KPH_TO_MS
     ret.cruiseState.enabled = cp_adas.vl['HS2_DAT_MDD_CMD_452']['RVV_ACC_ACTIVATION_REQ'] == 1
     ret.cruiseState.available = True # not available for CC-only
     ret.cruiseState.nonAdaptive = False # not available for CC-only

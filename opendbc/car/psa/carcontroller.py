@@ -7,7 +7,7 @@ from opendbc.car.carlog import carlog
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 # from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
-from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc,  create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, create_request_takeover, set_speed
+from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc,  create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, create_request_takeover, set_speed, create_disable_radar, psa_speed_setpoint_from_cluster_kph
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS
 from opendbc.car.common.conversions import Conversions as CV
 # from cereal import messaging
@@ -17,6 +17,7 @@ import random
 # import math
 
 SteerControlType = structs.CarParams.SteerControlType
+ICBMState = structs.IntelligentCruiseButtonManagement.IntelligentCruiseButtonManagementState
 # sm = messaging.SubMaster(['modelV2'], poll='modelV2')
 
 class CarController(CarControllerBase):
@@ -338,19 +339,37 @@ class CarController(CarControllerBase):
         self.takeover_req = 0
         # self.takeover_start_msg_frame = 0
 
-    if (self.frame % self.params.STEER_STEP == 0
+    speed_target_ms = None
+    if self.CP.openpilotLongitudinalControl:
+      speed_target_ms = CC.hudControl.setSpeed
+    elif not self.CP_SP.pcmCruiseSpeed:
+      icbm = CC_SP.intelligentCruiseButtonManagement
+      if icbm.state != ICBMState.inactive:
+        # ICBM vTarget is published in SI units so this works in both metric and
+        # imperial UI modes. It includes dynamic map/vision turn speed targets.
+        speed_target_ms = icbm.vTarget
+
+    if (speed_target_ms is not None
+        and self.frame % self.params.STEER_STEP == 0
         and CC.enabled
         and CC.hudControl.speedVisible
         and CS.out.cruiseState.enabled
         and CS.out.vEgo > 1.0):
-      set_speed_kph = round(CC.hudControl.setSpeed * CV.MS_TO_KPH)
+      set_speed_kph = psa_speed_setpoint_from_cluster_kph(speed_target_ms * CV.MS_TO_KPH)
       if 0 < set_speed_kph < 255:
-        if set_speed_kph in (50, 60, 70, 80):
-          set_speed_kph += 3
-
         can_sends.append(
           set_speed(self.packer, CS.hs2_dat_mdd_cmd_452, set_speed_kph)
         )
+
+    if self.CP.openpilotLongitudinalControl and CC.enabled:
+      # Disable ARTIV only for full openpilot longitudinal. ICBM deliberately
+      # leaves ARTIV active: the stock controller executes our dynamic setpoint.
+      if self.radar_disabled == 0:
+        can_sends.append(create_disable_radar())
+        self.radar_disabled = 1
+
+      if self.frame % 100 == 0 and self.frame > 0:
+        can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
     # Actuators output
     new_actuators = actuators.as_builder()

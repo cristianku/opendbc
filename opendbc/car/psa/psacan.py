@@ -1,6 +1,9 @@
 import random
 
 from opendbc.car.can_definitions import CanData
+from opendbc.car.psa.values import PSA_CRUISE_CLUSTER_OFFSET_KPH
+
+
 def psa_checksum(address: int, sig, d: bytearray) -> int:
   chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x2f6: 0x8, 0x2b6: 0xC, 0x42D: 0xC}.get(address, 0xB)
   byte = sig.start_bit // 8
@@ -120,6 +123,11 @@ def create_steering_hold(packer, lat_active: bool, is_dat_dira):
 def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, takeover_type):
   HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = takeover_type
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
+
+
+def psa_speed_setpoint_from_cluster_kph(speed_kph: float) -> int:
+  return max(0, min(255, round(speed_kph) - PSA_CRUISE_CLUSTER_OFFSET_KPH))
+
 
 def set_speed(packer, hs2_dat_mdd_cmd_452, speed_kph: float):
   values = dict(hs2_dat_mdd_cmd_452)

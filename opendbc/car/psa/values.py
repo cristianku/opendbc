@@ -7,6 +7,8 @@ from opendbc.car.fw_query_definitions import FwQueryConfig, Request, uds
 
 Ecu = CarParams.Ecu
 
+PSA_CRUISE_CLUSTER_OFFSET_KPH = 3
+
 
 class CarControllerParams:
   # STEER_MAX = 250  # Maximum steering torque command that can be applied (unitless scaling factor)
