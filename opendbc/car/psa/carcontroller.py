@@ -207,10 +207,10 @@ class CarController(CarControllerBase):
                 apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
                                                                 temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
 
-        if CC.latActive and CS.eps_active and self.frame % 500 in (0, 5, 10):
-          apply_new_torque_scaled = 0
-          self.apply_torque_factor = 0
-          carlog.error(f"PSA_DEBUG sending empty torque apply_new_torque_scaled={apply_new_torque_scaled} ")
+        # if CC.latActive and CS.eps_active and self.frame % 500 in (0, 5, 10):
+        #   apply_new_torque_scaled = 0
+        #   self.apply_torque_factor = 0
+        #   carlog.error(f"PSA_DEBUG sending empty torque apply_new_torque_scaled={apply_new_torque_scaled} ")
 
         # if CC.latActive and CS.eps_active and self.frame % 3000 in (0, 5, 10):
         #   self.takeover_req = 1
