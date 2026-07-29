@@ -343,7 +343,9 @@ class CarController(CarControllerBase):
       if set_speed_kph in (50, 60, 70, 80):
           set_speed_kph += 1
 
-      set_speed(self.packer, CS.hs2_dat_mdd_cmd_452, set_speed_kph)
+      can_sends.append(
+          set_speed(self.packer, CS.hs2_dat_mdd_cmd_452, set_speed_kph)
+        )
 
     # Actuators output
     new_actuators = actuators.as_builder()
