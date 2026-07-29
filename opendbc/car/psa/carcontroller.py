@@ -212,7 +212,7 @@ class CarController(CarControllerBase):
           self.apply_torque_factor = 0
           carlog.error(f"PSA_DEBUG sending empty torque apply_new_torque_scaled={apply_new_torque_scaled} ")
 
-        if self.frame % 3000 in (0, 5, 10):
+        if CC.latActive and CS.eps_active and self.frame % 3000 in (0, 5, 10):
           self.takeover_req = 1
 
         if self.apply_torque_factor > 0 and apply_new_torque_scaled != 0:
