@@ -7,7 +7,7 @@ from opendbc.car.carlog import carlog
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 # from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
-from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc,  create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, create_request_takeover
+from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc,  create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, create_request_takeover, set_speed
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS
 # from cereal import messaging
 # from numpy import interp
@@ -336,6 +336,20 @@ class CarController(CarControllerBase):
       # carlog.error("PSA_DEBUG takeover_req = False")
         self.takeover_req = 0
         # self.takeover_start_msg_frame = 0
+
+    if self.frame % self.params.STEER_STEP == 0:
+      actual_speed = CS.out.vEgo * 3.6
+      if actual_speed == 50:
+        speed_kph = 51
+      elif actual_speed == 60:
+        speed_kph = 61
+      elif actual_speed == 70:
+        speed_kph = 71
+      elif actual_speed == 80:
+        speed_kph = 81
+      else:
+        speed_kph = actual_speed
+      set_speed(self.packer, CS.hs2_dat_mdd_cmd_452, speed_kph) # convert m/s to kph
 
     # Actuators output
     new_actuators = actuators.as_builder()

@@ -121,6 +121,14 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, takeover_type):
   HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = takeover_type
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
 
+def set_speed(packer, hs2_dat_mdd_cmd_452, speed_kph: float):
+  speed_setpoint = max(0, min(255, round(speed_kph)))
+  hs2_dat_mdd_cmd_452['SPEED_SETPOINT'] = speed_setpoint
+  hs2_dat_mdd_cmd_452["CHECKSUM_CONS_RVV_LVV2"] = (
+    (((speed_setpoint >> 4) & 1) << 1)
+    | (speed_setpoint & 1)
+  )
+  return packer.make_can_msg('HS2_DAT_MDD_CMD_452', 1, hs2_dat_mdd_cmd_452)
 
 # [artiv-diag-probe] - START
 # Disabilita ARTIV (radar) mettendolo in programming session su 0x6B6, bus ADAS.
