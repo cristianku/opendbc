@@ -38,13 +38,13 @@ class CarControllerParams:
 
     # Ogni quanto staccare l'EPS per costringerlo a riarmarsi, in SECONDI.
     # Il carcontroller lo converte in frame con DT_CTRL (100 Hz -> 1 frame = 10 ms).
-    EPS_REARM_PERIOD = 10.0  # s
+    EPS_REARM_PERIOD = 8.0  # s
 
     # Per quanto tenere fermo ogni gradino della scaletta 1->2->3->4, in SECONDI.
     # L'EPS campiona a ~10 Hz: sotto ~0.1 s per gradino rischia di saltarne uno.
     # EPS_STATUS_HOLD = 0.15  # s = 3 cicli LKA a 20 Hz = 15 frame
     # EPS_KEEP_STATUS_PERIOD = 0.05
-    EPS_ACTIVATE_TAKEOVER_PERIOD = 0.2
+    EPS_ACTIVATE_TAKEOVER_PERIOD = 0.4
     TAKEOVER_MSG_DURATION = 2
 
     # [CLAUDE eps-closed-loop] - START

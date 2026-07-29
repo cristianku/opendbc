@@ -39,9 +39,8 @@ class CarController(CarControllerBase):
     self.driver_torque_counter = 0
     self.next_driver_torque = random.randint(500, 800)  # 5–8 s @100 Hz
     self.last_activation_frame = 0
-    self.lateral_activation_frame = 0
+    self.eps_activation_frame = 0
     self.activation_request_frame = 0
-    self.eps_was_active = False
     self.takeover_start_msg_frame = 0
     # [CLAUDE resume-acc-anticipato] - START
     # Frame di ingresso nella finestra di creep, creato QUI e non al primo uso
@@ -71,48 +70,40 @@ class CarController(CarControllerBase):
     # [CLAUDE eps-rearm] - END
 
   def _reset_lat_state(self):
-    self.eps_was_active = False
     self.status = 2
     self.apply_torque_factor = 0
     # self.takeover_req = 0
     self.last_status_change_frame = 0
     self.activation_request_frame = 0
     self.deactivation_in_progress = False
-    self.lateral_activation_frame = 0
+    self.eps_activation_frame = 0
 
   def _deactivate_eps(self):
-    self.eps_was_active = False
     # Primo gradino della scaletta forzata. I due invii successivi salgono a 3 e 4
     # anche se CS.eps_active non e' ancora sceso.
     self.status = 2
     self.apply_torque_factor = 0
+    self.eps_activation_frame = 0
     # self.takeover_req = 0
     self.last_status_change_frame = self.frame
     self.activation_request_frame = 0
-    self.lateral_activation_frame = self.frame
     self.deactivation_in_progress = True
 
-  def _advance_forced_rearm(self):
-    self.eps_was_active = False
-    self.status = min(self.status + 1, 4)
-    self.apply_torque_factor = min(self.apply_torque_factor + 10, self.params.MAX_TORQUE_FACTOR)
-    self.last_status_change_frame = self.frame
-
-    if self.status == 4:
-      # Scaletta completata senza attendere l'ACK di disattivazione dell'EPS.
-      self.deactivation_in_progress = False
-      self.activation_request_frame = 0
-      self.lateral_activation_frame = self.frame
-
-  def _activate_eps(self, CARSTATE):
+  def _activate_eps(self, CARSTATE, curvature):
     eps_active = CARSTATE.eps_active
-    self.eps_was_active = False
     self.deactivation_in_progress = False
+    self.eps_activation_frame = 0
     if self.activation_request_frame == 0:
       # first frame the EPS activate or re activate is sent
       self.activation_request_frame = self.frame
       # self.takeover_req_sent = 0
-    if self.frame > self.activation_request_frame + self.eps_activate_takeover_frames:
+    lateral_accel = abs(curvature) * CARSTATE.out.vEgo ** 2
+    curve_ratio = min(1.0, lateral_accel / 0.5)
+
+    takeover_frames = round(
+      self.eps_activate_takeover_frames * (1.0 - curve_ratio)
+    )
+    if self.frame >= self.activation_request_frame + takeover_frames:
       carlog.error("PSA_DEBUG _activate_eps - too long to activate - self.takeover_req = True")
       self.takeover_req = 2
 
@@ -140,29 +131,23 @@ class CarController(CarControllerBase):
           if self.lat_active_last:
              self.takeover_req = 2
           self._reset_lat_state()
-        elif self.deactivation_in_progress:
-          # Completa 2->3->4 a tempo fisso, anche se EPS_STATE_LKA e' ancora Active.
-          # apply_new_torque_scaled resta 0 per tutta la scaletta.
-          self._advance_forced_rearm()
         else:
           if not CS.eps_active:
-            self.lateral_activation_frame = 0
-            self._activate_eps(CS)
+            self._activate_eps(CS, actuators.curvature)
 
           else:
             # first time it enters in the lateral active state, store the frame to check the rearm period
-            if self.lateral_activation_frame == 0:
-              self.lateral_activation_frame = self.frame
-
-            if self.frame > self.lateral_activation_frame + self.eps_rearm_frames:
+            if self.eps_activation_frame > 0 and (self.frame > self.eps_activation_frame + self.eps_rearm_frames):
+              self._deactivate_eps()
+            elif self.deactivation_in_progress:
               self._deactivate_eps()
             else:
               ##########
               ### START EPS ACTIVE
               ######
               # EPS is active, proceed with lateral control
-              # self.lateral_activation_frame = self.frame
-              self.eps_was_active = True
+              if self.eps_activation_frame == 0:
+                self.eps_activation_frame = self.frame
               self.takeover_req = 0
               self.activation_request_frame = 0
               self.status = 4 # 4: EPS ACTIVE
@@ -297,7 +282,7 @@ class CarController(CarControllerBase):
     # #  ELKOLED LONGITUDINAL CONTROL
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      if not CC.latActive or self.deactivation_in_progress or not CS.eps_active:
+      if not CC.latActive:
         self.steering_hold_counter = 0                       # alla ripresa il primo
         self.next_steering_hold = random.randint(8, 12)      # hold-hands parte subito
         self.driver_torque_counter = 0
