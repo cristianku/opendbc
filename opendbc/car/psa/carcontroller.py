@@ -341,7 +341,7 @@ class CarController(CarControllerBase):
     if self.frame % self.params.STEER_STEP == 0:
       set_speed_kph = round(CC.hudControl.setSpeed * CV.MS_TO_KPH)
       if set_speed_kph in (50, 60, 70, 80):
-          set_speed_kph += 1
+          set_speed_kph += 3
 
       can_sends.append(
           set_speed(self.packer, CS.hs2_dat_mdd_cmd_452, set_speed_kph)
