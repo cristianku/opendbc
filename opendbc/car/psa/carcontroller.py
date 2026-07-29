@@ -8,7 +8,7 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 # from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc,  create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, create_request_takeover
-from opendbc.car.psa.values import CarControllerParams, CAR
+from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS
 # from cereal import messaging
 # from numpy import interp
 
@@ -21,7 +21,8 @@ SteerControlType = structs.CarParams.SteerControlType
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
     super().__init__(dbc_names, CP, CP_SP)
-    self.lat_active_last = False
+    self.latActiveLast = False
+    self.eps_active_last = False
     self.packer = CANPacker(dbc_names[Bus.main])
     self.apply_torque_scaled_last = 0
     self.apply_can_torque_last = 0  # raw CAN torque logged to steeringAngleDeg (debug); init so it always exists
@@ -29,6 +30,8 @@ class CarController(CarControllerBase):
     self.apply_torque = 0
     self.status = 2
     self.takeover_req = 0
+    self.takeover_req_already_sent = False
+
     # this is the frame when the latactive is being pressed
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
@@ -41,7 +44,7 @@ class CarController(CarControllerBase):
     self.last_activation_frame = 0
     self.eps_activation_frame = 0
     self.activation_request_frame = 0
-    self.takeover_start_msg_frame = 0
+    # self.takeover_start_msg_frame = 0
     # [CLAUDE resume-acc-anticipato] - START
     # Frame di ingresso nella finestra di creep, creato QUI e non al primo uso
     # (attributo nato dentro update() = AttributeError se quel giro non parte per primo).
@@ -88,6 +91,7 @@ class CarController(CarControllerBase):
     self.last_status_change_frame = self.frame
     self.activation_request_frame = 0
     self.deactivation_in_progress = True
+    self.takeover_req_already_sent = False
 
   def _activate_eps(self, CARSTATE, curvature):
     eps_active = CARSTATE.eps_active
@@ -103,9 +107,11 @@ class CarController(CarControllerBase):
     takeover_frames = round(
       self.eps_activate_takeover_frames * (1.0 - curve_ratio)
     )
-    if self.frame >= self.activation_request_frame + takeover_frames:
-      carlog.error("PSA_DEBUG _activate_eps - too long to activate - self.takeover_req = True")
-      self.takeover_req = 2
+    if not self.takeover_req_already_sent:
+      if self.frame >= self.activation_request_frame + takeover_frames:
+        # carlog.error("PSA_DEBUG _activate_eps - too long to activate - self.takeover_req = True")
+        self.takeover_req = 2
+        self.takeover_req_already_sent = True
 
     if not eps_active: # and not CS.out.steeringPressed:
       self.status = 2 if self.status == 4 else self.status + 1
@@ -128,11 +134,13 @@ class CarController(CarControllerBase):
     if self.CP.steerControlType == SteerControlType.torque:
       if self.frame % self.params.STEER_STEP == 0:
         if not CC.latActive:
-          if self.lat_active_last:
+          if self.latActiveLast:
              self.takeover_req = 2
           self._reset_lat_state()
         else:
           if not CS.eps_active:
+            if self.eps_active_last and CS.speed_kph <= LKAS_LIMITS.DISABLE_SPEED:
+              self.takeover_req = 1
             self._activate_eps(CS, actuators.curvature)
 
           else:
@@ -151,6 +159,7 @@ class CarController(CarControllerBase):
               self.takeover_req = 0
               self.activation_request_frame = 0
               self.status = 4 # 4: EPS ACTIVE
+              self.takeover_req_already_sent = False
 
               if (CS.out.steeringPressed):
                 #### DRIVER STEERING DETECTED
@@ -319,14 +328,14 @@ class CarController(CarControllerBase):
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if self.takeover_req > 0 and self.frame % 2 == 0: # 50 Hz
-        if self.takeover_start_msg_frame == 0:
-          self.takeover_start_msg_frame = self.frame
+        # if self.takeover_start_msg_frame == 0:
+        #   self.takeover_start_msg_frame = self.frame
         can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,self.takeover_req))
         # carlog.error("PSA_DEBUG sending to CAN create_request_takeover")
-        if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
-          # carlog.error("PSA_DEBUG takeover_req = False")
-          self.takeover_req = 0
-          self.takeover_start_msg_frame = 0
+        # if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
+      # carlog.error("PSA_DEBUG takeover_req = False")
+        self.takeover_req = 0
+        # self.takeover_start_msg_frame = 0
 
     # Actuators output
     new_actuators = actuators.as_builder()
@@ -341,6 +350,9 @@ class CarController(CarControllerBase):
 
       # if self.frame % 100 == 0:
       #   carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_scaled_last}")
-    self.lat_active_last = CC.latActive
+    if self.frame % self.params.STEER_STEP == 0:
+      self.latActiveLast = CC.latActive
+      self.eps_active_last = CS.eps_active
+
     self.frame += 1
     return new_actuators, can_sends

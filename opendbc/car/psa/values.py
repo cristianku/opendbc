@@ -36,32 +36,13 @@ class CarControllerParams:
     MAX_TORQUE_FACTOR = 100
     MIN_TORQUE_FACTOR = 25
 
-    # Ogni quanto staccare l'EPS per costringerlo a riarmarsi, in SECONDI.
-    # Il carcontroller lo converte in frame con DT_CTRL (100 Hz -> 1 frame = 10 ms).
     EPS_REARM_PERIOD = 8.0  # s
 
-    # Per quanto tenere fermo ogni gradino della scaletta 1->2->3->4, in SECONDI.
-    # L'EPS campiona a ~10 Hz: sotto ~0.1 s per gradino rischia di saltarne uno.
-    # EPS_STATUS_HOLD = 0.15  # s = 3 cicli LKA a 20 Hz = 15 frame
-    # EPS_KEEP_STATUS_PERIOD = 0.05
-    EPS_ACTIVATE_TAKEOVER_PERIOD = 0.4
+    EPS_ACTIVATE_TAKEOVER_PERIOD = 0.5
     TAKEOVER_MSG_DURATION = 2
 
-    # [CLAUDE eps-closed-loop] - START
-    # Quanto aspettare la conferma dell'EPS su un gradino prima di rigenerare il fronte.
-    # Misurato su route 0000002a--baede4ffa4: quando l'EPS accetta, ricopia il gradino
-    # in 50-110 ms (IS_DAT_DIRA arriva ogni 100 ms). 0.3 s = 3 frame EPS di margine.
-    EPS_ACK_TIMEOUT = 0.3  # s
-    # [CLAUDE eps-closed-loop] - END
-
-    # [CLAUDE resume-acc-anticipato] - START
-    # Sotto quale velocita' iniziare a mandare il finto tasto resume, in m/s.
-    # L'ACC di serie della 3008 resta agganciato finche' c'e' un filo di movimento
-    # e molla allo zero esatto; da fermo non si riattiva piu' sotto i 30 km/h.
-    # Quindi l'impulso deve partire mentre si striscia ancora, non a fermo.
-    # 0.56 m/s = 2 km/h. Alzare se il messaggio arriva ancora troppo tardi.
+    EPS_ACK_TIMEOUT = 0.5  # s
     RESUME_ACC_SPEED = 0.56  # m/s
-    # [CLAUDE resume-acc-anticipato] - END
 
     def __init__(self, CP):
       pass

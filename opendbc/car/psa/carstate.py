@@ -24,12 +24,8 @@ class CarState(CarStateBase):
   def __init__(self, CP, CP_SP):
     super().__init__(CP, CP_SP)
     self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
-    # [CLAUDE eps-closed-loop] - START
-    # Stato grezzo dell'EPS, creato qui e non al primo update: il carcontroller lo
-    # legge ad ogni giro e un attributo nato dentro update() sarebbe un AttributeError
-    # se il primo giro fosse quello del controller. 0 = Unauthorised.
     self.eps_state_lka = 0
-    # [CLAUDE eps-closed-loop] - END
+    self.speed_kph = 0.0
     self.artiv_diag_response_updated = False
     self.artiv_diag_response = {
       "ISO_TP_LENGTH": 0,
@@ -64,6 +60,7 @@ class CarState(CarStateBase):
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
       # ret.standstill = ret.vEgoRaw <= 0
       ret.standstill = ret.vEgoRaw <= 0.1 * CV.KPH_TO_MS
+      self.speed_kph = ret.vEgoRaw * CV.MS_TO_KPH
     else:
       # versione elkoled
       ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
