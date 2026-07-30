@@ -61,7 +61,8 @@ def create_drive_away_request(packer, hs2_dyn_mdd_etat_2f6):
 
 
 # Radar, 50 Hz
-def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool, gasPressed: bool, braking: bool, brakePressed: bool, standstill: bool, torque: int):
+def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool, gasPressed: bool,
+                                 braking: bool, brakePressed: bool, standstill: bool, torque: int):
   # TODO: if gas pressed, ACC_STATUS is set to suspended and decel can be set negative (about -300 Nm / -0.6m/s²) with brake mode inactive
   # TODO: tune torque multiplier
   # TODO: check difference between GMP_POTENTIAL_WHEEL_TORQUE and GMP_WHEEL_TORQUE
@@ -123,11 +124,6 @@ def create_steering_hold(packer, lat_active: bool, is_dat_dira):
 def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, takeover_type):
   HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = takeover_type
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
-
-
-def psa_speed_setpoint_from_cluster_kph(speed_kph: float) -> int:
-  return max(0, min(255, round(speed_kph) - PSA_CRUISE_CLUSTER_OFFSET_KPH))
-
 
 def set_speed(packer, hs2_dat_mdd_cmd_452, speed_kph: float):
   values = dict(hs2_dat_mdd_cmd_452)

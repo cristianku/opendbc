@@ -12,6 +12,7 @@ def test_icbm_available_with_stock_longitudinal():
   cp = CarInterface.get_non_essential_params(CAR.PSA_PEUGEOT_3008)
   cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_PEUGEOT_3008)
 
+  assert not cp.openpilotLongitudinalControl
   assert cp_sp.intelligentCruiseButtonManagementAvailable
   assert cp_sp.pcmCruiseSpeed
 

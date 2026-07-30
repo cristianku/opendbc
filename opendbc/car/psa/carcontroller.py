@@ -1,15 +1,20 @@
 from opendbc.can.packer import CANPacker
 # [CLAUDE eps-rearm] - START
 # from opendbc.car import Bus, structs, make_tester_present_msg
-from opendbc.car import Bus, structs, DT_CTRL, make_tester_present_msg
+from opendbc.car import Bus, structs, DT_CTRL
 # [CLAUDE eps-rearm] - END
-from opendbc.car.carlog import carlog
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-# from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
-from opendbc.car.psa.psacan import create_lka_steering, create_driver_torque, create_steering_hold, create_resume_acc,  create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, create_request_takeover, set_speed, create_disable_radar, psa_speed_setpoint_from_cluster_kph
+from opendbc.car.psa.psacan import (
+  create_driver_torque,
+  create_lka_steering,
+  create_request_takeover,
+  create_resume_acc,
+  create_steering_hold)
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS
 from opendbc.car.common.conversions import Conversions as CV
+from opendbc.sunnypilot.car.psa.icbm import IntelligentCruiseButtonManagementInterface
+
 # from cereal import messaging
 # from numpy import interp
 
@@ -20,9 +25,10 @@ SteerControlType = structs.CarParams.SteerControlType
 ICBMState = structs.IntelligentCruiseButtonManagement.IntelligentCruiseButtonManagementState
 # sm = messaging.SubMaster(['modelV2'], poll='modelV2')
 
-class CarController(CarControllerBase):
+class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterface):
   def __init__(self, dbc_names, CP, CP_SP):
-    super().__init__(dbc_names, CP, CP_SP)
+    CarControllerBase.__init__(self, dbc_names, CP, CP_SP)
+    IntelligentCruiseButtonManagementInterface.__init__(self, CP, CP_SP)
     self.latActiveLast = False
     self.eps_active_last = False
     self.packer = CANPacker(dbc_names[Bus.main])
@@ -277,7 +283,10 @@ class CarController(CarControllerBase):
     #   # Lowest brake mode accel seen: -4.85m/s²
 
     #   if self.frame % 2 == 0:
-    #     can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
+    #     can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
+    #       self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled,
+    #       CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque,
+    #     ))
     #     can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking, CC.hudControl.leadVisible, self.bars))
 
     # # stock long
@@ -339,38 +348,45 @@ class CarController(CarControllerBase):
         self.takeover_req = 0
         # self.takeover_start_msg_frame = 0
 
-    speed_target_ms = None
-    if self.CP.openpilotLongitudinalControl:
-      speed_target_ms = CC.hudControl.setSpeed
-    elif not self.CP_SP.pcmCruiseSpeed:
-      icbm = CC_SP.intelligentCruiseButtonManagement
-      if icbm.state != ICBMState.inactive:
-        # ICBM vTarget is published in SI units so this works in both metric and
-        # imperial UI modes. It includes dynamic map/vision turn speed targets.
-        speed_target_ms = icbm.vTarget
+    # speed_target_ms = None
+    # if self.CP.openpilotLongitudinalControl:
+    #   speed_target_ms = CC.hudControl.setSpeed
+    # elif not self.CP_SP.pcmCruiseSpeed:
+    #   icbm = CC_SP.intelligentCruiseButtonManagement
+    #   if icbm.state != ICBMState.inactive:
+    #     # ICBM vTarget is published in SI units so this works in both metric and
+    #     # imperial UI modes. It includes dynamic map/vision turn speed targets.
+    #     speed_target_ms = icbm.vTarget
 
-    if (speed_target_ms is not None
-        and self.frame % self.params.STEER_STEP == 0
-        and CC.enabled
-        and CC.hudControl.speedVisible
-        and CS.out.cruiseState.enabled
-        and CS.out.vEgo > 1.0):
-      set_speed_kph = psa_speed_setpoint_from_cluster_kph(speed_target_ms * CV.MS_TO_KPH)
-      if 0 < set_speed_kph < 255:
-        can_sends.append(
-          set_speed(self.packer, CS.hs2_dat_mdd_cmd_452, set_speed_kph)
+    # if (speed_target_ms is not None
+    #     and self.frame % self.params.STEER_STEP == 0
+    #     and CC.enabled
+    #     and CC.hudControl.speedVisible
+    #     and CS.out.cruiseState.enabled
+    #     and CS.out.vEgo > 1.0):
+    #   set_speed_kph = psa_speed_setpoint_from_cluster_kph(speed_target_ms * CV.MS_TO_KPH)
+    #   if 0 < set_speed_kph < 255:
+    #     can_sends.append(
+    #       set_speed(self.packer, CS.hs2_dat_mdd_cmd_452, set_speed_kph)
+    #     )
+
+    # if self.CP.openpilotLongitudinalControl and CC.enabled:
+    #   # Disable ARTIV only for full openpilot longitudinal. ICBM deliberately
+    #   # leaves ARTIV active: the stock controller executes our dynamic setpoint.
+    #   if self.radar_disabled == 0:
+    #     can_sends.append(create_disable_radar())
+    #     self.radar_disabled = 1
+
+    #   if self.frame % 100 == 0 and self.frame > 0:
+    #     can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
+
+    # Intelligent Cruise Button Management
+    if self.frame % self.params.STEER_STEP == 0:
+      can_sends.extend(
+        IntelligentCruiseButtonManagementInterface.update(
+          self, CC, CC_SP, CS, self.packer
         )
-
-    if self.CP.openpilotLongitudinalControl and CC.enabled:
-      # Disable ARTIV only for full openpilot longitudinal. ICBM deliberately
-      # leaves ARTIV active: the stock controller executes our dynamic setpoint.
-      if self.radar_disabled == 0:
-        can_sends.append(create_disable_radar())
-        self.radar_disabled = 1
-
-      if self.frame % 100 == 0 and self.frame > 0:
-        can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
-
+      )
     # Actuators output
     new_actuators = actuators.as_builder()
     if self.CP.steerControlType == SteerControlType.torque:
