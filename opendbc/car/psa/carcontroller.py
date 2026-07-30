@@ -385,12 +385,13 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     #     can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
     # Intelligent Cruise Button Management
-    if self.frame % self.params.STEER_STEP == 0:
-      can_sends.extend(
-        IntelligentCruiseButtonManagementInterface.update(
-          self, CC, CC_SP, CS, self.packer, self.last_button_frame
+    if CC.latActive:
+      if self.frame % self.params.STEER_STEP == 0:
+        can_sends.extend(
+          IntelligentCruiseButtonManagementInterface.update(
+            self, CC, CC_SP, CS, self.packer, self.last_button_frame
+          )
         )
-      )
     # Actuators output
     new_actuators = actuators.as_builder()
     if self.CP.steerControlType == SteerControlType.torque:

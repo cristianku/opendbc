@@ -37,8 +37,6 @@ class IntelligentCruiseButtonManagementInterface(
 
     if self.ICBM.state == ICBMState.inactive:
       return can_sends
-
-
     # Sunny publishes ICBM.vTarget in the selected cluster unit. The PSA
     # integration currently supports the metric setting, so this is already kph.
     set_speed_kph = round(self.ICBM.vTarget)
