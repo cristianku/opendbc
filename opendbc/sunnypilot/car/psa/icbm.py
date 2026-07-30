@@ -54,6 +54,6 @@ class IntelligentCruiseButtonManagementInterface(
     if (self.frame - self.last_button_frame) * DT_CTRL > 0.2:
       if 0 < set_speed_kph < 255:
         self.last_button_frame = self.frame
-        can_sends.append([set_speed(packer,CS.hs2_dat_mdd_cmd_452, set_speed_kph)])
+        can_sends.append(set_speed(packer,CS.hs2_dat_mdd_cmd_452, set_speed_kph))
 
     return can_sends
