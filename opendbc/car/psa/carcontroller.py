@@ -37,6 +37,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.apply_torque = 0
     self.status = 2
     self.takeover_req = 0
+    self.start_takeover_repeats = 0
     self.takeover_req_already_sent = False
 
     # this is the frame when the latactive is being pressed
@@ -338,13 +339,17 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if self.takeover_req > 0 and self.frame % 2 == 0: # 50 Hz
+        self.start_takeover_repeats +=1
         # if self.takeover_start_msg_frame == 0:
         #   self.takeover_start_msg_frame = self.frame
         can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,self.takeover_req))
         # carlog.error("PSA_DEBUG sending to CAN create_request_takeover")
         # if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
-      # carlog.error("PSA_DEBUG takeover_req = False")
-        self.takeover_req = 0
+        # carlog.error("PSA_DEBUG takeover_req = False")
+        if self.start_takeover_repeats > 3:
+          self.takeover_req = 0
+          self.start_takeover_repeats = 0
+
         # self.takeover_start_msg_frame = 0
 
     # speed_target_ms = None
