@@ -383,7 +383,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     if self.frame % self.params.STEER_STEP == 0:
       can_sends.extend(
         IntelligentCruiseButtonManagementInterface.update(
-          self, CC, CC_SP, CS, self.packer
+          self, CC, CC_SP, CS, self.packer, self.last_button_frame
         )
       )
     # Actuators output
