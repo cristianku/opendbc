@@ -12,7 +12,6 @@ from opendbc.car.psa.psacan import (
   create_resume_acc,
   create_steering_hold)
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS
-from opendbc.car.common.conversions import Conversions as CV
 from opendbc.sunnypilot.car.psa.icbm import IntelligentCruiseButtonManagementInterface
 
 # from cereal import messaging

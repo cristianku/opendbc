@@ -4,7 +4,7 @@ from opendbc.can.dbc import DBC
 from opendbc.can.packer import CANPacker
 from opendbc.can.parser import get_raw_value
 from opendbc.car.psa.interface import CarInterface
-from opendbc.car.psa.psacan import psa_checksum, psa_speed_setpoint_from_cluster_kph, set_speed
+from opendbc.car.psa.psacan import psa_checksum, set_speed
 from opendbc.car.psa.values import CAR
 
 
@@ -14,19 +14,7 @@ def test_icbm_available_with_stock_longitudinal():
 
   assert not cp.openpilotLongitudinalControl
   assert cp_sp.intelligentCruiseButtonManagementAvailable
-  assert cp_sp.pcmCruiseSpeed
-
-
-@pytest.mark.parametrize(("cluster_kph", "setpoint"), (
-  (3, 0),
-  (60, 57),
-  (70, 67),
-  (100, 97),
-  (120, 117),
-  (300, 255),
-))
-def test_psa_speed_setpoint_from_cluster_kph(cluster_kph, setpoint):
-  assert psa_speed_setpoint_from_cluster_kph(cluster_kph) == setpoint
+  assert not cp_sp.pcmCruiseSpeed
 
 
 @pytest.mark.parametrize(("setpoint", "parity"), (

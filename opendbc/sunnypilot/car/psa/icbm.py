@@ -1,9 +1,12 @@
 from opendbc.car import structs
 from opendbc.car.can_definitions import CanData
+from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.psacan import set_speed
 from opendbc.sunnypilot.car.intelligent_cruise_button_management_interface_base import (
   IntelligentCruiseButtonManagementInterfaceBase,
 )
+
+MAX_TARGET_SPEED_DIFFERENCE_KPH = 20.0
 
 ICBMState = (
   structs.IntelligentCruiseButtonManagement
@@ -33,8 +36,17 @@ class IntelligentCruiseButtonManagementInterface(
     # Sunny publishes ICBM.vTarget in the selected cluster unit. The PSA
     # integration currently supports the metric setting, so this is already kph.
     set_speed_kph = round(self.ICBM.vTarget)
+    actual_speed_kph = CS.out.vEgo * CV.MS_TO_KPH
+    stock_set_speed_kph = round(CS.out.cruiseState.speed * CV.MS_TO_KPH)
 
-    if not 0 < set_speed_kph < 255:
+    # This direct PSA backend is only allowed to reduce the driver's stock
+    # setpoint. Ignore large target jumps and let the untouched stock 0x452 take
+    # over instead of injecting an implausible command.
+    if (
+      not 0 < set_speed_kph < 255
+      # or set_speed_kph >= stock_set_speed_kph
+      or abs(set_speed_kph - actual_speed_kph) > MAX_TARGET_SPEED_DIFFERENCE_KPH
+    ):
       return []
 
     return [

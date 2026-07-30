@@ -1,7 +1,6 @@
 import random
 
 from opendbc.car.can_definitions import CanData
-from opendbc.car.psa.values import PSA_CRUISE_CLUSTER_OFFSET_KPH
 
 
 def psa_checksum(address: int, sig, d: bytearray) -> int:
