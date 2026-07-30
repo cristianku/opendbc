@@ -176,14 +176,18 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     }
   }
 
-  // Il probe ARTIV può inviare soltanto 02 10 03 00 00 00 00 00.
-  // if (msg->addr == PSA_REQ_DIAG_ARTIV) {
-  //   bool is_artiv_extended_session_probe = (GET_BYTES(msg, 0, 4) == 0x00031002U) &&
-  //                                          (GET_BYTES(msg, 4, 4) == 0x0U);
-  //   if (!is_artiv_extended_session_probe) {
-  //     tx = false;
-  //   }
-  // }
+  // ARTIV diagnostics: allow only programming session and TesterPresent.
+  if (msg->addr == PSA_REQ_DIAG_ARTIV) {
+    uint32_t first_word = GET_BYTES(msg, 0, 4);
+    bool zero_padding = GET_BYTES(msg, 4, 4) == 0x0U;
+    bool is_programming_session = first_word == 0x00021002U;       // 02 10 02 00
+    bool is_tester_present = (first_word == 0x00003E02U) ||        // 02 3E 00 00
+                             (first_word == 0x00803E02U);          // 02 3E 80 00
+
+    if (!zero_padding || (!is_programming_session && !is_tester_present)) {
+      tx = false;
+    }
+  }
 
   return tx;
 }

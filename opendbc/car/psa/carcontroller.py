@@ -9,9 +9,10 @@ from opendbc.car.psa.psacan import (
   create_lka_steering,
   create_request_takeover,
   create_resume_acc,
-  create_steering_hold
-  ,create_disable_radar)
-from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS
+  create_steering_hold,
+  create_disable_radar,
+)
+from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
 from opendbc.sunnypilot.car.psa.icbm import IntelligentCruiseButtonManagementInterface
 
 # from cereal import messaging
@@ -21,7 +22,6 @@ import random
 # import math
 
 SteerControlType = structs.CarParams.SteerControlType
-ICBMState = structs.IntelligentCruiseButtonManagement.IntelligentCruiseButtonManagementState
 # sm = messaging.SubMaster(['modelV2'], poll='modelV2')
 
 class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterface):
@@ -43,7 +43,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     # this is the frame when the latactive is being pressed
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
-    self.radar_disabled = 0
+    self.radar_disabled = False
     self.bars = 4
     self.steering_hold_counter = 0
     self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
@@ -302,14 +302,16 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     # #  ELKOLED LONGITUDINAL CONTROL
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      # disable radar ECU by setting to programming mode
-      if self.radar_disabled == 0:
+      # Keep requesting the ARTIV programming session. A single request can be
+      # missed or rejected while the ECU/gateway is still initializing.
+      if not self.radar_disabled and self.frame > 200:
         can_sends.append(create_disable_radar())
-        self.radar_disabled = 1
+        self.radar_disabled = True
 
-      # keep radar ECU disabled by sending tester present
-      if self.frame % 100 == 0 and self.frame>0: # TODO check if disable_radar is sent 100 frames before
-        can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
+      # Keep the diagnostic session alive halfway between programming requests,
+      # avoiding two UDS requests in the same control frame.
+      if self.frame % 100 == 50 and self.radar_disabled:
+        can_sends.append(make_tester_present_msg(0x6b6, PSA_ADAS_BUS, suppress_response=False))
 
       if not CC.latActive:
         self.steering_hold_counter = 0                       # alla ripresa il primo
@@ -361,28 +363,6 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
         # self.takeover_start_msg_frame = 0
 
-    # speed_target_ms = None
-    # if self.CP.openpilotLongitudinalControl:
-    #   speed_target_ms = CC.hudControl.setSpeed
-    # elif not self.CP_SP.pcmCruiseSpeed:
-    #   icbm = CC_SP.intelligentCruiseButtonManagement
-    #   if icbm.state != ICBMState.inactive:
-    #     # ICBM vTarget is published in SI units so this works in both metric and
-    #     # imperial UI modes. It includes dynamic map/vision turn speed targets.
-    #     speed_target_ms = icbm.vTarget
-
-    # if (speed_target_ms is not None
-    #     and self.frame % self.params.STEER_STEP == 0
-    #     and CC.enabled
-    #     and CC.hudControl.speedVisible
-    #     and CS.out.cruiseState.enabled
-    #     and CS.out.vEgo > 1.0):
-    #   set_speed_kph = psa_speed_setpoint_from_cluster_kph(speed_target_ms * CV.MS_TO_KPH)
-    #   if 0 < set_speed_kph < 255:
-    #     can_sends.append(
-    #       set_speed(self.packer, CS.hs2_dat_mdd_cmd_452, set_speed_kph)
-    #     )
-
     # if self.CP.openpilotLongitudinalControl and CC.enabled:
     #   # Disable ARTIV only for full openpilot longitudinal. ICBM deliberately
     #   # leaves ARTIV active: the stock controller executes our dynamic setpoint.
@@ -394,13 +374,12 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     #     can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
     # Intelligent Cruise Button Management
-    if CC.latActive:
-      if self.frame % self.params.STEER_STEP == 0:
-        can_sends.extend(
-          IntelligentCruiseButtonManagementInterface.update(
-            self, CC, CC_SP, CS, self.packer, self.last_button_frame
-          )
+    if self.frame % self.params.STEER_STEP == 0:
+      can_sends.extend(
+        IntelligentCruiseButtonManagementInterface.update(
+          self, CC, CC_SP, CS, self.packer
         )
+      )
     # Actuators output
     new_actuators = actuators.as_builder()
     if self.CP.steerControlType == SteerControlType.torque:

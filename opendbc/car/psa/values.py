@@ -7,7 +7,7 @@ from opendbc.car.fw_query_definitions import FwQueryConfig, Request, uds
 
 Ecu = CarParams.Ecu
 
-PSA_CRUISE_CLUSTER_OFFSET_KPH = 3
+PSA_ADAS_BUS = 1
 
 
 class CarControllerParams:

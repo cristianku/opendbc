@@ -1,6 +1,7 @@
 import random
 
 from opendbc.car.can_definitions import CanData
+from opendbc.car.psa.values import PSA_ADAS_BUS
 
 
 def psa_checksum(address: int, sig, d: bytearray) -> int:
@@ -148,22 +149,11 @@ def set_speed(packer, hs2_dat_mdd_cmd_452, speed_kph: float):
 # quello servirebbe solo per erase/write. Risposta lasciata attiva (50 02 vs 7F 10 xx)
 # per vedere nei log se ARTIV ha accettato; per sopprimerla userei 0x10 0x82.
 #
-# [CLAUDE artiv-nopad] - START
-# Niente padding a DLC 8. Nel log della sessione Kingbolen del 24/03
-# (route 00000023--3b5e225f94, bus1) le richieste verso ARTIV sono lunghe
-# 3, 4 o 5 byte e MAI 8, e l'ECU risponde sempre:
-#   02 10 03    (3 byte) -> 50 03 00 C8 00 14
-#   02 3E 00    (3 byte) -> 7E 00
-#   03 22 F0 80 (4 byte) -> 62 F0 80 ...
-# Il padding e' opzionale in ISO 15765-2 (il ricevente usa la lunghezza dal
-# PCI), quindi il frame corto e' l'unico formato di cui abbiamo prova su
-# questo radar. Il frame paddato a 8 non e' mai stato testato sull'ARTIV.
-# Riga sostituita:
-#   dat.extend([0x0] * (8 - len(dat)))   # padding a DLC 8 come PyPSADiag
+# La safety autorizza 0x6B6 con DLC 8. Il primo byte ISO-TP dichiara comunque
+# due byte UDS; i cinque byte rimanenti sono padding a zero.
 def create_disable_radar():
   addr = 0x6B6
-  bus = 1
-  dat = [0x02, 0x10, 0x02, 0x80]
+  dat = [0x02, 0x10, 0x02]
   dat.extend([0x0] * (8 - len(dat)))
 
-  return CanData(addr, bytes(dat), bus)
+  return CanData(addr, bytes(dat), PSA_ADAS_BUS)

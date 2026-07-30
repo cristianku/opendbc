@@ -1,7 +1,7 @@
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.psa.values import CAR, DBC, CarControllerParams, PSA_CRUISE_CLUSTER_OFFSET_KPH
+from opendbc.car.psa.values import CAR, DBC, CarControllerParams
 # , LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 import copy
@@ -13,6 +13,7 @@ from opendbc.car import DT_CTRL
 
 GearShifter = structs.CarState.GearShifter
 TransmissionType = structs.CarParams.TransmissionType
+ButtonType = structs.CarState.ButtonEvent.Type
 
 
 class CarState(CarStateBase):
@@ -27,6 +28,10 @@ class CarState(CarStateBase):
     self.eps_state_lka = 0
     self.speed_kph = 0.0
     self.actual_gear = 0
+    self.synthetic_cruise_kph = None
+    self.synthetic_cruise_button_pressed = False
+    self.synthetic_cruise_button_type = ButtonType.unknown
+    self.cruise_enabled_prev = False
     self.artiv_diag_response_updated = False
     self.artiv_diag_response = {
       "ISO_TP_LENGTH": 0,
@@ -34,6 +39,42 @@ class CarState(CarStateBase):
       "UDS_SUBFUNCTION": 0,
       "UDS_NRC": 0,
     }
+
+  def _update_cruise_button_events(self, stock_speed_kph: int, cruise_enabled: bool) -> list[structs.CarState.ButtonEvent]:
+    events = []
+    valid_setpoint = cruise_enabled and 0 < stock_speed_kph < 255
+
+    if not valid_setpoint:
+      self.synthetic_cruise_kph = None
+      self.synthetic_cruise_button_pressed = False
+      self.synthetic_cruise_button_type = ButtonType.unknown
+    elif not self.cruise_enabled_prev or self.synthetic_cruise_kph is None:
+      # On engagement Sunny captures the real CAN setpoint from
+      # cruiseState.speed. Synthesize only later stock changes.
+      self.synthetic_cruise_kph = stock_speed_kph
+      self.synthetic_cruise_button_pressed = False
+      self.synthetic_cruise_button_type = ButtonType.unknown
+    elif self.synthetic_cruise_button_pressed:
+      events.append(structs.CarState.ButtonEvent(
+        pressed=False,
+        type=self.synthetic_cruise_button_type,
+      ))
+      self.synthetic_cruise_kph += 1 if self.synthetic_cruise_button_type == ButtonType.accelCruise else -1
+      self.synthetic_cruise_button_pressed = False
+    elif self.synthetic_cruise_kph != stock_speed_kph:
+      self.synthetic_cruise_button_type = (
+        ButtonType.accelCruise
+        if self.synthetic_cruise_kph < stock_speed_kph
+        else ButtonType.decelCruise
+      )
+      events.append(structs.CarState.ButtonEvent(
+        pressed=True,
+        type=self.synthetic_cruise_button_type,
+      ))
+      self.synthetic_cruise_button_pressed = True
+
+    self.cruise_enabled_prev = cruise_enabled
+    return events
 
   # #HANDS-FREE - START: state for the EPS silent-dropout safety net
   # def __init__(self, CP, CP_SP):
@@ -147,11 +188,16 @@ class CarState(CarStateBase):
 
     # cruise
     cruise_speed_kph = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT']
-    ret.cruiseState.speed = cruise_speed_kph * CV.KPH_TO_MS  # set to 255 when ACC is off
-    ret.cruiseState.speedCluster = (
-      cruise_speed_kph if cruise_speed_kph == 255 else cruise_speed_kph + PSA_CRUISE_CLUSTER_OFFSET_KPH
-    ) * CV.KPH_TO_MS
     ret.cruiseState.enabled = cp_adas.vl['HS2_DAT_MDD_CMD_452']['RVV_ACC_ACTIVATION_REQ'] == 1
+    ret.cruiseState.speed = cruise_speed_kph * CV.KPH_TO_MS  # real CAN/controller setpoint
+    if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
+      # pcmCruiseSpeed=False makes Sunny manage the set speed through button
+      # events. Keep all control/planner values in the real 0x452 domain and
+      # synthesize +/- edges whenever that stock setpoint changes.
+      ret.buttonEvents = self._update_cruise_button_events(cruise_speed_kph, ret.cruiseState.enabled)
+    # PSA's dashboard adds its own display offset. Sunny must compare and
+    # command the real CAN setpoint, so do not reproduce that offset here.
+    ret.cruiseState.speedCluster = ret.cruiseState.speed
     ret.cruiseState.available = True # not available for CC-only
     ret.cruiseState.nonAdaptive = False # not available for CC-only
 
