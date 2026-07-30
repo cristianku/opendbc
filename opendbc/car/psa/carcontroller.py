@@ -1,7 +1,6 @@
 from opendbc.can.packer import CANPacker
 # [CLAUDE eps-rearm] - START
-# from opendbc.car import Bus, structs, make_tester_present_msg
-from opendbc.car import Bus, structs, DT_CTRL
+from opendbc.car import Bus, structs, DT_CTRL, make_tester_present_msg
 # [CLAUDE eps-rearm] - END
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
@@ -10,7 +9,8 @@ from opendbc.car.psa.psacan import (
   create_lka_steering,
   create_request_takeover,
   create_resume_acc,
-  create_steering_hold)
+  create_steering_hold
+  ,create_disable_radar)
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS
 from opendbc.sunnypilot.car.psa.icbm import IntelligentCruiseButtonManagementInterface
 
@@ -302,6 +302,15 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     # #  ELKOLED LONGITUDINAL CONTROL
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+      # disable radar ECU by setting to programming mode
+      if self.radar_disabled == 0:
+        can_sends.append(create_disable_radar())
+        self.radar_disabled = 1
+
+      # keep radar ECU disabled by sending tester present
+      if self.frame % 100 == 0 and self.frame>0: # TODO check if disable_radar is sent 100 frames before
+        can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
+
       if not CC.latActive:
         self.steering_hold_counter = 0                       # alla ripresa il primo
         self.next_steering_hold = random.randint(8, 12)      # hold-hands parte subito
