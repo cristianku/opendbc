@@ -1,6 +1,5 @@
 from opendbc.car import structs
 from opendbc.car.can_definitions import CanData
-from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.psacan import set_speed
 from opendbc.sunnypilot.car.intelligent_cruise_button_management_interface_base import (
   IntelligentCruiseButtonManagementInterfaceBase,
@@ -31,8 +30,9 @@ class IntelligentCruiseButtonManagementInterface(
     ):
       return []
 
-    # vTarget è in m/s
-    set_speed_kph = round(self.ICBM.vTarget * CV.MS_TO_KPH)
+    # Sunny publishes ICBM.vTarget in the selected cluster unit. The PSA
+    # integration currently supports the metric setting, so this is already kph.
+    set_speed_kph = round(self.ICBM.vTarget)
 
     if not 0 < set_speed_kph < 255:
       return []

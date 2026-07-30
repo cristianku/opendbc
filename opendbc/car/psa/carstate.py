@@ -26,6 +26,7 @@ class CarState(CarStateBase):
     self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
     self.eps_state_lka = 0
     self.speed_kph = 0.0
+    self.actual_gear = 0
     self.artiv_diag_response_updated = False
     self.artiv_diag_response = {
       "ISO_TP_LENGTH": 0,
@@ -163,6 +164,8 @@ class CarState(CarStateBase):
       ret.gearShifter = GearShifter.reverse
     else:
       ret.gearShifter = GearShifter.drive
+
+    self.actual_gear = int(cp.vl["Dyn2_CMM"]["P152_Gearbx_stGear"])
 
     # blinkers
     blinker = cp_cam.vl['HS2_DAT7_BSI_612']['CDE_CLG_ET_HDC']
