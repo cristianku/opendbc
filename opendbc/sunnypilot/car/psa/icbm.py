@@ -26,14 +26,18 @@ class IntelligentCruiseButtonManagementInterface(
     self.last_button_frame = last_button_frame
     can_sends = []
 
-    if (
-      self.ICBM.state == ICBMState.inactive
-      or not CC.enabled
-      or not CC.hudControl.speedVisible
-      or not CS.out.cruiseState.enabled
-      or CS.out.vEgo <= 1.0
-    ):
-      return []
+    # if (
+    #   self.ICBM.state == ICBMState.inactive
+    #   or not CC.enabled
+    #   or not CC.hudControl.speedVisible
+    #   or not CS.out.cruiseState.enabled
+    #   or CS.out.vEgo <= 1.0
+    # ):
+    #   return can_sends
+
+    if self.ICBM.state == ICBMState.inactive:
+      return can_sends
+
 
     # Sunny publishes ICBM.vTarget in the selected cluster unit. The PSA
     # integration currently supports the metric setting, so this is already kph.
