@@ -302,16 +302,16 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     # #  ELKOLED LONGITUDINAL CONTROL
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      # Keep requesting the ARTIV programming session. A single request can be
-      # missed or rejected while the ECU/gateway is still initializing.
-      if not self.radar_disabled and self.frame > 200:
-        can_sends.append(create_disable_radar())
-        self.radar_disabled = True
+      # # Keep requesting the ARTIV programming session. A single request can be
+      # # missed or rejected while the ECU/gateway is still initializing.
+      # if not self.radar_disabled and self.frame > 200:
+      #   can_sends.append(create_disable_radar())
+      #   self.radar_disabled = True
 
-      # Keep the diagnostic session alive halfway between programming requests,
-      # avoiding two UDS requests in the same control frame.
-      if self.frame % 100 == 50 and self.radar_disabled:
-        can_sends.append(make_tester_present_msg(0x6b6, PSA_ADAS_BUS, suppress_response=False))
+      # # Keep the diagnostic session alive halfway between programming requests,
+      # # avoiding two UDS requests in the same control frame.
+      # if self.frame % 100 == 50 and self.radar_disabled:
+      #   can_sends.append(make_tester_present_msg(0x6b6, PSA_ADAS_BUS, suppress_response=False))
 
       if not CC.latActive:
         self.steering_hold_counter = 0                       # alla ripresa il primo
@@ -374,12 +374,12 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     #     can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
     # Intelligent Cruise Button Management
-    if self.frame % self.params.STEER_STEP == 0:
-      can_sends.extend(
-        IntelligentCruiseButtonManagementInterface.update(
-          self, CC, CC_SP, CS, self.packer
-        )
-      )
+    # if self.frame % self.params.STEER_STEP == 0:
+    #   can_sends.extend(
+    #     IntelligentCruiseButtonManagementInterface.update(
+    #       self, CC, CC_SP, CS, self.packer
+    #     )
+    #   )
     # Actuators output
     new_actuators = actuators.as_builder()
     if self.CP.steerControlType == SteerControlType.torque:
