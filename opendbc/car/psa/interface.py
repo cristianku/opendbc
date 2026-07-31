@@ -5,10 +5,6 @@ from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.carstate import CarState
 from opendbc.car.psa.values import CAR, LKAS_LIMITS
 
-
-TransmissionType = structs.CarParams.TransmissionType
-
-
 class CarInterface(CarInterfaceBase):
   CarState = CarState
   CarController = CarController
@@ -22,7 +18,7 @@ class CarInterface(CarInterfaceBase):
     #
     ret.dashcamOnly = False
 
-    if candidate in (CAR.PSA_PEUGEOT_3008,):
+    if candidate in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
       ret.steerControlType = structs.CarParams.SteerControlType.torque
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
@@ -32,7 +28,7 @@ class CarInterface(CarInterfaceBase):
       ret.steerActuatorDelay = 0.15
       ret.steerLimitTimer = 0.1
       ret.steerAtStandstill = False
-      ret.openpilotLongitudinalControl = False
+      ret.enableBsm = True
     else:
       ret.steerAtStandstill = True
       ret.steerLimitTimer = 0.1
@@ -41,8 +37,20 @@ class CarInterface(CarInterfaceBase):
     ret.radarUnavailable = True
 
     ret.alphaLongitudinalAvailable = False
-    ret.openpilotLongitudinalControl = alpha_long
+    # ret.openpilotLongitudinalControl = alpha_long
     ret.startingState = True
     ret.startAccel = 1.0
+
+    return ret
+
+  @staticmethod
+  def _get_params_sp(stock_cp, ret, candidate, fingerprint, car_fw,
+                    alpha_long, is_release_sp, docs):
+    if candidate in (
+      CAR.PSA_PEUGEOT_3008,
+      CAR.PSA_CITROEN_C4_SPACETOURER,
+    ):
+      ret.intelligentCruiseButtonManagementAvailable = False
+      ret.pcmCruiseSpeed = True
 
     return ret

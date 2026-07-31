@@ -1,8 +1,11 @@
 import random
 
 from opendbc.car.can_definitions import CanData
+from opendbc.car.psa.values import PSA_ADAS_BUS
+
+
 def psa_checksum(address: int, sig, d: bytearray) -> int:
-  chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
+  chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x2f6: 0x8, 0x2b6: 0xC, 0x42D: 0xC}.get(address, 0xB)
   byte = sig.start_bit // 8
   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
   checksum = sum((b >> 4) + (b & 0xF) for b in d)
@@ -58,7 +61,8 @@ def create_drive_away_request(packer, hs2_dyn_mdd_etat_2f6):
 
 
 # Radar, 50 Hz
-def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool, gasPressed: bool, braking: bool, brakePressed: bool, standstill: bool, torque: int):
+def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool, gasPressed: bool,
+                                 braking: bool, brakePressed: bool, standstill: bool, torque: int):
   # TODO: if gas pressed, ACC_STATUS is set to suspended and decel can be set negative (about -300 Nm / -0.6m/s²) with brake mode inactive
   # TODO: tune torque multiplier
   # TODO: check difference between GMP_POTENTIAL_WHEEL_TORQUE and GMP_WHEEL_TORQUE
@@ -102,7 +106,6 @@ def create_HS2_DYN_MDD_ETAT_2F6(packer, braking: bool, lead_visible: bool, lead_
 
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
 
-
 def create_driver_torque(packer, steering, counter):
   t = int(steering.get('DRIVER_TORQUE', 0))
   if abs(t) < 10:
@@ -112,23 +115,46 @@ def create_driver_torque(packer, steering, counter):
   steering['COUNTER'] = counter
   return packer.make_can_msg('STEERING', 0, steering)
 
-
-
 def create_steering_hold(packer, lat_active: bool, is_dat_dira):
   # set STEERWHL_HOLD_BY_DRV to keep EPS engaged when lat active
   if lat_active:
     is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1
   return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
 
-def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, type):
-  # HS2_DYN_MDD_ETAT_2F6
-  #  1 = Non Critical Request
-  #  2 = Critical request
-  HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = type
-
+def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, takeover_type):
+  HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = takeover_type
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
 
-  # Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
-  # Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
-  # Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
+# def set_speed(packer, hs2_dat_mdd_cmd_452, speed_kph: float):
+#   values = dict(hs2_dat_mdd_cmd_452)
+#   speed_setpoint = max(0, min(255, round(speed_kph)))
+#   values['SPEED_SETPOINT'] = speed_setpoint
 
+#   # Encode the bit parity of each nibble: bit 1 for odd parity in the most
+#   # significant nibble, bit 0 for odd parity in the least significant nibble.
+#   ms_nibble_parity = ((speed_setpoint >> 4) & 0xF).bit_count() & 1
+#   ls_nibble_parity = (speed_setpoint & 0xF).bit_count() & 1
+#   values["CHECKSUM_CONS_RVV_LVV2"] = (ms_nibble_parity << 1) | ls_nibble_parity
+#   return packer.make_can_msg('HS2_DAT_MDD_CMD_452', 1, values)
+
+# [artiv-diag-probe] - START
+# Disabilita ARTIV (radar) mettendolo in programming session su 0x6B6, bus ADAS.
+# Riferimento profilo ECU PyPSADiag:
+# https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
+#   0x02 = ISO-TP single frame, 2 byte di payload
+#   0x10 0x02 = DiagnosticSessionControl, programmingSession -> l'ECU smette di
+#               trasmettere i suoi messaggi normali (radar "zitto") finche' resta li'.
+# La sessione decade dopo il timeout S3 (~5 s): il CarController la tiene viva con
+# TesterPresent periodico. Entrare in programming NON richiede security access (27);
+# quello servirebbe solo per erase/write. Risposta lasciata attiva (50 02 vs 7F 10 xx)
+# per vedere nei log se ARTIV ha accettato; per sopprimerla userei 0x10 0x82.
+#
+# La safety autorizza 0x6B6 con DLC 8. Il primo byte ISO-TP dichiara comunque
+# due byte UDS; i cinque byte rimanenti sono padding a zero.
+def create_disable_radar():
+  # https://github.com/ludwig-v/arduino-psa-diag/blob/master/ECU_LIST.md
+  addr = 0x6B6
+  dat = [0x02, 0x10, 0x02]
+  dat.extend([0x0] * (8 - len(dat)))
+
+  return CanData(addr, bytes(dat), PSA_ADAS_BUS)

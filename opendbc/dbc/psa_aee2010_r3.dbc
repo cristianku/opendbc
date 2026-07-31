@@ -110,8 +110,8 @@ BO_ 694 HS2_DYN1_MDD_ETAT_2B6: 8 ARTIV
  SG_ MDD_DECEL_CONTROL_REQ : 53|1@0+ (1,0) [0|0] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
  SG_ GEAR_TYPE : 54|1@0+ (1,0) [0|0] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
  SG_ PREFILL_REQUEST : 55|1@0+ (1,0) [0|0] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
- SG_ DYN_ACC_CHECKSUM : 59|4@0+ (1,0) [0|0] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
- SG_ DYN_ACC_PROCESS_COUNTER : 63|4@0+ (1,0) [0|15] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
+ SG_ CHECKSUM : 59|4@0+ (1,0) [0|0] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
+ SG_ COUNTER : 63|4@0+ (1,0) [0|15] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
 
 BO_ 717 HS2_DYN_UCF_2CD: 3 UC_FREIN
  SG_ AUTO_BRAKING_PRESSURE : 7|8@0+ (0.2,0) [0|50.6] "bar" BV,BVN
@@ -123,6 +123,12 @@ BO_ 728 NEW_MSG_2D8: 7 XXX
  SG_ ESP_STATUS_RELATED_INV : 29|1@0+ (1,0) [0|1] "" XXX
  SG_ ACC_ACTIVATION_RELATED : 43|1@0+ (1,0) [0|1] "" XXX
 
+BO_ 747 NEW_MSG_2EB: 5 XXX
+ SG_ COUNTER : 27|4@0+ (1,0) [0|15] "" XXX
+ SG_ CHECKSUM : 31|4@0+ (1,0) [0|15] "" XXX
+BO_ 749 NEW_MSG_2ED: 7 XXX
+ SG_ COUNTER : 3|4@0+ (1,0) [0|15] "" XXX
+ SG_ CHECKSUM : 7|4@0+ (1,0) [0|15] "" XXX
 BO_ 757 STEERING: 7 XXX
  SG_ COUNTER : 3|4@0+ (1,0) [0|255] "" XXX
  SG_ CHECKSUM : 7|4@0+ (1,0) [0|15] "" XXX
@@ -146,8 +152,8 @@ BO_ 758 HS2_DYN_MDD_ETAT_2F6: 8 ARTIV
  SG_ DISPLAY_INTERVEHICLE_TIME : 39|6@0+ (0.1,0) [0|6.1] "s" BSI,CMM,UC_FREIN,CMF
  SG_ MDD_DECEL_CONTROL_REQ : 42|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
  SG_ AUTO_BRAKING_STATUS : 47|3@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
- SG_ CHECKSUM_TRANSM_DYN_ACC2 : 51|4@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
- SG_ PROCESS_COUNTER_4B_ACC2 : 55|4@0+ (1,0) [0|15] "" BSI,CMM,UC_FREIN,CMF
+ SG_ CHECKSUM : 51|4@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ COUNTER : 55|4@0+ (1,0) [0|15] "" BSI,CMM,UC_FREIN,CMF
  SG_ TARGET_POSITION : 63|3@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
 
 BO_ 760 NEW_MSG_2F8: 7 XXX
@@ -272,6 +278,9 @@ BO_ 909 HS2_DYN_ABR_38D: 8 UC_FREIN
  SG_ HADC_SPEED_CONDITION : 61|1@0+ (1,0) [0|1] "" CMF,CMM,BV,BSI,HCU1,ARTIV,BVN,AVAS
  SG_ HADC_CLUTCH_CONDITION : 63|2@0+ (1,0) [0|3] "" CMF,CMM,BV,BSI,HCU1,ARTIV,BVN,AVAS
 
+BO_ 939 NEW_MSG_3AB: 4 XXX
+ SG_ COUNTER : 3|4@0+ (1,0) [0|15] "" XXX
+ SG_ CHECKSUM : 7|4@0+ (1,0) [0|15] "" XXX
 BO_ 941 Dyn_EasyMove: 8 CDS___Fahrdynamikregelung
  SG_ P299_Com_bCrCtlInhib : 17|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ P337_Com_stPrkBrk : 24|3@1+ (1,0) [0|0] "" Vector__XXX
@@ -306,6 +315,8 @@ BO_ 1010 LANE_KEEP_ASSIST: 8 XXX
  SG_ TORQUE_FACTOR : 47|7@0+ (1,0) [0|127] "" XXX
  SG_ SET_ANGLE : 55|14@0- (0.1,0) [-90|90] "" XXX
  SG_ unknown4 : 57|1@0+ (1,0) [0|1] "" XXX
+BO_ 1037 NEW_MSG_40D: 8 XXX
+ SG_ COUNTER : 59|4@0+ (1,0) [0|15] "" XXX
 
 BO_ 1042 Dat_BSI: 8 BSI___Kombiinstrument
  SG_ P040_MainBrakeFault : 0|1@1+ (1,0) [0|1] "-" Vector__XXX
@@ -330,6 +341,7 @@ BO_ 1074 Dat_BSI1: 8 BSI___Kombiinstrument
  SG_ P249_Com_stEngStopReq : 0|2@1+ (1,0) [0|3] "" Vector__XXX
  SG_ P216_Com_bSiaWkUp : 4|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ P214_Com_stMnWkUp : 6|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ COUNTER : 11|4@0+ (1,0) [0|15] "" XXX
  SG_ P402_Com_stStaDemActv : 12|2@1+ (1,0) [0|3] "" Vector__XXX
  SG_ P253_Com_bEngPrepReq : 21|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ P267_Exh_volRefl : 24|8@1+ (0.5,0) [0|255] "l" Vector__XXX
@@ -403,6 +415,7 @@ BO_ 1161 Dat_V2_BV: 8 BVA___Automatikgetriebe
  SG_ P375_Com_bMILDem : 16|1@0+ (1,0) [0|1] "" Vector__XXX
  SG_ P376_Com_bMILcntResDemRaw : 18|1@0+ (1,0) [0|1] "" Vector__XXX
  SG_ P285_Com_bPNDia : 20|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ IGNITION : 40|1@0+ (1,0) [0|1] "" XXX
  SG_ P218_Com_stDrvIdx : 48|8@1+ (1,0) [0|255] "" Vector__XXX
 
 BO_ 1173 IS_DAT_DIRA: 4 PSCM
@@ -421,6 +434,9 @@ BO_ 1224 Etat_Crash: 3 BSI___Kombiinstrument
  SG_ Reserved_1 : 7|8@0+ (1,0) [0|0] "-" Vector__XXX
  SG_ P223_CrashInfo : 8|1@0+ (1,0) [0|0] "-" Vector__XXX
  SG_ Reserved_2 : 23|8@0+ (1,0) [0|0] "-" Vector__XXX
+BO_ 1257 NEW_MSG_4E9: 3 XXX
+ SG_ CHECKSUM : 11|4@0+ (1,0) [0|15] "" XXX
+ SG_ COUNTER : 15|4@0+ (1,0) [0|15] "" XXX
 
 BO_ 1266 Dat3_BSI: 8 Vector__XXX
  SG_ P434_Com_rBattChHiRes : 7|10@0+ (0.1,0) [0|100] "" Vector__XXX
@@ -442,6 +458,13 @@ BO_ 1270 HS2_DAT_ARTIV_V2_4F6: 5 ARTIV
  SG_ TARGET_DETECTED : 36|1@0+ (1,0) [0|0] "" RITCS,BSI,CMF
  SG_ ARTIV_TARGET_CHANGE_INFO : 37|1@0+ (1,0) [0|0] "" RITCS,BSI,CMF
  SG_ TRAFFIC_DIRECTION : 39|2@0+ (1,0) [0|0] "" RITCS,BSI,CMF
+BO_ 1272 NEW_MSG_4F8: 5 XXX
+ SG_ 0_COUNTER : 19|4@0+ (1,0) [0|15] "" XXX
+ SG_ 0_CHECKSUM : 23|4@0+ (1,0) [0|15] "" XXX
+ SG_ ACC_GO_RELATED : 26|1@0+ (1,0) [0|1] "" XXX
+BO_ 1278 NEW_MSG_4FE: 3 XXX
+ SG_ COUNTER : 3|4@0+ (1,0) [0|15] "" XXX
+ SG_ CHECKSUM : 7|4@0+ (1,0) [0|15] "" XXX
 
 BO_ 1293 Dat_ABR: 7 ABS___Antiblockiersystem
  SG_ P351_Com_bABSIntvActv : 5|1@1+ (1,0) [0|1] "" Vector__XXX
@@ -575,7 +598,11 @@ BO_ 1684 Rep_Diag_MSB: 7 XXX
 
 BO_ 1685 Rep_Diag_DIRECTN: 7 XXX
 
-BO_ 1686 Rep_Diag_ARTIV: 7 XXX
+BO_ 1686 Rep_Diag_ARTIV: 8 XXX
+ SG_ ISO_TP_LENGTH : 0|8@1+ (1,0) [0|255] "" XXX
+ SG_ UDS_SERVICE : 8|8@1+ (1,0) [0|255] "" XXX
+ SG_ UDS_SUBFUNCTION : 16|8@1+ (1,0) [0|255] "" XXX
+ SG_ UDS_NRC : 24|8@1+ (1,0) [0|255] "" XXX
 
 BO_ 1697 Req_Diag_SCR: 3 XXX
 
@@ -593,7 +620,7 @@ BO_ 1716 Req_Diag_MSB: 3 XXX
 
 BO_ 1717 Req_Diag_DIRECTN: 3 XXX
 
-BO_ 1718 Req_Diag_ARTIV: 3 XXX
+BO_ 1718 Req_Diag_ARTIV: 8 XXX
 
 BO_ 1719 Req_Diag_CORPRO: 3 XXX
 
@@ -826,11 +853,11 @@ CM_ SG_ 520 P042_Inm_bCanMon "P042  CAN-Fehlerbehandlung im Startfall mit Hilfe 
 CM_ SG_ 520 P127_EGT_st_Bit30 "P127: Regeneration aid by electric consumers (engine load increase).";
 CM_ SG_ 520 P198_ActMod_trqClthTraIntv "P084  Vorweggenommenes Drehmoment";
 CM_ SG_ 694 ACC_STATUS "Indicates the operational state of the ACC system.";
-CM_ SG_ 694 DYN_ACC_CHECKSUM "CHK_INI = 0x3";
-CM_ SG_ 694 DYN_ACC_PROCESS_COUNTER "This counter increments from 0 to 15 at each activation of the calculation process.";
+CM_ SG_ 694 CHECKSUM "CHK_INI = 0x3";
+CM_ SG_ 694 COUNTER "This counter increments from 0 to 15 at each activation of the calculation process.";
 CM_ SG_ 757 ANGLE "asymmetric, could be init";
-CM_ SG_ 758 CHECKSUM_TRANSM_DYN_ACC2 "CHK_INI = 0x7";
-CM_ SG_ 758 PROCESS_COUNTER_4B_ACC2 "This counter increments from 0 to 15 at each activation of the calculation process.";
+CM_ SG_ 758 CHECKSUM "CHK_INI = 0x7";
+CM_ SG_ 758 COUNTER "This counter increments from 0 to 15 at each activation of the calculation process.";
 CM_ SG_ 773 ANGLE "-565 to 560, seems like estimate and not init";
 CM_ SG_ 773 RATE_SIGN "1=moving clockwise, 0=moving anticlockwise";
 CM_ SG_ 773 0_CHECKSUM "TODO: find checksum";
@@ -891,7 +918,7 @@ CM_ SG_ 1101 P331_VehV_vWhlRrR "P010  vehicle speed of ABS. This signal is loade
 CM_ SG_ 1106 LONGITUDINAL_REGULATION_TYPE "Defines if the system is in RVV (Vehicle Speed Governor) or LVV (Vehicle Speed Limiter) or ACC (Adaptive Cruise Control) or without regulation.";
 CM_ SG_ 1106 FRONT_WIPER_STATUS "Emitted when the rain sensor is active.";
 CM_ SG_ 1106 SPEED_SETPOINT "Setpoint or limit: based on the value of the 'requested speed type' bit.";
-CM_ SG_ 1106 CHECKSUM_CONS_RVV_LVV2 "Used to secure the RVV or LVV setpoint sent via the CAN network (signal SPEED_SETPOINT).";
+CM_ SG_ 1106 CHECKSUM_CONS_RVV_LVV2 "Encodes the bit parity of each 4-bit nibble of SPEED_SETPOINT: bit 1 indicates odd parity in the most significant nibble and bit 0 indicates odd parity in the least significant nibble.";
 CM_ SG_ 1106 CHECKSUM "CHK_INI = 0xB";
 CM_ SG_ 1128 P247_Com_stStaFunc "CMM DAMP function state";
 CM_ SG_ 1128 P246_Com_bStaPrt "Starter protection";
@@ -931,7 +958,8 @@ CM_ BO_ 1670 "HCU2";
 CM_ BO_ 1677 "ABS81, ESP81, ABS8_BOSCH, ESP8_BOSCH, ESP90, ABSMK100, ESPMK100, ESP_KP1, ABS_KP1, ASC, ABS, ESP, ABS80, ESP80, ASR80, ABS90_D, ESP90_D, ESP90_F, ESPMK100_UDS, ESP_EBC_440_CAN, ESP_EBC_440_K, ESP_EBC_440, ABSMK70_1, ESPMK60_O, ABSMK100_UDS, ABS90_T, ABS_8_0_C1, ESP_8_0_C1, ABS_4x4, ESP_4x4, ABS81_BOSCH, ESP81_BOSCH, ABS90_F, RBV";
 CM_ BO_ 1684 "TBMU, TBMU_PHEV, BMU_CTE1";
 CM_ BO_ 1685 "GEP, DAE_BVH2, DAE, DAE_A515, DAE_UDS, EPS, SSCU, DAE_D, GEP_UDS, EPS_T";
-CM_ BO_ 1686 "ARTIV, RADAR_AV_4, LIDAR, ARTIV_UDS";
+CM_ BO_ 1686 "ARTIV, RADAR_AV_4, LIDAR, ARTIV_UDS. [CLAUDE artiv-diag-dlc] DLC 7 -> 8: sul bus ADAS questa risposta usa frame da 3,4,6,7 e 8 byte (i multiframe ISO-TP sono da 8); con DLC 7 i tool che rispettano il DLC troncavano l'ultimo byte. I segnali ISO_TP_LENGTH/UDS_SERVICE/UDS_SUBFUNCTION/UDS_NRC sono validi solo sui Single Frame: sui Consecutive Frame (byte 0 = 0x21,0x22,...) decodificano dati grezzi come se fossero campi UDS.";
+CM_ BO_ 1718 "ARTIV_UDS, richiesta diagnostica verso il radar ARTIV (0x6B6). [CLAUDE artiv-diag-dlc] DLC 3 -> 8: le richieste reali arrivano a 5 byte (es. 04 14 FF FF FF, ClearDiagnosticInformation) e il transport ISO-TP ammette fino a 8; con DLC 3 venivano troncate. Nessun SG_ definito di proposito: e' un canale ISO-TP, il significato del byte 0 cambia per tipo di frame (SF/FF/CF/FC) e non e' esprimibile come segnale a posizione fissa.";
 CM_ BO_ 1704 "Le mécanisme d'émission utilisé est événementiel de l'outil vers le calculateur via la BSI
 Trame question pour le téléchargement et le Diag On CAN.";
 CM_ BO_ 1810 "BAAST";
@@ -1016,7 +1044,7 @@ VAL_ 1010 STATUS 0 "UNAVAILABLE" 1 "UNSELECTED" 2 "SELECTED" 3 "AUTHORIZED" 4 "A
 VAL_ 1106 LONGITUDINAL_REGULATION_TYPE 0 "None" 1 "RVV: Vehicle Speed Governor" 2 "LVV: Vehicle Speed Limiter" 3 "ACC: Adaptive Cruise Control";
 VAL_ 1106 TURN_SIGNAL_STATUS 0 "Turn signal inactive" 1 "Right turn signal active" 2 "Left turn signal active" 3 "Both turn signals active";
 VAL_ 1106 FRONT_WIPER_STATUS 0 "Off" 1 "Front wiper confirmed" 2 "Low speed" 3 "High speed";
-VAL_ 1106 CHECKSUM_CONS_RVV_LVV2 0 "Most significant nibble of SPEED_SETPOINT is even AND least significant nibble of SPEED_SETPOINT is even" 1 "Most significant nibble of SPEED_SETPOINT is even AND least significant nibble of SPEED_SETPOINT is odd" 2 "Most significant nibble of SPEED_SETPOINT is odd AND least significant nibble of SPEED_SETPOINT is even" 3 "Most significant nibble of SPEED_SETPOINT is odd AND least significant nibble of SPEED_SETPOINT is odd";
+VAL_ 1106 CHECKSUM_CONS_RVV_LVV2 0 "Most significant nibble has even bit parity AND least significant nibble has even bit parity" 1 "Most significant nibble has even bit parity AND least significant nibble has odd bit parity" 2 "Most significant nibble has odd bit parity AND least significant nibble has even bit parity" 3 "Most significant nibble has odd bit parity AND least significant nibble has odd bit parity";
 VAL_ 1106 BRAKE_ONLY_CMD_BSI 0 "No brake-only command requested by BSI" 1 "Brake-only command requested by BSI";
 VAL_ 1106 LVV_ACTIVATION_REQ 0 "No LVV activation request" 1 "LVV activation requested";
 VAL_ 1106 RVV_ACC_ACTIVATION_REQ 0 "No RVV/ACC activation request" 1 "RVV/ACC activation requested";

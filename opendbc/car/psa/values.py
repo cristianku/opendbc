@@ -7,6 +7,8 @@ from opendbc.car.fw_query_definitions import FwQueryConfig, Request, uds
 
 Ecu = CarParams.Ecu
 
+PSA_ADAS_BUS = 1
+
 
 class CarControllerParams:
   # STEER_MAX = 250  # Maximum steering torque command that can be applied (unitless scaling factor)
@@ -33,19 +35,16 @@ class CarControllerParams:
     STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
     STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
 
-    # Increasing STEER_MAX increases resolution (number of torque steps).
-    # MAX_TORQUE_FACTOR limits the effective range (percent of STEER_MAX).
-    # Example of total available steps:
-  #   -------------------------------------------------------------
-    #   STEER_MAX | MAX_TORQUE_FACTOR | Effective Range (±R) | Steps (±)
-    #   -----------+-------------------+---------------------+------------
-    #      100     |       100         |        ±100         |   ±100
-    #      200     |        50         |        ±100         |   ±200
-    #      400     |        25         |        ±100         |   ±400
-    #   -------------------------------------------------------------
-    # Higher STEER_MAX + lower torque factor = finer granularity with same peak torque.
     MAX_TORQUE_FACTOR = 100
     MIN_TORQUE_FACTOR = 25
+
+    EPS_REARM_PERIOD = 8.0  # s
+
+    EPS_ACTIVATE_TAKEOVER_PERIOD = 0.7
+    TAKEOVER_MSG_DURATION = 2
+
+    EPS_ACK_TIMEOUT = 0.5  # s
+    RESUME_ACC_SPEED = 0.56  # m/s
 
     def __init__(self, CP):
       pass
@@ -100,8 +99,9 @@ class LKAS_LIMITS:
   # Peugeot 3008
   # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
   # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
-  DISABLE_SPEED = 50    # kph
-  ENABLE_SPEED = 50     # kph
+  DISABLE_SPEED = 54    # kph
+  ENABLE_SPEED = 54     # kph
+
 
 FW_QUERY_CONFIG = FwQueryConfig(
   requests=[request for bus in (0, 1, 2) for request in [

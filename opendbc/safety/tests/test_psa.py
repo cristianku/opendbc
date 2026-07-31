@@ -7,12 +7,14 @@ import opendbc.safety.tests.common as common
 from opendbc.safety.tests.common import CANPackerSafety
 
 LANE_KEEP_ASSIST = 0x3F2
+HS2_DYN_MDD_ETAT_2F6 = 0x2F6
+REQ_DIAG_ARTIV = 0x6B6
 
 
 class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
   RELAY_MALFUNCTION_ADDRS = {0: (LANE_KEEP_ASSIST,)}
   FWD_BLACKLISTED_ADDRS = {2: [LANE_KEEP_ASSIST]}
-  TX_MSGS = [[1010, 0]]
+  TX_MSGS = [[LANE_KEEP_ASSIST, 0], [HS2_DYN_MDD_ETAT_2F6, 1], [REQ_DIAG_ARTIV, 1]]
 
   MAIN_BUS = 0
   ADAS_BUS = 1
@@ -75,6 +77,24 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     # write to unused payload byte
     msg[0].data[6] = 0xAB
     self.assertTrue(self._rx(msg))
+
+  def test_artiv_diagnostics(self):
+    allowed = (
+      b"\x02\x10\x02\x00\x00\x00\x00\x00",  # programming session
+      b"\x02\x3E\x00\x00\x00\x00\x00\x00",  # TesterPresent with response
+      b"\x02\x3E\x80\x00\x00\x00\x00\x00",  # TesterPresent, suppress positive response
+    )
+    for dat in allowed:
+      self.assertTrue(self._tx(common.make_msg(self.ADAS_BUS, REQ_DIAG_ARTIV, dat=dat)), dat.hex())
+
+    blocked = (
+      b"\x02\x10\x01\x00\x00\x00\x00\x00",  # default session
+      b"\x02\x10\x03\x00\x00\x00\x00\x00",  # extended session
+      b"\x02\x27\x01\x00\x00\x00\x00\x00",  # SecurityAccess
+      b"\x02\x10\x02\x80\x00\x00\x00\x00",  # non-zero padding
+    )
+    for dat in blocked:
+      self.assertFalse(self._tx(common.make_msg(self.ADAS_BUS, REQ_DIAG_ARTIV, dat=dat)), dat.hex())
 
 
 class TestPsaStockSafety(TestPsaSafetyBase):
