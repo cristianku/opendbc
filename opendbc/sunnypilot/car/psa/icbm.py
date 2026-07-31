@@ -6,7 +6,6 @@ from opendbc.sunnypilot.car.intelligent_cruise_button_management_interface_base 
   IntelligentCruiseButtonManagementInterfaceBase,
 )
 
-MAX_TARGET_SPEED_DIFFERENCE_KPH = 20.0
 MAX_SET_SPEED_STEP_KPH = 2
 
 ICBMState = (
@@ -28,10 +27,8 @@ class IntelligentCruiseButtonManagementInterface(
     can_sends = []
 
     if (
-      self.ICBM.state not in (ICBMState.decreasing, ICBMState.holding)
-      or not CC.enabled
+      not CC.enabled
       or not CS.out.cruiseState.enabled
-      or CS.out.vEgo <= 1.0
     ):
       self.commanded_speed_kph = None
       return can_sends
@@ -41,24 +38,21 @@ class IntelligentCruiseButtonManagementInterface(
     target_speed_kph = round(self.ICBM.vTarget)
     stock_speed_kph = round(CS.out.cruiseState.speed * CV.MS_TO_KPH)
 
-    # The stock 0x452 always remains the source of truth. Sunny may temporarily
-    # lower it, but never raises or owns the driver's selected set speed.
-    if (
-      not 0 < target_speed_kph < 255
-      or not 0 < stock_speed_kph < 255
-      or target_speed_kph >= stock_speed_kph
-    ):
+    if not 0 < stock_speed_kph < 255:
       self.commanded_speed_kph = None
       return can_sends
 
-    # Reject a large discrepancy when starting a command. This catches stale
-    # planner targets (the observed 60 -> 29 desynchronization) while still
-    # allowing an already active, progressively changing curve target.
-    if (
-      self.commanded_speed_kph is None
-      and stock_speed_kph - target_speed_kph > MAX_TARGET_SPEED_DIFFERENCE_KPH
-    ):
-      return can_sends
+    # Transmit 0x452 continuously while openpilot and stock cruise are enabled.
+    # When ICBM is not actively controlling a lower target, forward the stock
+    # setpoint instead of leaving gaps where only the original ECU frame wins.
+    desired_speed_kph = stock_speed_kph
+    icbm_controls_speed = self.ICBM.state in (
+      ICBMState.increasing,
+      ICBMState.decreasing,
+      ICBMState.holding,
+    )
+    if icbm_controls_speed and 0 < target_speed_kph < stock_speed_kph:
+      desired_speed_kph = target_speed_kph
 
     previous_speed_kph = (
       stock_speed_kph
@@ -66,16 +60,15 @@ class IntelligentCruiseButtonManagementInterface(
       else self.commanded_speed_kph
     )
     self.commanded_speed_kph = max(
-      target_speed_kph,
       previous_speed_kph - MAX_SET_SPEED_STEP_KPH,
+      min(
+        previous_speed_kph + MAX_SET_SPEED_STEP_KPH,
+        desired_speed_kph,
+      ),
     )
-    self.commanded_speed_kph = min(
-      self.commanded_speed_kph,
-      previous_speed_kph + MAX_SET_SPEED_STEP_KPH,
-    )
+    self.commanded_speed_kph = min(self.commanded_speed_kph, stock_speed_kph)
 
-    if 0 < self.commanded_speed_kph < 255:
-      self.last_button_frame = self.frame
-      can_sends.append(set_speed(packer, CS.hs2_dat_mdd_cmd_452, self.commanded_speed_kph))
+    self.last_button_frame = self.frame
+    can_sends.append(set_speed(packer, CS.hs2_dat_mdd_cmd_452, self.commanded_speed_kph))
 
     return can_sends

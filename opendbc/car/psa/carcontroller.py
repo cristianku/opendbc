@@ -357,7 +357,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         # carlog.error("PSA_DEBUG sending to CAN create_request_takeover")
         # if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
         # carlog.error("PSA_DEBUG takeover_req = False")
-        if self.start_takeover_repeats > 3:
+        if self.start_takeover_repeats > 1:
           self.takeover_req = 0
           self.start_takeover_repeats = 0
 

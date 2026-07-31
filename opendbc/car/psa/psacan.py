@@ -152,6 +152,7 @@ def set_speed(packer, hs2_dat_mdd_cmd_452, speed_kph: float):
 # La safety autorizza 0x6B6 con DLC 8. Il primo byte ISO-TP dichiara comunque
 # due byte UDS; i cinque byte rimanenti sono padding a zero.
 def create_disable_radar():
+  # https://github.com/ludwig-v/arduino-psa-diag/blob/master/ECU_LIST.md
   addr = 0x6B6
   dat = [0x02, 0x10, 0x02]
   dat.extend([0x0] * (8 - len(dat)))
