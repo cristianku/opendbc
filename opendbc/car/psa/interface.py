@@ -50,7 +50,7 @@ class CarInterface(CarInterfaceBase):
       CAR.PSA_PEUGEOT_3008,
       CAR.PSA_CITROEN_C4_SPACETOURER,
     ):
-      ret.intelligentCruiseButtonManagementAvailable = True
-      ret.pcmCruiseSpeed = False
+      ret.intelligentCruiseButtonManagementAvailable = False
+      ret.pcmCruiseSpeed = True
 
     return ret

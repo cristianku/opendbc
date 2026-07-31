@@ -13,7 +13,6 @@ from opendbc.car.psa.psacan import (
   create_disable_radar,
 )
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
-from opendbc.sunnypilot.car.psa.icbm import IntelligentCruiseButtonManagementInterface
 
 # from cereal import messaging
 # from numpy import interp
@@ -24,10 +23,9 @@ import random
 SteerControlType = structs.CarParams.SteerControlType
 # sm = messaging.SubMaster(['modelV2'], poll='modelV2')
 
-class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterface):
+class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
     CarControllerBase.__init__(self, dbc_names, CP, CP_SP)
-    IntelligentCruiseButtonManagementInterface.__init__(self, CP, CP_SP)
     self.latActiveLast = False
     self.eps_active_last = False
     self.packer = CANPacker(dbc_names[Bus.main])
@@ -373,13 +371,6 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     #   if self.frame % 100 == 0 and self.frame > 0:
     #     can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
-    # Intelligent Cruise Button Management
-    # if self.frame % self.params.STEER_STEP == 0:
-    #   can_sends.extend(
-    #     IntelligentCruiseButtonManagementInterface.update(
-    #       self, CC, CC_SP, CS, self.packer
-    #     )
-    #   )
     # Actuators output
     new_actuators = actuators.as_builder()
     if self.CP.steerControlType == SteerControlType.torque:
