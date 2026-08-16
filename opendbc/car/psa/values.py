@@ -104,6 +104,7 @@ class LKAS_LIMITS:
 
 
 FW_QUERY_CONFIG = FwQueryConfig(
+  fw_version_regex=br"(?:[A-Z0-9 ]{13,20}|[\x00-\xff]{24})",
   requests=[request for bus in (0, 1, 2) for request in [
     Request(
       [PSA_DIAG_REQ, PSA_SERIAL_REQ],
@@ -119,7 +120,13 @@ FW_QUERY_CONFIG = FwQueryConfig(
       bus=bus,
       obd_multiplexing=False,
     ),
-  ]]
+  ]],
+  extra_ecus=[
+    (Ecu.fwdRadar, 0x6B6, None),
+    (Ecu.eps, 0x6B5, None),
+    (Ecu.hybrid, 0x6A6, None),
+    (Ecu.electricBrakeBooster, 0x5D0, None),
+  ],
 )
 
 DBC = CAR.create_dbc_map()
