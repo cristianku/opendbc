@@ -220,7 +220,7 @@ class CarController(CarControllerBase):
         else:
           can_torque = 0
         # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status))
-        can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status,apply_new_torque_scaled))
+        can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status)) #,apply_new_torque_scaled))
         # Remember the effective (scaled) value for the next frame's rate limit.
         self.apply_torque_scaled_last = apply_new_torque_scaled
         self.apply_can_torque_last = can_torque
@@ -378,7 +378,7 @@ class CarController(CarControllerBase):
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
       new_actuators.torque = self.apply_torque_scaled_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_scaled_last
-      new_actuators.steeringAngleDeg = float(self.apply_can_torque_last)
+      # new_actuators.steeringAngleDeg = float(self.apply_can_torque_last)
       # new_actuators.curvature = temp_driverSteeringTorque   # lo vedi in juggle come carControl.actuatorsOutput.curvature
       # new_actuators.steeringAngleDeg = float(self.apply_torque_factor)
 
