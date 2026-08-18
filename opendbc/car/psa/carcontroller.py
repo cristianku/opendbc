@@ -23,6 +23,17 @@ import random
 SteerControlType = structs.CarParams.SteerControlType
 # sm = messaging.SubMaster(['modelV2'], poll='modelV2')
 
+
+def get_eps_takeover_delay_frames(v_ego, curvature):
+  lateral_accel = abs(curvature) * v_ego ** 2
+  curve_ratio = min(1.0, lateral_accel / CarControllerParams.EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL)
+  takeover_period = (
+    CarControllerParams.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD
+    - curve_ratio * (CarControllerParams.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD - CarControllerParams.EPS_ACTIVATE_TAKEOVER_MIN_PERIOD)
+  )
+  return round(takeover_period / DT_CTRL)
+
+
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
     CarControllerBase.__init__(self, dbc_names, CP, CP_SP)
@@ -67,7 +78,6 @@ class CarController(CarControllerBase):
     # quindi frame = secondi / DT_CTRL.
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)   # 5 s = 500 frame
     # self.eps_activate_keep_status_frames = int(self.params.EPS_KEEP_STATUS_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
-    self.eps_activate_takeover_frames = int(self.params.EPS_ACTIVATE_TAKEOVER_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
     # [CLAUDE eps-closed-loop] - START
     # Ultimo stato dell'EPS visto dalla scaletta: creato QUI, non al primo uso, se no
     # e' AttributeError al primo giro (stessa trappola di eps_rearm_failed).
@@ -107,16 +117,11 @@ class CarController(CarControllerBase):
       # first frame the EPS activate or re activate is sent
       self.activation_request_frame = self.frame
       # self.takeover_req_sent = 0
-    lateral_accel = abs(curvature) * CARSTATE.out.vEgo ** 2
-    curve_ratio = min(1.0, lateral_accel / 0.5)
-
-    takeover_frames = round(
-      self.eps_activate_takeover_frames * (1.0 - curve_ratio)
-    )
+    takeover_frames = get_eps_takeover_delay_frames(CARSTATE.out.vEgo, curvature)
     if not self.takeover_req_already_sent:
       if self.frame >= self.activation_request_frame + takeover_frames:
         # carlog.error("PSA_DEBUG _activate_eps - too long to activate - self.takeover_req = True")
-        self.takeover_req = 2
+        self.takeover_req = 1
         self.takeover_req_already_sent = True
 
     if not eps_active: # and not CS.out.steeringPressed:
@@ -141,7 +146,7 @@ class CarController(CarControllerBase):
       if self.frame % self.params.STEER_STEP == 0:
         if not CC.latActive:
           if self.latActiveLast:
-             self.takeover_req = 2
+             self.takeover_req = 1
           self._reset_lat_state()
         else:
           if not CS.eps_active:

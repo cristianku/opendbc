@@ -40,7 +40,13 @@ class CarControllerParams:
 
     EPS_REARM_PERIOD = 8.0  # s
 
-    EPS_ACTIVATE_TAKEOVER_PERIOD = 0.7
+    # Maximum and minimum time allowed for the EPS to reactivate before asking
+    # the driver to take over. Lateral acceleration moves the timeout between
+    # these bounds, so speed and curvature increase urgency without ever making
+    # the takeover request immediate.
+    EPS_ACTIVATE_TAKEOVER_MAX_PERIOD = 0.7  # s
+    EPS_ACTIVATE_TAKEOVER_MIN_PERIOD = 0.2  # s
+    EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL = 1.0  # m/s^2
     TAKEOVER_MSG_DURATION = 2
 
     EPS_ACK_TIMEOUT = 0.5  # s
@@ -99,7 +105,7 @@ class LKAS_LIMITS:
   # Peugeot 3008
   # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
   # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
-  DISABLE_SPEED = 51    # kph
+  DISABLE_SPEED = 52    # kph
   ENABLE_SPEED = 51     # kph
 
 
