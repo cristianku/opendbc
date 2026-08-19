@@ -14,14 +14,53 @@ from opendbc.car.psa.psacan import (
 )
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
 
-# from cereal import messaging
-# from numpy import interp
+try:
+  import openpilot.cereal.messaging as messaging
+except ImportError:
+  try:
+    # Compatibility with older openpilot trees, where cereal was top-level.
+    from cereal import messaging
+  except ImportError:
+    # Standalone opendbc tests do not ship cereal.
+    messaging = None
 
 import random
-# import math
+import math
 
 SteerControlType = structs.CarParams.SteerControlType
-# sm = messaging.SubMaster(['modelV2'], poll='modelV2')
+
+
+# [eps curve] - START
+def should_preempt_eps_rearm(elapsed, v_ego, current_curvature, model_t, model_yaw_rate, model_speed):
+  """Return True when an upcoming curve makes the current straight a good rearm opportunity."""
+  if elapsed < CarControllerParams.EPS_REARM_EARLIEST_PERIOD:
+    return False
+
+  current_lat_accel = abs(current_curvature) * v_ego ** 2
+  if current_lat_accel > CarControllerParams.EPS_REARM_STRAIGHT_LAT_ACCEL:
+    return False
+
+  for t, yaw_rate, speed in zip(model_t, model_yaw_rate, model_speed, strict=False):
+    if not (math.isfinite(t) and math.isfinite(yaw_rate) and math.isfinite(speed)):
+      continue
+    if 0.0 < t <= CarControllerParams.EPS_REARM_CURVE_LOOKAHEAD:
+      # yaw rate [rad/s] * forward speed [m/s] = lateral acceleration [m/s^2]
+      if abs(yaw_rate * speed) >= CarControllerParams.EPS_REARM_CURVE_LAT_ACCEL:
+        return True
+
+  return False
+# [eps curve] - END
+
+
+def get_eps_takeover_delay_frames(v_ego, curvature):
+  lateral_accel = abs(curvature) * v_ego ** 2
+  curve_ratio = min(1.0, lateral_accel / CarControllerParams.EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL)
+  takeover_period = (
+    CarControllerParams.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD
+    - curve_ratio * (CarControllerParams.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD - CarControllerParams.EPS_ACTIVATE_TAKEOVER_MIN_PERIOD)
+  )
+  return round(takeover_period / DT_CTRL)
+
 
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
@@ -37,6 +76,7 @@ class CarController(CarControllerBase):
     self.takeover_req = 0
     self.start_takeover_repeats = 0
     self.takeover_req_already_sent = False
+    self.model_sm = messaging.SubMaster(['modelV2']) if messaging is not None else None
 
     # this is the frame when the latactive is being pressed
     self.car_fingerprint = CP.carFingerprint
@@ -65,9 +105,8 @@ class CarController(CarControllerBase):
     self.deactivation_in_progress = False
     # Periodo di stacco EPS: da secondi a frame. self.frame gira a 100 Hz (DT_CTRL = 0.01 s),
     # quindi frame = secondi / DT_CTRL.
-    self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)   # 5 s = 500 frame
+    self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)
     # self.eps_activate_keep_status_frames = int(self.params.EPS_KEEP_STATUS_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
-    self.eps_activate_takeover_frames = int(self.params.EPS_ACTIVATE_TAKEOVER_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
     # [CLAUDE eps-closed-loop] - START
     # Ultimo stato dell'EPS visto dalla scaletta: creato QUI, non al primo uso, se no
     # e' AttributeError al primo giro (stessa trappola di eps_rearm_failed).
@@ -107,16 +146,11 @@ class CarController(CarControllerBase):
       # first frame the EPS activate or re activate is sent
       self.activation_request_frame = self.frame
       # self.takeover_req_sent = 0
-    lateral_accel = abs(curvature) * CARSTATE.out.vEgo ** 2
-    curve_ratio = min(1.0, lateral_accel / 0.5)
-
-    takeover_frames = round(
-      self.eps_activate_takeover_frames * (1.0 - curve_ratio)
-    )
+    takeover_frames = get_eps_takeover_delay_frames(CARSTATE.out.vEgo, curvature)
     if not self.takeover_req_already_sent:
       if self.frame >= self.activation_request_frame + takeover_frames:
         # carlog.error("PSA_DEBUG _activate_eps - too long to activate - self.takeover_req = True")
-        self.takeover_req = 2
+        self.takeover_req = 1
         self.takeover_req_already_sent = True
 
     if not eps_active: # and not CS.out.steeringPressed:
@@ -125,6 +159,25 @@ class CarController(CarControllerBase):
       # EPS likes a progressive activation of the Torque Factor
       self.apply_torque_factor += 10
       self.apply_torque_factor = min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
+
+  def _should_preempt_eps_rearm(self, v_ego, current_curvature):
+    if self.model_sm is None or self.eps_activation_frame == 0:
+      return False
+
+    self.model_sm.update(0)
+    if not (self.model_sm.seen['modelV2'] and self.model_sm.valid['modelV2'] and self.model_sm.alive['modelV2']):
+      return False
+
+    model = self.model_sm['modelV2']
+    elapsed = (self.frame - self.eps_activation_frame) * DT_CTRL
+    return should_preempt_eps_rearm(
+      elapsed,
+      v_ego,
+      current_curvature,
+      model.orientationRate.t,
+      model.orientationRate.z,
+      model.velocity.x,
+    )
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
@@ -141,7 +194,7 @@ class CarController(CarControllerBase):
       if self.frame % self.params.STEER_STEP == 0:
         if not CC.latActive:
           if self.latActiveLast:
-             self.takeover_req = 2
+             self.takeover_req = 1
           self._reset_lat_state()
         else:
           if not CS.eps_active:
@@ -151,7 +204,9 @@ class CarController(CarControllerBase):
 
           else:
             # first time it enters in the lateral active state, store the frame to check the rearm period
-            if self.eps_activation_frame > 0 and (self.frame > self.eps_activation_frame + self.eps_rearm_frames):
+            rearm_due = self.eps_activation_frame > 0 and self.frame >= self.eps_activation_frame + self.eps_rearm_frames
+            rearm_before_curve = self._should_preempt_eps_rearm(CS.out.vEgo, actuators.curvature)
+            if rearm_due or rearm_before_curve:
               self._deactivate_eps()
             elif self.deactivation_in_progress:
               self._deactivate_eps()
@@ -220,7 +275,7 @@ class CarController(CarControllerBase):
         else:
           can_torque = 0
         # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status))
-        can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status,apply_new_torque_scaled))
+        can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status)) #,apply_new_torque_scaled))
         # Remember the effective (scaled) value for the next frame's rate limit.
         self.apply_torque_scaled_last = apply_new_torque_scaled
         self.apply_can_torque_last = can_torque
@@ -378,7 +433,7 @@ class CarController(CarControllerBase):
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
       new_actuators.torque = self.apply_torque_scaled_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_scaled_last
-      new_actuators.steeringAngleDeg = float(self.apply_can_torque_last)
+      # new_actuators.steeringAngleDeg = float(self.apply_can_torque_last)
       # new_actuators.curvature = temp_driverSteeringTorque   # lo vedi in juggle come carControl.actuatorsOutput.curvature
       # new_actuators.steeringAngleDeg = float(self.apply_torque_factor)
 

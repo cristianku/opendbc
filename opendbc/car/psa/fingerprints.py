@@ -31,15 +31,6 @@ FW_VERSIONS = {
   },
 
   CAR.PSA_PEUGEOT_3008: {
-    # ARTIV - Front Radar ADAS
-    (Ecu.fwdRadar, 0x6B6, None): [ ],
-
-    # DIRECTN - Electronic power steering
-    (Ecu.eps, 0x6B5, None): [ ],
-
-    # HCU2 - Hybrid Control Unit
-    (Ecu.hybrid, 0x6A6, None): [  ],
-
     # BOITEVIT - Automatic transmission  (EAT6/8)
     (Ecu.transmission, 0x6A9, None): [
         ## Peugeot 3008 II (Phase I, 2016) 1.6 PureTech (180 Hp) Automatic S&S /2018, 2019, 2020
@@ -47,9 +38,6 @@ FW_VERSIONS = {
         b'\xff\xff\x00\x000`\x08\x01\x13\x01%\x06\x08\xff\xff\xff\x00\x02\x00\x00\x01\x934t',
         #
     ],
-
-    # FREINEBB - Electronic Brake Booster
-    (Ecu.electricBrakeBooster, 0x5D0, None): [],
 
     # INJ - Engine (VCU)
     (Ecu.engine, 0x6A8, None): [
@@ -85,7 +73,5 @@ FW_VERSIONS = {
         b'085095200769200218',
         b"\x00\x00\x00\x00\x03\x92\x03\x07\x13\x01\xa4'\x00\xff\xff\xff\x00\x02\x00\x00\x01\x93\x94\x16",
     ],
-},  
+},
 }
-
-

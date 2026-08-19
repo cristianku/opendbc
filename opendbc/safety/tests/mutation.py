@@ -616,12 +616,9 @@ def main():
 
     # TODO: fix these surviving mutants and delete this block
     known_survivors = {
-      ("opendbc/safety/helpers.h", 40, "arithmetic"),
-      ("opendbc/safety/lateral.h", 106, "boundary"),
-      ("opendbc/safety/lateral.h", 196, "boundary"),
-      ("opendbc/safety/lateral.h", 240, "boundary"),
-      ("opendbc/safety/lateral.h", 338, "arithmetic"),
-      ("opendbc/safety/longitudinal.h", 38, "remove_negation"),
+      ("opendbc/safety/lateral.h", 190, "boundary"),
+      ("opendbc/safety/lateral.h", 220, "boundary"),
+      ("opendbc/safety/lateral.h", 221, "boundary"),
     }
     survivors = [r for r in survivors if (str(r.site.origin_file.relative_to(ROOT)), r.site.origin_line, r.site.mutator) not in known_survivors]
 
