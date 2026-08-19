@@ -30,27 +30,26 @@ import math
 SteerControlType = structs.CarParams.SteerControlType
 
 
+# [eps curve] - START
 def should_preempt_eps_rearm(elapsed, v_ego, current_curvature, model_t, model_yaw_rate, model_speed):
-  """Return True when the fixed rearm deadline is predicted to fall in a curve."""
-  remaining = CarControllerParams.EPS_REARM_PERIOD - elapsed
-  if elapsed < CarControllerParams.EPS_REARM_EARLIEST_PERIOD or remaining <= 0.0:
+  """Return True when an upcoming curve makes the current straight a good rearm opportunity."""
+  if elapsed < CarControllerParams.EPS_REARM_EARLIEST_PERIOD:
     return False
 
   current_lat_accel = abs(current_curvature) * v_ego ** 2
   if current_lat_accel > CarControllerParams.EPS_REARM_STRAIGHT_LAT_ACCEL:
     return False
 
-  window_start = max(0.0, remaining - CarControllerParams.EPS_REARM_DEADLINE_MARGIN)
-  window_end = remaining + CarControllerParams.EPS_REARM_DEADLINE_MARGIN
   for t, yaw_rate, speed in zip(model_t, model_yaw_rate, model_speed, strict=False):
     if not (math.isfinite(t) and math.isfinite(yaw_rate) and math.isfinite(speed)):
       continue
-    if window_start <= t <= window_end:
+    if 0.0 < t <= CarControllerParams.EPS_REARM_CURVE_LOOKAHEAD:
       # yaw rate [rad/s] * forward speed [m/s] = lateral acceleration [m/s^2]
       if abs(yaw_rate * speed) >= CarControllerParams.EPS_REARM_CURVE_LAT_ACCEL:
         return True
 
   return False
+# [eps curve] - END
 
 
 def get_eps_takeover_delay_frames(v_ego, curvature):

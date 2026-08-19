@@ -72,23 +72,23 @@ def test_eps_takeover_delay_matches_observed_rearm():
   assert get_eps_takeover_delay_frames(56.7 / 3.6, 0.002735) == 36
 
 
-def test_eps_rearm_is_preempted_when_deadline_falls_in_curve():
-  # Four seconds into the EPS window, the model sees a curve around the fixed
-  # eight-second deadline. Current curvature is straight, so use that opening.
-  model_t = [0.0, 3.0, 4.0, 5.0, 6.0]
-  model_yaw_rate = [0.0, 0.0, 0.04, 0.04, 0.0]
+# [eps curve] - START
+def test_eps_rearm_is_preempted_for_curve_inside_fixed_lookahead():
+  model_t = [0.0, 3.0, 5.0, 5.1, 6.0]
+  model_yaw_rate = [0.0, 0.0, 0.04, 0.0, 0.0]
   model_speed = [20.0] * len(model_t)
 
-  assert should_preempt_eps_rearm(4.0, 20.0, 0.0, model_t, model_yaw_rate, model_speed)
+  assert CarControllerParams.EPS_REARM_CURVE_LOOKAHEAD == 5.0
+  assert should_preempt_eps_rearm(3.0, 20.0, 0.0, model_t, model_yaw_rate, model_speed)
 
 
-def test_eps_rearm_is_not_preempted_too_early_or_for_finished_curve():
-  model_t = [0.0, 1.0, 2.0, 3.0, 4.0]
-  model_yaw_rate = [0.0, 0.04, 0.04, 0.0, 0.0]
+def test_eps_rearm_is_not_preempted_too_early_or_beyond_lookahead():
+  model_t = [0.0, 3.0, 5.0, 5.1, 6.0]
+  model_yaw_rate = [0.0, 0.0, 0.0, 0.04, 0.04]
   model_speed = [20.0] * len(model_t)
 
-  assert not should_preempt_eps_rearm(3.9, 20.0, 0.0, model_t, model_yaw_rate, model_speed)
-  assert not should_preempt_eps_rearm(4.0, 20.0, 0.0, model_t, model_yaw_rate, model_speed)
+  assert not should_preempt_eps_rearm(2.99, 20.0, 0.0, model_t, model_yaw_rate, model_speed)
+  assert not should_preempt_eps_rearm(3.0, 20.0, 0.0, model_t, model_yaw_rate, model_speed)
 
 
 def test_eps_rearm_is_not_preempted_while_already_cornering():
@@ -97,3 +97,4 @@ def test_eps_rearm_is_not_preempted_while_already_cornering():
   model_speed = [20.0] * len(model_t)
 
   assert not should_preempt_eps_rearm(4.0, 20.0, 0.002, model_t, model_yaw_rate, model_speed)
+# [eps curve] - END
