@@ -39,6 +39,14 @@ class CarControllerParams:
     MIN_TORQUE_FACTOR = 25
 
     EPS_REARM_PERIOD = 8.0  # s
+    # From halfway through the 8 s EPS window, rearm early on a straight if the
+    # model predicts the fixed deadline would land in a curve. Acceleration
+    # thresholds are independent of speed and describe how straight/curved the
+    # road feels to the car.
+    EPS_REARM_EARLIEST_PERIOD = 4.0  # s
+    EPS_REARM_STRAIGHT_LAT_ACCEL = 0.3  # m/s^2
+    EPS_REARM_CURVE_LAT_ACCEL = 0.5  # m/s^2
+    EPS_REARM_DEADLINE_MARGIN = 1.0  # s around the fixed deadline
 
     # Maximum and minimum time allowed for the EPS to reactivate before asking
     # the driver to take over. Lateral acceleration moves the timeout between

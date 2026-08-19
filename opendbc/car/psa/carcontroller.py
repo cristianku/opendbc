@@ -14,14 +14,43 @@ from opendbc.car.psa.psacan import (
 )
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
 
-# from cereal import messaging
-# from numpy import interp
+try:
+  import openpilot.cereal.messaging as messaging
+except ImportError:
+  try:
+    # Compatibility with older openpilot trees, where cereal was top-level.
+    from cereal import messaging
+  except ImportError:
+    # Standalone opendbc tests do not ship cereal.
+    messaging = None
 
 import random
-# import math
+import math
 
 SteerControlType = structs.CarParams.SteerControlType
-# sm = messaging.SubMaster(['modelV2'], poll='modelV2')
+
+
+def should_preempt_eps_rearm(elapsed, v_ego, current_curvature, model_t, model_yaw_rate, model_speed):
+  """Return True when the fixed rearm deadline is predicted to fall in a curve."""
+  remaining = CarControllerParams.EPS_REARM_PERIOD - elapsed
+  if elapsed < CarControllerParams.EPS_REARM_EARLIEST_PERIOD or remaining <= 0.0:
+    return False
+
+  current_lat_accel = abs(current_curvature) * v_ego ** 2
+  if current_lat_accel > CarControllerParams.EPS_REARM_STRAIGHT_LAT_ACCEL:
+    return False
+
+  window_start = max(0.0, remaining - CarControllerParams.EPS_REARM_DEADLINE_MARGIN)
+  window_end = remaining + CarControllerParams.EPS_REARM_DEADLINE_MARGIN
+  for t, yaw_rate, speed in zip(model_t, model_yaw_rate, model_speed, strict=False):
+    if not (math.isfinite(t) and math.isfinite(yaw_rate) and math.isfinite(speed)):
+      continue
+    if window_start <= t <= window_end:
+      # yaw rate [rad/s] * forward speed [m/s] = lateral acceleration [m/s^2]
+      if abs(yaw_rate * speed) >= CarControllerParams.EPS_REARM_CURVE_LAT_ACCEL:
+        return True
+
+  return False
 
 
 def get_eps_takeover_delay_frames(v_ego, curvature):
@@ -48,6 +77,7 @@ class CarController(CarControllerBase):
     self.takeover_req = 0
     self.start_takeover_repeats = 0
     self.takeover_req_already_sent = False
+    self.model_sm = messaging.SubMaster(['modelV2']) if messaging is not None else None
 
     # this is the frame when the latactive is being pressed
     self.car_fingerprint = CP.carFingerprint
@@ -76,7 +106,7 @@ class CarController(CarControllerBase):
     self.deactivation_in_progress = False
     # Periodo di stacco EPS: da secondi a frame. self.frame gira a 100 Hz (DT_CTRL = 0.01 s),
     # quindi frame = secondi / DT_CTRL.
-    self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)   # 5 s = 500 frame
+    self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)
     # self.eps_activate_keep_status_frames = int(self.params.EPS_KEEP_STATUS_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
     # [CLAUDE eps-closed-loop] - START
     # Ultimo stato dell'EPS visto dalla scaletta: creato QUI, non al primo uso, se no
@@ -131,6 +161,25 @@ class CarController(CarControllerBase):
       self.apply_torque_factor += 10
       self.apply_torque_factor = min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR)
 
+  def _should_preempt_eps_rearm(self, v_ego, current_curvature):
+    if self.model_sm is None or self.eps_activation_frame == 0:
+      return False
+
+    self.model_sm.update(0)
+    if not (self.model_sm.seen['modelV2'] and self.model_sm.valid['modelV2'] and self.model_sm.alive['modelV2']):
+      return False
+
+    model = self.model_sm['modelV2']
+    elapsed = (self.frame - self.eps_activation_frame) * DT_CTRL
+    return should_preempt_eps_rearm(
+      elapsed,
+      v_ego,
+      current_curvature,
+      model.orientationRate.t,
+      model.orientationRate.z,
+      model.velocity.x,
+    )
+
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
@@ -156,7 +205,9 @@ class CarController(CarControllerBase):
 
           else:
             # first time it enters in the lateral active state, store the frame to check the rearm period
-            if self.eps_activation_frame > 0 and (self.frame > self.eps_activation_frame + self.eps_rearm_frames):
+            rearm_due = self.eps_activation_frame > 0 and self.frame >= self.eps_activation_frame + self.eps_rearm_frames
+            rearm_before_curve = self._should_preempt_eps_rearm(CS.out.vEgo, actuators.curvature)
+            if rearm_due or rearm_before_curve:
               self._deactivate_eps()
             elif self.deactivation_in_progress:
               self._deactivate_eps()
