@@ -102,12 +102,12 @@ def should_request_eps_takeover(elapsed, v_ego, current_curvature, takeover_req_
   return not (deadline_covered and straight_at_deadline)
 
 
-def get_eps_takeover_delay_frames(v_ego, curvature):
+def get_eps_takeover_delay_frames(v_ego, curvature, params=CarControllerParams):
   lateral_accel = abs(curvature) * v_ego ** 2
-  curve_ratio = min(1.0, lateral_accel / CarControllerParams.EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL)
+  curve_ratio = min(1.0, lateral_accel / params.EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL)
   takeover_period = (
-    CarControllerParams.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD
-    - curve_ratio * (CarControllerParams.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD - CarControllerParams.EPS_ACTIVATE_TAKEOVER_MIN_PERIOD)
+    params.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD
+    - curve_ratio * (params.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD - params.EPS_ACTIVATE_TAKEOVER_MIN_PERIOD)
   )
   return round(takeover_period / DT_CTRL)
 
@@ -201,7 +201,7 @@ class CarController(CarControllerBase):
       # first frame the EPS activate or re activate is sent
       self.activation_request_frame = self.frame
       # self.takeover_req_sent = 0
-    takeover_frames = get_eps_takeover_delay_frames(CARSTATE.out.vEgo, curvature)
+    takeover_frames = get_eps_takeover_delay_frames(CARSTATE.out.vEgo, curvature, self.params)
     if not self.takeover_req_already_sent:
       if self.frame >= self.activation_request_frame + takeover_frames:
         # carlog.error("PSA_DEBUG _activate_eps - too long to activate - self.takeover_req = True")

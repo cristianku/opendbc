@@ -75,6 +75,42 @@ def test_eps_takeover_delay_matches_observed_rearm():
   assert get_eps_takeover_delay_frames(56.7 / 3.6, 0.002735) == 36
 
 
+def test_c4_eps_takeover_straight_delay_matches_observed_reactivation():
+  cp = CarInterface.get_non_essential_params(CAR.PSA_CITROEN_C4_SPACETOURER)
+  cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_CITROEN_C4_SPACETOURER)
+  controller = psa_carcontroller.CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)
+  controller.activation_request_frame = 100
+
+  cs = SimpleNamespace(eps_active=False, out=structs.CarState())
+  cs.out.vEgo = 20.0
+
+  controller.frame = 419
+  controller._activate_eps(cs, 0.0)
+  assert controller.takeover_req == 0
+
+  controller.frame = 420
+  controller._activate_eps(cs, 0.0)
+  assert controller.takeover_req == 1
+
+
+def test_c4_eps_takeover_full_curve_delay_remains_urgent():
+  cp = CarInterface.get_non_essential_params(CAR.PSA_CITROEN_C4_SPACETOURER)
+  cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_CITROEN_C4_SPACETOURER)
+  controller = psa_carcontroller.CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)
+  controller.activation_request_frame = 100
+
+  cs = SimpleNamespace(eps_active=False, out=structs.CarState())
+  cs.out.vEgo = 20.0
+
+  controller.frame = 149
+  controller._activate_eps(cs, 0.005)
+  assert controller.takeover_req == 0
+
+  controller.frame = 150
+  controller._activate_eps(cs, 0.005)
+  assert controller.takeover_req == 1
+
+
 # [eps curve] - START
 def test_eps_rearm_is_preempted_for_curve_inside_fixed_lookahead():
   model_t = [0.0, 3.0, 5.0, 5.1, 6.0]
