@@ -52,6 +52,56 @@ def should_preempt_eps_rearm(elapsed, v_ego, current_curvature, model_t, model_y
 # [eps curve] - END
 
 
+def should_request_eps_takeover(elapsed, v_ego, current_curvature, takeover_req_already_sent,
+                                model_valid, model_t, model_yaw_rate, model_speed,
+                                eps_rearm_period=CarControllerParams.EPS_REARM_PERIOD):
+  """Warn before the fixed EPS rearm unless a stable straight is predicted by the deadline."""
+  if takeover_req_already_sent:
+    return False
+
+  remaining = eps_rearm_period - elapsed
+  if remaining <= 0.0 or remaining > CarControllerParams.EPS_TAKEOVER_WARNING_PERIOD:
+    return False
+
+  current_lat_accel = abs(current_curvature) * v_ego ** 2
+  if current_lat_accel < CarControllerParams.EPS_REARM_CURVE_LAT_ACCEL:
+    return False
+
+  if not model_valid:
+    return True
+
+  if len(model_t) != len(model_yaw_rate) or len(model_t) != len(model_speed) or len(model_t) < 2:
+    return True
+
+  last_t = None
+  for t, yaw_rate, speed in zip(model_t, model_yaw_rate, model_speed, strict=True):
+    if not (math.isfinite(t) and math.isfinite(yaw_rate) and math.isfinite(speed)):
+      return True
+    if t < 0.0 or (last_t is not None and t <= last_t):
+      return True
+    last_t = t
+
+  previous_t = None
+  previous_straight = False
+  straight_at_deadline = False
+  deadline_covered = False
+  for t, yaw_rate, speed in zip(model_t, model_yaw_rate, model_speed, strict=True):
+    if t <= 0.0:
+      continue
+
+    predicted_lat_accel = abs(yaw_rate * speed)
+    predicted_straight = predicted_lat_accel <= CarControllerParams.EPS_REARM_STRAIGHT_LAT_ACCEL
+    if t >= remaining:
+      deadline_covered = True
+      deadline_bracket_valid = previous_t is not None and t - previous_t <= CarControllerParams.EPS_TAKEOVER_MODEL_MAX_TIME_GAP
+      straight_at_deadline = deadline_bracket_valid and previous_straight and predicted_straight
+      break
+    previous_t = t
+    previous_straight = predicted_straight
+
+  return not (deadline_covered and straight_at_deadline)
+
+
 def get_eps_takeover_delay_frames(v_ego, curvature):
   lateral_accel = abs(curvature) * v_ego ** 2
   curve_ratio = min(1.0, lateral_accel / CarControllerParams.EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL)
@@ -75,6 +125,7 @@ class CarController(CarControllerBase):
     self.status = 2
     self.takeover_req = 0
     self.start_takeover_repeats = 0
+    # Shared latch for both the pre-rearm warning and a delayed EPS reactivation.
     self.takeover_req_already_sent = False
     self.model_sm = messaging.SubMaster(['modelV2']) if messaging is not None else None
 
@@ -125,6 +176,11 @@ class CarController(CarControllerBase):
     self.activation_request_frame = 0
     self.deactivation_in_progress = False
     self.eps_activation_frame = 0
+    self.takeover_req_already_sent = False
+
+  def _start_eps_active_cycle(self):
+    self.eps_activation_frame = self.frame
+    self.takeover_req_already_sent = False
 
   def _deactivate_eps(self):
     # Primo gradino della scaletta forzata. I due invii successivi salgono a 3 e 4
@@ -136,7 +192,6 @@ class CarController(CarControllerBase):
     self.last_status_change_frame = self.frame
     self.activation_request_frame = 0
     self.deactivation_in_progress = True
-    self.takeover_req_already_sent = False
 
   def _activate_eps(self, CARSTATE, curvature):
     eps_active = CARSTATE.eps_active
@@ -179,6 +234,38 @@ class CarController(CarControllerBase):
       model.velocity.x,
     )
 
+  def _maybe_request_eps_takeover(self, v_ego, current_curvature):
+    if self.eps_activation_frame == 0:
+      return
+
+    model_valid = False
+    model_t = ()
+    model_yaw_rate = ()
+    model_speed = ()
+    if self.model_sm is not None:
+      self.model_sm.update(0)
+      model_valid = self.model_sm.seen['modelV2'] and self.model_sm.valid['modelV2'] and self.model_sm.alive['modelV2']
+      if model_valid:
+        model = self.model_sm['modelV2']
+        model_t = model.orientationRate.t
+        model_yaw_rate = model.orientationRate.z
+        model_speed = model.velocity.x
+
+    elapsed = (self.frame - self.eps_activation_frame) * DT_CTRL
+    if should_request_eps_takeover(
+      elapsed,
+      v_ego,
+      current_curvature,
+      self.takeover_req_already_sent,
+      model_valid,
+      model_t,
+      model_yaw_rate,
+      model_speed,
+      self.params.EPS_REARM_PERIOD,
+    ):
+      self.takeover_req = 1
+      self.takeover_req_already_sent = True
+
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
@@ -216,11 +303,11 @@ class CarController(CarControllerBase):
               ######
               # EPS is active, proceed with lateral control
               if self.eps_activation_frame == 0:
-                self.eps_activation_frame = self.frame
+                self._start_eps_active_cycle()
               self.takeover_req = 0
               self.activation_request_frame = 0
               self.status = 4 # 4: EPS ACTIVE
-              self.takeover_req_already_sent = False
+              self._maybe_request_eps_takeover(CS.out.vEgo, actuators.curvature)
 
               if (CS.out.steeringPressed):
                 #### DRIVER STEERING DETECTED

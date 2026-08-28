@@ -40,12 +40,15 @@ class CarControllerParams:
 
     # [eps curve] - START
     EPS_REARM_PERIOD = 12.0  # s
+    EPS_REARM_PERIOD_C4_SPACETOURER = 20.0  # s
     EPS_REARM_EARLIEST_PERIOD = 3.0  # s
-    # Keep curve prediction independent from the 12 s hard deadline: after the
+    # Keep curve prediction independent from the platform-specific hard deadline: after the
     # 3 s cooldown, use the remaining part of the original 8 s EPS window.
     EPS_REARM_CURVE_LOOKAHEAD = 8.0 - EPS_REARM_EARLIEST_PERIOD  # 5 s
     EPS_REARM_STRAIGHT_LAT_ACCEL = 0.3  # m/s^2
     EPS_REARM_CURVE_LAT_ACCEL = 0.5  # m/s^2
+    EPS_TAKEOVER_WARNING_PERIOD = 2.0  # s before the forced EPS rearm
+    EPS_TAKEOVER_MODEL_MAX_TIME_GAP = 0.5  # s around the rearm deadline
     # [eps curve] - END
 
     # Maximum and minimum time allowed for the EPS to reactivate before asking
@@ -61,7 +64,8 @@ class CarControllerParams:
     RESUME_ACC_SPEED = 0.56  # m/s
 
     def __init__(self, CP):
-      pass
+      if CP.carFingerprint == CAR.PSA_CITROEN_C4_SPACETOURER:
+        self.EPS_REARM_PERIOD = self.EPS_REARM_PERIOD_C4_SPACETOURER
 
 
 @dataclass
