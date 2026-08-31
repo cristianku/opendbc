@@ -101,17 +101,6 @@ def should_request_eps_takeover(elapsed, v_ego, current_curvature, takeover_req_
 
   return not (deadline_covered and straight_at_deadline)
 
-
-def get_eps_takeover_delay_frames(v_ego, curvature, params=CarControllerParams):
-  lateral_accel = abs(curvature) * v_ego ** 2
-  curve_ratio = min(1.0, lateral_accel / params.EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL)
-  takeover_period = (
-    params.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD
-    - curve_ratio * (params.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD - params.EPS_ACTIVATE_TAKEOVER_MIN_PERIOD)
-  )
-  return round(takeover_period / DT_CTRL)
-
-
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
     CarControllerBase.__init__(self, dbc_names, CP, CP_SP)
@@ -125,7 +114,7 @@ class CarController(CarControllerBase):
     self.status = 2
     self.takeover_req = 0
     self.start_takeover_repeats = 0
-    # Shared latch for both the pre-rearm warning and a delayed EPS reactivation.
+    # Shared latch for both the pre-rearm warning and an immediate curve warning during EPS reactivation.
     self.takeover_req_already_sent = False
     self.model_sm = messaging.SubMaster(['modelV2']) if messaging is not None else None
 
@@ -140,7 +129,6 @@ class CarController(CarControllerBase):
     self.next_driver_torque = random.randint(500, 800)  # 5–8 s @100 Hz
     self.last_activation_frame = 0
     self.eps_activation_frame = 0
-    self.activation_request_frame = 0
     # self.takeover_start_msg_frame = 0
     # [CLAUDE resume-acc-anticipato] - START
     # Frame di ingresso nella finestra di creep, creato QUI e non al primo uso
@@ -173,7 +161,6 @@ class CarController(CarControllerBase):
     self.apply_torque_factor = 0
     # self.takeover_req = 0
     self.last_status_change_frame = 0
-    self.activation_request_frame = 0
     self.deactivation_in_progress = False
     self.eps_activation_frame = 0
     self.takeover_req_already_sent = False
@@ -190,25 +177,19 @@ class CarController(CarControllerBase):
     self.eps_activation_frame = 0
     # self.takeover_req = 0
     self.last_status_change_frame = self.frame
-    self.activation_request_frame = 0
     self.deactivation_in_progress = True
 
   def _activate_eps(self, CARSTATE, curvature):
     eps_active = CARSTATE.eps_active
     self.deactivation_in_progress = False
     self.eps_activation_frame = 0
-    if self.activation_request_frame == 0:
-      # first frame the EPS activate or re activate is sent
-      self.activation_request_frame = self.frame
-      # self.takeover_req_sent = 0
-    takeover_frames = get_eps_takeover_delay_frames(CARSTATE.out.vEgo, curvature, self.params)
-    if not self.takeover_req_already_sent:
-      if self.frame >= self.activation_request_frame + takeover_frames:
-        # carlog.error("PSA_DEBUG _activate_eps - too long to activate - self.takeover_req = True")
+
+    if not eps_active: # and not CS.out.steeringPressed:
+      lateral_accel = abs(curvature) * CARSTATE.out.vEgo ** 2
+      if not self.takeover_req_already_sent and lateral_accel >= self.params.EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL:
         self.takeover_req = 1
         self.takeover_req_already_sent = True
 
-    if not eps_active: # and not CS.out.steeringPressed:
       self.status = 2 if self.status == 4 else self.status + 1
 
       # EPS likes a progressive activation of the Torque Factor
@@ -305,7 +286,6 @@ class CarController(CarControllerBase):
               if self.eps_activation_frame == 0:
                 self._start_eps_active_cycle()
               self.takeover_req = 0
-              self.activation_request_frame = 0
               self.status = 4 # 4: EPS ACTIVE
               self._maybe_request_eps_takeover(CS.out.vEgo, actuators.curvature)
 

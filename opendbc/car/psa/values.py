@@ -51,14 +51,7 @@ class CarControllerParams:
     EPS_TAKEOVER_MODEL_MAX_TIME_GAP = 0.5  # s around the rearm deadline
     # [eps curve] - END
 
-    # Maximum and minimum time allowed for the EPS to reactivate before asking
-    # the driver to take over. Lateral acceleration moves the timeout between
-    # these bounds, so speed and curvature increase urgency without ever making
-    # the takeover request immediate.
-    EPS_ACTIVATE_TAKEOVER_MAX_PERIOD = 0.7  # s
-    EPS_ACTIVATE_TAKEOVER_MIN_PERIOD = 0.2  # s
-    EPS_ACTIVATE_TAKEOVER_MAX_PERIOD_C4_SPACETOURER = 3.2  # s
-    EPS_ACTIVATE_TAKEOVER_MIN_PERIOD_C4_SPACETOURER = 0.5  # s
+    # During EPS reactivation, request immediate driver takeover only on a sufficiently large curve.
     EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL = 1.0  # m/s^2
     TAKEOVER_MSG_DURATION = 2
 
@@ -68,8 +61,6 @@ class CarControllerParams:
     def __init__(self, CP):
       if CP.carFingerprint == CAR.PSA_CITROEN_C4_SPACETOURER:
         self.EPS_REARM_PERIOD = self.EPS_REARM_PERIOD_C4_SPACETOURER
-        self.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD = self.EPS_ACTIVATE_TAKEOVER_MAX_PERIOD_C4_SPACETOURER
-        self.EPS_ACTIVATE_TAKEOVER_MIN_PERIOD = self.EPS_ACTIVATE_TAKEOVER_MIN_PERIOD_C4_SPACETOURER
 
 
 @dataclass
