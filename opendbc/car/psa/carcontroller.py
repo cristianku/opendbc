@@ -8,7 +8,7 @@ from opendbc.car.psa.psacan import (
   # create_driver_torque,
   create_lka_steering,
   create_request_takeover,
-  create_resume_acc,
+  # create_resume_acc,
   create_steering_hold,
   create_disable_radar,
 )
@@ -455,18 +455,18 @@ class CarController(CarControllerBase):
         #   self.driver_torque_counter = 0
         #   self.next_driver_torque = random.randint(500, 800)
 
-    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      if CC.enabled and CS.out.vEgo < self.params.RESUME_ACC_SPEED and CC.hudControl.leadVisible:
-        if self.creep_start_frame == 0:
-          self.creep_start_frame = self.frame     # primo frame dentro la finestra
-        phase = (self.frame - self.creep_start_frame) % 300
-        if phase in (0, 5):
-          pressed = 1 if phase == 5 else 0
-          msg = CS.hs2_dat_mdd_cmd_452
-          counter = (msg['COUNTER'] + 1) % 16
-          can_sends.append(create_resume_acc(self.packer, counter, pressed, msg))
-      else:
-        self.creep_start_frame = 0
+    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+    #   if CC.enabled and CS.out.vEgo < self.params.RESUME_ACC_SPEED and CC.hudControl.leadVisible:
+    #     if self.creep_start_frame == 0:
+    #       self.creep_start_frame = self.frame     # primo frame dentro la finestra
+    #     phase = (self.frame - self.creep_start_frame) % 300
+    #     if phase in (0, 5):
+    #       pressed = 1 if phase == 5 else 0
+    #       msg = CS.hs2_dat_mdd_cmd_452
+    #       counter = (msg['COUNTER'] + 1) % 16
+    #       can_sends.append(create_resume_acc(self.packer, counter, pressed, msg))
+    #   else:
+    #     self.creep_start_frame = 0
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if self.takeover_req > 0 and self.frame % 2 == 0: # 50 Hz

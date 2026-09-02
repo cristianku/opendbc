@@ -49,10 +49,10 @@ def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_fa
 #     steering['DRIVER_TORQUE'] = 10 if torque > 0 else -10
 
 #   return packer.make_can_msg('STEERING', 0, steering)
-def create_resume_acc(packer, counter, status, hs2_dat_mdd_cmd_452):
-  hs2_dat_mdd_cmd_452['COUNTER'] = counter
-  hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST'] = status
-  return packer.make_can_msg('HS2_DAT_MDD_CMD_452', 1, hs2_dat_mdd_cmd_452)
+# def create_resume_acc(packer, counter, status, hs2_dat_mdd_cmd_452):
+#   hs2_dat_mdd_cmd_452['COUNTER'] = counter
+#   hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST'] = status
+#   return packer.make_can_msg('HS2_DAT_MDD_CMD_452', 1, hs2_dat_mdd_cmd_452)
 
 
 def create_drive_away_request(packer, hs2_dyn_mdd_etat_2f6):
