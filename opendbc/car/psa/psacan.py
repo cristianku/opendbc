@@ -106,14 +106,15 @@ def create_HS2_DYN_MDD_ETAT_2F6(packer, braking: bool, lead_visible: bool, lead_
 
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
 
-def create_driver_torque(packer, steering, counter):
-  t = int(steering.get('DRIVER_TORQUE', 0))
-  if abs(t) < 10:
-    t = random.randint(10, 12)
-  t = max(0, min(20, t))
-  steering['DRIVER_TORQUE'] = t
-  steering['COUNTER'] = counter
-  return packer.make_can_msg('STEERING', 0, steering)
+# def create_driver_torque(packer, steering, counter):
+#   #0x2F5 message
+#   t = int(steering.get('DRIVER_TORQUE', 0))
+#   if abs(t) < 10:
+#     t = random.randint(10, 12)
+#   t = max(0, min(20, t))
+#   steering['DRIVER_TORQUE'] = t
+#   steering['COUNTER'] = counter
+#   return packer.make_can_msg('STEERING', 0, steering)
 
 def create_steering_hold(packer, lat_active: bool, is_dat_dira):
   # set STEERWHL_HOLD_BY_DRV to keep EPS engaged when lat active

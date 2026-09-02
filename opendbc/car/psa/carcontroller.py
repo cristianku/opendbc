@@ -5,7 +5,7 @@ from opendbc.car import Bus, structs, DT_CTRL, make_tester_present_msg
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import (
-  create_driver_torque,
+  # create_driver_torque,
   create_lka_steering,
   create_request_takeover,
   create_resume_acc,
@@ -447,13 +447,13 @@ class CarController(CarControllerBase):
           self.steering_hold_counter = 0
           self.next_steering_hold = random.randint(8, 12)
         # --- DRIVER TORQUE (ogni 5–8 s) ---
-        self.driver_torque_counter += 1
-        if self.driver_torque_counter >= self.next_driver_torque:
-          msg = CS.steering
-          counter = (msg['COUNTER'] + 1) % 16
-          can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
-          self.driver_torque_counter = 0
-          self.next_driver_torque = random.randint(500, 800)
+        # self.driver_torque_counter += 1
+        # if self.driver_torque_counter >= self.next_driver_torque:
+        #   msg = CS.steering
+        #   counter = (msg['COUNTER'] + 1) % 16
+        #   # can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
+        #   self.driver_torque_counter = 0
+        #   self.next_driver_torque = random.randint(500, 800)
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if CC.enabled and CS.out.vEgo < self.params.RESUME_ACC_SPEED and CC.hudControl.leadVisible:
