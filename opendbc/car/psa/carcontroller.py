@@ -122,6 +122,9 @@ class CarController(CarControllerBase):
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
     self.radar_disabled = False
+    # [artiv probe] - START
+    self.artiv_tester_present_sent = False
+    # [artiv probe] - END
     self.bars = 4
     self.steering_hold_counter = 0
     self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
@@ -420,6 +423,14 @@ class CarController(CarControllerBase):
     #     can_sends.append(create_resume_acc(self.packer, counter, status, msg))
 
     # #  ELKOLED LONGITUDINAL CONTROL
+
+    # [artiv probe] - START
+    # One reachability probe per controller start; inspect 0x696 for 7E 00.
+    if (self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and not self.artiv_tester_present_sent
+        and self.frame >= int(2.0 / DT_CTRL) and CS.out.standstill):
+      can_sends.append(make_tester_present_msg(0x6B6, PSA_ADAS_BUS, suppress_response=False))
+      self.artiv_tester_present_sent = True
+    # [artiv probe] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       # # Keep requesting the ARTIV programming session. A single request can be

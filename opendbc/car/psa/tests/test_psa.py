@@ -59,6 +59,43 @@ def test_disable_radar_programming_session():
   assert msg.dat == b"\x02\x10\x02\x00\x00\x00\x00\x00"
 
 
+# [artiv probe] - START
+def test_artiv_tester_present_waits_for_standstill_and_sends_only_once():
+  cp = CarInterface.get_non_essential_params(CAR.PSA_PEUGEOT_3008)
+  cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_PEUGEOT_3008)
+  controller = psa_carcontroller.CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)
+  cc = structs.CarControl().as_reader()
+  cs = SimpleNamespace(eps_active=False, out=structs.CarState())
+
+  # Start stationary, move across the delay, then stop twice.
+  for frame, stationary, expected_count in ((0, True, 0), (199, True, 0), (200, False, 0),
+                                             (300, True, 1), (301, True, 0), (500, False, 0), (600, True, 0)):
+    controller.frame = frame
+    cs.out.standstill = stationary
+    cs.out.vEgo = 0.0 if stationary else 5.0
+    _, can_sends = controller.update(cc, structs.CarControlSP(), cs, 0)
+    diagnostic_msgs = [msg for msg in can_sends if msg[0] == 0x6B6]
+
+    assert len(diagnostic_msgs) == expected_count
+    for msg in diagnostic_msgs:
+      assert msg[2] == 1
+      assert msg[1] == b"\x02\x3e\x00\x00\x00\x00\x00\x00"
+
+
+def test_artiv_tester_present_is_not_enabled_for_other_psa_platforms():
+  cp = CarInterface.get_non_essential_params(CAR.PSA_CITROEN_C4_SPACETOURER)
+  cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_CITROEN_C4_SPACETOURER)
+  controller = psa_carcontroller.CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)
+  controller.frame = 300
+  cs = SimpleNamespace(eps_active=False, out=structs.CarState())
+  cs.out.standstill = True
+
+  _, can_sends = controller.update(structs.CarControl().as_reader(), structs.CarControlSP(), cs, 0)
+
+  assert all(msg[0] != 0x6B6 for msg in can_sends)
+# [artiv probe] - END
+
+
 def test_eps_reactivation_requests_immediate_takeover_on_full_curve():
   cp = CarInterface.get_non_essential_params(CAR.PSA_CITROEN_C4_SPACETOURER)
   cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_CITROEN_C4_SPACETOURER)
