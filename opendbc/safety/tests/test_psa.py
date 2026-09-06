@@ -94,6 +94,21 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     msg[0].data[6] = 0xAB
     self.assertTrue(self._rx(msg))
 
+  # [artiv probe] - START
+  def test_artiv_short_tester_present(self):
+    for controls_allowed in (False, True):
+      self.safety.set_controls_allowed(controls_allowed)
+      for bus in range(3):
+        for subfunction in range(256):
+          dat = bytes((2, 0x3E, subfunction))
+          self.assertEqual(self._tx(common.make_msg(bus, REQ_DIAG_ARTIV, dat=dat)),
+                           bus == self.ADAS_BUS and subfunction == 0)
+
+    for dat in (b"\x02\x10\x02", b"\x02\x10\x03", b"\x02\x27\x01",
+                b"\x01\x3E\x00", b"\x02\x3E", b"\x02\x3E\x00\x00"):
+      self.assertFalse(self._tx(common.make_msg(self.ADAS_BUS, REQ_DIAG_ARTIV, dat=dat)), dat.hex())
+  # [artiv probe] - END
+
   def test_artiv_diagnostics(self):
     allowed = (
       b"\x02\x10\x02\x00\x00\x00\x00\x00",  # programming session

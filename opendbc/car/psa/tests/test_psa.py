@@ -79,7 +79,7 @@ def test_artiv_tester_present_waits_for_standstill_and_sends_only_once():
     assert len(diagnostic_msgs) == expected_count
     for msg in diagnostic_msgs:
       assert msg[2] == 1
-      assert msg[1] == b"\x02\x3e\x00\x00\x00\x00\x00\x00"
+      assert msg[1] == b"\x02\x3e\x00"
 
 
 def test_artiv_tester_present_is_not_enabled_for_other_psa_platforms():

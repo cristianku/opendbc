@@ -2,6 +2,9 @@ from opendbc.can.packer import CANPacker
 # [CLAUDE eps-rearm] - START
 from opendbc.car import Bus, structs, DT_CTRL, make_tester_present_msg
 # [CLAUDE eps-rearm] - END
+# [artiv probe] - START
+from opendbc.car.can_definitions import CanData
+# [artiv probe] - END
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import (
@@ -426,9 +429,10 @@ class CarController(CarControllerBase):
 
     # [artiv probe] - START
     # One reachability probe per controller start; inspect 0x696 for 7E 00.
+    # Match the unpadded three-byte TesterPresent observed in the Ediag capture.
     if (self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and not self.artiv_tester_present_sent
         and self.frame >= int(2.0 / DT_CTRL) and CS.out.standstill):
-      can_sends.append(make_tester_present_msg(0x6B6, PSA_ADAS_BUS, suppress_response=False))
+      can_sends.append(CanData(0x6B6, b'\x02\x3E\x00', PSA_ADAS_BUS))
       self.artiv_tester_present_sent = True
     # [artiv probe] - END
 

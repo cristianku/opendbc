@@ -176,18 +176,28 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     }
   }
 
-  // ARTIV diagnostics: allow only programming session and TesterPresent.
+  // [artiv probe] - START
+  // ARTIV diagnostics: allow the exact unpadded probe alongside existing DLC 8 requests.
   if (msg->addr == PSA_REQ_DIAG_ARTIV) {
-    uint32_t first_word = GET_BYTES(msg, 0, 4);
-    bool zero_padding = GET_BYTES(msg, 4, 4) == 0x0U;
-    bool is_programming_session = first_word == 0x00021002U;       // 02 10 02 00
-    bool is_tester_present = (first_word == 0x00003E02U) ||        // 02 3E 00 00
-                             (first_word == 0x00803E02U);          // 02 3E 80 00
+    if (GET_LEN(msg) == 3) {
+      if ((msg->data[0] != 0x02U) || (msg->data[1] != 0x3EU) || (msg->data[2] != 0x00U)) {
+        tx = false;
+      }
+    } else if (GET_LEN(msg) == 8) {
+      uint32_t first_word = GET_BYTES(msg, 0, 4);
+      bool zero_padding = GET_BYTES(msg, 4, 4) == 0x0U;
+      bool is_programming_session = first_word == 0x00021002U;       // 02 10 02 00
+      bool is_tester_present = (first_word == 0x00003E02U) ||        // 02 3E 00 00
+                               (first_word == 0x00803E02U);          // 02 3E 80 00
 
-    if (!zero_padding || (!is_programming_session && !is_tester_present)) {
+      if (!zero_padding || (!is_programming_session && !is_tester_present)) {
+        tx = false;
+      }
+    } else {
       tx = false;
     }
   }
+  // [artiv probe] - END
 
   return tx;
 }
@@ -200,6 +210,9 @@ static safety_config psa_init(uint16_t param) {
     {PSA_STEERING, PSA_MAIN_BUS, 7, .check_relay = false}, // driver torque
     {PSA_HS2_DYN_MDD_ETAT_2F6, PSA_ADAS_BUS, 8, .check_relay = false}, // request takeover
     {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 8, .check_relay = false},        // radar diagnostics TODO: check if reduce to 3 is ok
+    // [artiv probe] - START
+    {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 3, .check_relay = false},        // exact unpadded TesterPresent probe
+    // [artiv probe] - END
     {PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .check_relay = false}, // resume acc
     {PSA_HS2_SUPV_ARTIV_796, PSA_ADAS_BUS, 8, .check_relay = false},    // radar emulation
     {PSA_HS2_DAT_ARTIV_V2_4F6, PSA_ADAS_BUS, 5, .check_relay = false},  // radar emulation
