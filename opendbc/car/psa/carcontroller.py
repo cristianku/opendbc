@@ -33,6 +33,13 @@ import math
 SteerControlType = structs.CarParams.SteerControlType
 
 
+# [artiv probe] - START
+# (Stationary wait in seconds, CAN payload length). Run once per controller start:
+# compare 3/8 bytes, reverse the order, then repeat after a longer quiet interval.
+ARTIV_PROBE_STEPS = ((10.0, 3), (5.0, 8), (5.0, 8), (5.0, 3), (15.0, 3), (5.0, 8))
+# [artiv probe] - END
+
+
 # [eps curve] - START
 def should_preempt_eps_rearm(elapsed, v_ego, current_curvature, model_t, model_yaw_rate, model_speed):
   """Return True when an upcoming curve makes the current straight a good rearm opportunity."""
@@ -126,7 +133,8 @@ class CarController(CarControllerBase):
     self.params = CarControllerParams(CP)
     self.radar_disabled = False
     # [artiv probe] - START
-    self.artiv_tester_present_sent = False
+    self.artiv_probe_index = 0
+    self.artiv_probe_last_frame = 0
     # [artiv probe] - END
     self.bars = 4
     self.steering_hold_counter = 0
@@ -428,12 +436,16 @@ class CarController(CarControllerBase):
     # #  ELKOLED LONGITUDINAL CONTROL
 
     # [artiv probe] - START
-    # One reachability probe per controller start; inspect 0x696 for 7E 00.
-    # Match the unpadded three-byte TesterPresent observed in the Ediag capture.
-    if (self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and not self.artiv_tester_present_sent
-        and self.frame >= int(2.0 / DT_CTRL) and CS.out.standstill):
-      can_sends.append(CanData(0x6B6, b'\x02\x3E\x00', PSA_ADAS_BUS))
-      self.artiv_tester_present_sent = True
+    # Inspect 0x696 for 7E 00 and CAN TX echoes for each request in the rlog.
+    if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and self.artiv_probe_index < len(ARTIV_PROBE_STEPS):
+      delay, length = ARTIV_PROBE_STEPS[self.artiv_probe_index]
+      if not CS.out.standstill:
+        # Restart only the pending wait when moving; never catch up with a burst.
+        self.artiv_probe_last_frame = self.frame
+      elif self.frame - self.artiv_probe_last_frame >= int(delay / DT_CTRL):
+        can_sends.append(CanData(0x6B6, b'\x02\x3E\x00'.ljust(length, b'\x00'), PSA_ADAS_BUS))
+        self.artiv_probe_last_frame = self.frame
+        self.artiv_probe_index += 1
     # [artiv probe] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
