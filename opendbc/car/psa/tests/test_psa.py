@@ -51,12 +51,14 @@ def test_synthetic_cruise_button_events_follow_stock_setpoint():
   assert cs.synthetic_cruise_kph is None
 
 
+# [artiv probe] - START
 def test_disable_radar_programming_session():
   msg = create_disable_radar()
 
   assert msg.address == 0x6B6
   assert msg.src == PSA_ADAS_BUS
-  assert msg.dat == b"\x02\x10\x02\x00\x00\x00\x00\x00"
+  assert msg.dat == b"\x02\x10\x02"
+# [artiv probe] - END
 
 
 # [artiv probe] - START
@@ -68,27 +70,23 @@ def _artiv_test_controller(platform=CAR.PSA_PEUGEOT_3008):
   return controller, cs
 
 
-def _artiv_messages_at(controller, cs, frame, stationary=True):
+def _artiv_messages_at(controller, cs, frame, stationary=True, can_valid=True):
   controller.frame = frame
   cs.out.standstill = stationary
   cs.out.vEgo = 0.0 if stationary else 5.0
+  cs.out.canValid = can_valid
   _, can_sends = controller.update(structs.CarControl().as_reader(), structs.CarControlSP(), cs, 0)
   return [msg for msg in can_sends if msg[0] == 0x6B6]
 
 
-def test_artiv_compares_formats_reverses_order_and_repeats_after_pause_once():
+def test_artiv_requests_programming_once_after_stationary_wait():
   controller, cs = _artiv_test_controller()
   sent = []
   for frame in range(10001):
     sent.extend((frame, msg[2], msg[1]) for msg in _artiv_messages_at(controller, cs, frame))
 
   assert sent == [
-    (1000, 1, b"\x02\x3e\x00"),
-    (1500, 1, b"\x02\x3e\x00\x00\x00\x00\x00\x00"),
-    (2000, 1, b"\x02\x3e\x00\x00\x00\x00\x00\x00"),
-    (2500, 1, b"\x02\x3e\x00"),
-    (4000, 1, b"\x02\x3e\x00"),
-    (4500, 1, b"\x02\x3e\x00\x00\x00\x00\x00\x00"),
+    (1000, 1, b"\x02\x10\x02"),
   ]
 
 
@@ -98,23 +96,23 @@ def test_artiv_waits_again_after_moving_without_bursting_or_restarting():
     assert not _artiv_messages_at(controller, cs, frame, stationary)
 
   msgs = _artiv_messages_at(controller, cs, 2000)
-  assert [(msg[2], msg[1]) for msg in msgs] == [(1, b"\x02\x3e\x00")]
+  assert [(msg[2], msg[1]) for msg in msgs] == [(1, b"\x02\x10\x02")]
 
   for frame, stationary in ((2250, False), (7000, False), (7499, True)):
     assert not _artiv_messages_at(controller, cs, frame, stationary)
 
-  msgs = _artiv_messages_at(controller, cs, 7500)
-  assert [(msg[2], msg[1]) for msg in msgs] == [(1, b"\x02\x3e\x00\x00\x00\x00\x00\x00")]
-  assert not _artiv_messages_at(controller, cs, 7501)
-  for frame, payload in ((8000, b"\x02\x3e\x00\x00\x00\x00\x00\x00"), (8500, b"\x02\x3e\x00"),
-                         (10000, b"\x02\x3e\x00"), (10500, b"\x02\x3e\x00\x00\x00\x00\x00\x00")):
-    assert not _artiv_messages_at(controller, cs, frame - 1)
-    assert [msg[1] for msg in _artiv_messages_at(controller, cs, frame)] == [payload]
-  assert not _artiv_messages_at(controller, cs, 11000, False)
-  assert not _artiv_messages_at(controller, cs, 12000)
+  for frame in (7500, 7501, 8000, 10000, 12000):
+    assert not _artiv_messages_at(controller, cs, frame)
 
 
-def test_artiv_tester_present_is_not_enabled_for_other_psa_platforms():
+def test_artiv_restarts_stationary_wait_after_invalid_can():
+  controller, cs = _artiv_test_controller()
+  assert not _artiv_messages_at(controller, cs, 1000, can_valid=False)
+  assert not _artiv_messages_at(controller, cs, 1999)
+  assert [msg.dat for msg in _artiv_messages_at(controller, cs, 2000)] == [b"\x02\x10\x02"]
+
+
+def test_artiv_programming_is_not_enabled_for_other_psa_platforms():
   for platform in CAR:
     if platform != CAR.PSA_PEUGEOT_3008:
       controller, cs = _artiv_test_controller(platform)

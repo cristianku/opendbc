@@ -139,23 +139,17 @@ def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, takeover_type):
 #   return packer.make_can_msg('HS2_DAT_MDD_CMD_452', 1, values)
 
 # [artiv-diag-probe] - START
-# Disabilita ARTIV (radar) mettendolo in programming session su 0x6B6, bus ADAS.
-# Riferimento profilo ECU PyPSADiag:
+# Richiede la programming session ARTIV su 0x6B6, bus ADAS.
+# Riferimento per gli indirizzi ECU (non prova dell'accettazione della sessione):
 # https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
 #   0x02 = ISO-TP single frame, 2 byte di payload
-#   0x10 0x02 = DiagnosticSessionControl, programmingSession -> l'ECU smette di
-#               trasmettere i suoi messaggi normali (radar "zitto") finche' resta li'.
-# La sessione decade dopo il timeout S3 (~5 s): il CarController la tiene viva con
-# TesterPresent periodico. Entrare in programming NON richiede security access (27);
-# quello servirebbe solo per erase/write. Risposta lasciata attiva (50 02 vs 7F 10 xx)
-# per vedere nei log se ARTIV ha accettato; per sopprimerla userei 0x10 0x82.
-#
-# La safety autorizza 0x6B6 con DLC 8. Il primo byte ISO-TP dichiara comunque
-# due byte UDS; i cinque byte rimanenti sono padding a zero.
+#   0x10 0x02 = DiagnosticSessionControl, programmingSession.
+# DLC 3: il radar ha risposto a TesterPresent corto, non a quello con padding.
+# Verificare su 0x696 la risposta 50 02 oppure 7F 10 xx e osservare i frame radar.
+# Accettazione, sospensione dei messaggi e ritorno alla sessione normale sono da
+# verificare sul veicolo; questa prova non invia keepalive, erase o write.
 def create_disable_radar():
   # https://github.com/ludwig-v/arduino-psa-diag/blob/master/ECU_LIST.md
   addr = 0x6B6
-  dat = [0x02, 0x10, 0x02]
-  dat.extend([0x0] * (8 - len(dat)))
-
-  return CanData(addr, bytes(dat), PSA_ADAS_BUS)
+  return CanData(addr, b'\x02\x10\x02', PSA_ADAS_BUS)
+# [artiv-diag-probe] - END

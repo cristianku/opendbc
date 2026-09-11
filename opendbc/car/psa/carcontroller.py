@@ -2,9 +2,6 @@ from opendbc.can.packer import CANPacker
 # [CLAUDE eps-rearm] - START
 from opendbc.car import Bus, structs, DT_CTRL, make_tester_present_msg
 # [CLAUDE eps-rearm] - END
-# [artiv probe] - START
-from opendbc.car.can_definitions import CanData
-# [artiv probe] - END
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import (
@@ -15,7 +12,7 @@ from opendbc.car.psa.psacan import (
   create_steering_hold,
   create_disable_radar,
 )
-from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
+from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS
 
 try:
   import openpilot.cereal.messaging as messaging
@@ -34,9 +31,7 @@ SteerControlType = structs.CarParams.SteerControlType
 
 
 # [artiv probe] - START
-# (Stationary wait in seconds, CAN payload length). Run once per controller start:
-# compare 3/8 bytes, reverse the order, then repeat after a longer quiet interval.
-ARTIV_PROBE_STEPS = ((10.0, 3), (5.0, 8), (5.0, 8), (5.0, 3), (15.0, 3), (5.0, 8))
+ARTIV_PROGRAMMING_WAIT = 10.0  # seconds of valid CAN at standstill before the one-shot request
 # [artiv probe] - END
 
 
@@ -133,7 +128,7 @@ class CarController(CarControllerBase):
     self.params = CarControllerParams(CP)
     self.radar_disabled = False
     # [artiv probe] - START
-    self.artiv_probe_index = 0
+    self.artiv_programming_requested = False
     self.artiv_probe_last_frame = 0
     # [artiv probe] - END
     self.bars = 4
@@ -143,32 +138,12 @@ class CarController(CarControllerBase):
     self.next_driver_torque = random.randint(500, 800)  # 5–8 s @100 Hz
     self.last_activation_frame = 0
     self.eps_activation_frame = 0
-    # self.takeover_start_msg_frame = 0
-    # [CLAUDE resume-acc-anticipato] - START
-    # Frame di ingresso nella finestra di creep, creato QUI e non al primo uso
-    # (attributo nato dentro update() = AttributeError se quel giro non parte per primo).
     self.creep_start_frame = 0
-    # [CLAUDE resume-acc-anticipato] - END
-    # [CLAUDE eps-rearm] - START
-    # Stato della scaletta e dello stacco: tutti creati qui, mai al primo uso
-    # (attributo nato dentro un metodo = AttributeError se quel metodo non gira per primo).
     self.last_status_change_frame = 0     # frame dell'ultimo cambio di gradino
-    # True durante la scaletta forzata 2->3->4. Non aspetta piu' che l'EPS
-    # confermi la disattivazione: ogni gradino dura un invio LKA (50 ms).
     self.deactivation_in_progress = False
-    # Periodo di stacco EPS: da secondi a frame. self.frame gira a 100 Hz (DT_CTRL = 0.01 s),
-    # quindi frame = secondi / DT_CTRL.
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)
-    # self.eps_activate_keep_status_frames = int(self.params.EPS_KEEP_STATUS_PERIOD / DT_CTRL)   # 0.1 s = 10 frame
-    # [CLAUDE eps-closed-loop] - START
-    # Ultimo stato dell'EPS visto dalla scaletta: creato QUI, non al primo uso, se no
-    # e' AttributeError al primo giro (stessa trappola di eps_rearm_failed).
     self.eps_state_last = 0
-    # [CLAUDE eps-closed-loop] - END
     self.takeover_msg_duration = int(self.params.TAKEOVER_MSG_DURATION / DT_CTRL)   # 0.1 s = 10 frame
-    # Riga rimossa: la scaletta conta frame (last_status_change_frame), non cicli LKA.
-    # self.eps_status_hold_cycles = max(1, int(round(self.params.EPS_STATUS_HOLD / (DT_CTRL * self.params.STEER_STEP))))
-    # [CLAUDE eps-rearm] - END
 
   def _reset_lat_state(self):
     self.status = 2
@@ -310,35 +285,11 @@ class CarController(CarControllerBase):
                 apply_new_torque_scaled = 0
                 # apply_new_torque = 0
               else:
-                # --- Requested torque (raw, still float) ------------------------------
-                # actuators.torque is the model output in -1..1; scale to counts (x STEER_MAX).
-                # Kept as a float here: it feeds the torque-factor curve below.
-                #   ex: 0.25 * 250 = 62.5
                 actuatorsRequestedTorque = CC.actuators.torque * self.params.STEER_MAX
-
-                # --- Torque factor (dynamic EPS gain, MIN..MAX) -----------------------
-                # The EPS multiplies our command by factor/100. Small requests get a low
-                # factor (gentle), big ones a high factor, via a slightly convex curve.
-                # ratio = normalized request magnitude, clamped 0..1, raised to 1.2.
-                #   ex: (62.5/250) ** 1.2 = 0.25 ** 1.2 = 0.19
                 ratio = min(1.0, (abs(actuatorsRequestedTorque) / float(self.params.STEER_MAX)) * 1.0) **1.2
-
-                # Lerp ratio onto [MIN_TORQUE_FACTOR, MAX_TORQUE_FACTOR], then clamp.
-                #   ex: 15 + 0.19 * (100 - 15) = 31
                 self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
                 self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
-
-                # --- Effective (scaled) torque ---------------------------------------
-                # What the wheel actually gets = request * factor/100. Same "force at the
-                # wheel" domain as the driver torque, so this is what the limiter compares.
-                #   ex: round(62.5 * 31/100) = 19
                 new_torque_scaled = int(round(actuatorsRequestedTorque * self.apply_torque_factor / 100))
-
-                # --- Driver-aware rate/override limiter -------------------------------
-                # Feed the EFFECTIVE (scaled) command: it is already in the driver-torque
-                # domain, so the driver signal needs no conversion. The limiter rate-limits
-                # the ramp (STEER_DELTA_UP/DOWN) and backs off when the driver pushes.
-                # It always returns an int (see lateral.py).
                 temp_driverSteeringTorque = CS.out.steeringTorque
                 apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
                                                                 temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
@@ -436,16 +387,15 @@ class CarController(CarControllerBase):
     # #  ELKOLED LONGITUDINAL CONTROL
 
     # [artiv probe] - START
-    # Inspect 0x696 for 7E 00 and CAN TX echoes for each request in the rlog.
-    if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and self.artiv_probe_index < len(ARTIV_PROBE_STEPS):
-      delay, length = ARTIV_PROBE_STEPS[self.artiv_probe_index]
-      if not CS.out.standstill:
-        # Restart only the pending wait when moving; never catch up with a burst.
+    # Parked ARTIV experiment: inspect 0x696 for 50 02 or 7F 10 xx and the TX echo.
+    # Sending is not proof of acceptance. No retries or TesterPresent keepalive.
+    if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and not self.artiv_programming_requested:
+      if not CS.out.standstill or not CS.out.canValid:
+        # Restart the wait when moving or CAN data is unavailable.
         self.artiv_probe_last_frame = self.frame
-      elif self.frame - self.artiv_probe_last_frame >= int(delay / DT_CTRL):
-        can_sends.append(CanData(0x6B6, b'\x02\x3E\x00'.ljust(length, b'\x00'), PSA_ADAS_BUS))
-        self.artiv_probe_last_frame = self.frame
-        self.artiv_probe_index += 1
+      elif self.frame - self.artiv_probe_last_frame >= int(ARTIV_PROGRAMMING_WAIT / DT_CTRL):
+        can_sends.append(create_disable_radar())
+        self.artiv_programming_requested = True
     # [artiv probe] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):

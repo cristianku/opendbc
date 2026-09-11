@@ -177,10 +177,12 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
   }
 
   // [artiv probe] - START
-  // ARTIV diagnostics: allow the exact unpadded probe alongside existing DLC 8 requests.
+  // ARTIV diagnostics: allow exact unpadded TesterPresent and programming requests.
   if (msg->addr == PSA_REQ_DIAG_ARTIV) {
     if (GET_LEN(msg) == 3) {
-      if ((msg->data[0] != 0x02U) || (msg->data[1] != 0x3EU) || (msg->data[2] != 0x00U)) {
+      bool is_tester_present = (msg->data[1] == 0x3EU) && (msg->data[2] == 0x00U);
+      bool is_programming_session = (msg->data[1] == 0x10U) && (msg->data[2] == 0x02U);
+      if ((msg->data[0] != 0x02U) || (!is_tester_present && !is_programming_session)) {
         tx = false;
       }
     } else if (GET_LEN(msg) == 8) {
