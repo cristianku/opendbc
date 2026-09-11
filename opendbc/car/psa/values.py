@@ -9,6 +9,20 @@ Ecu = CarParams.Ecu
 
 PSA_ADAS_BUS = 1
 
+# [psa longitudinal] - START
+PSA_LONG_CONTROL = 1  # safetyParam bit selected by alpha_long on Peugeot 3008.
+
+
+class LongitudinalParams:
+  # Offline prototype from Elkoled, NOT a vehicle-validated acceleration/torque calibration.
+  ACCEL_LOOKUP = (-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0)
+  TORQUE_LOOKUP = (-400, -300, 120, 350, 550, 800, 1000)
+  BRAKE_ACCEL_THRESHOLD = -0.5
+  MIN_TIME_GMP_EXPERIMENTAL = 6.2  # Does not reproduce the observed even/odd sequence.
+  INACTIVE_ACCEL = 2.05
+  INACTIVE_TORQUE = -4000
+# [psa longitudinal] - END
+
 
 class CarControllerParams:
   # STEER_MAX = 250  # Maximum steering torque command that can be applied (unitless scaling factor)

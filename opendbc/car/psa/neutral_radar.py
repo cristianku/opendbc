@@ -8,9 +8,12 @@ RADAR_TX_TIMEOUTS = {0x2B6: 250_000_000, 0x2F6: 250_000_000, 0x4F6: 500_000_000,
 
 
 class NeutralRadar:
-  """One parked trial per controller lifetime; only received Panda echoes satisfy radar RX checks."""
+  # [psa longitudinal] - START
+  """One ARTIV session per controller lifetime; only received Panda echoes satisfy radar RX checks."""
 
-  def __init__(self):
+  def __init__(self, *, stationary_only=True):
+    self.stationary_only = stationary_only
+    # [psa longitudinal] - END
     self.request_nanos = None
     self.accepted_nanos = None
     self.started_nanos = None
@@ -76,9 +79,12 @@ class NeutralRadar:
   def update(self, frame, now_nanos, stationary, can_valid=True):
     if self.request_nanos is None or self.stop_reason is not None:
       return
-    if not stationary:
+    # [psa longitudinal] - START
+    # Both profiles must start parked. Only a confirmed experimental session may continue moving.
+    if not stationary and (self.stationary_only or not self.active):
       self.stop('vehicle moved')
       return
+    # [psa longitudinal] - END
     if not self.active:
       if now_nanos - self.request_nanos > 1_000_000_000:
         self.stop('no confirmed silent radar within 1 s')
@@ -92,7 +98,9 @@ class NeutralRadar:
       self.active = True
       self.started_nanos = now_nanos
       self.started_frame = frame
-      carlog.info('ARTIV neutral: emulation started, ACC/AEB inhibited')
+      # [psa longitudinal] - START
+      carlog.info('ARTIV: emulation started (%s)', 'parked neutral trial' if self.stationary_only else 'experimental longitudinal')
+      # [psa longitudinal] - END
 
     if now_nanos - self.last_bus_nanos > 250_000_000:
       self.stop('ADAS bus RX timeout')

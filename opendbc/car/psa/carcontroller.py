@@ -19,6 +19,10 @@ from opendbc.car.psa.psacan import (
 )
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
 from opendbc.car.psa.neutral_radar import NeutralRadar
+# [psa longitudinal] - START
+from numpy import interp
+from opendbc.car.psa.values import LongitudinalParams, PSA_LONG_CONTROL
+# [psa longitudinal] - END
 
 try:
   import openpilot.cereal.messaging as messaging
@@ -133,10 +137,18 @@ class CarController(CarControllerBase):
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
     self.radar_disabled = False
+    # [psa longitudinal] - START
+    self.longitudinal_profile = self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and CP.openpilotLongitudinalControl
+    self.longitudinal_enabled = (self.longitudinal_profile and not CP.dashcamOnly and not CP.passive
+                                 and any(c.safetyModel == structs.CarParams.SafetyModel.psa and c.safetyParam & PSA_LONG_CONTROL
+                                         for c in CP.safetyConfigs))
+    # [psa longitudinal] - END
     # [artiv probe] - START
     self.artiv_programming_requested = False
     self.artiv_probe_last_frame = 0
-    self.neutral_radar = NeutralRadar() if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 else None
+    # [psa longitudinal] - START
+    self.neutral_radar = NeutralRadar(stationary_only=not self.longitudinal_enabled) if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 else None
+    # [psa longitudinal] - END
     # [artiv probe] - END
     self.bars = 4
     self.steering_hold_counter = 0
@@ -151,6 +163,31 @@ class CarController(CarControllerBase):
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)
     self.eps_state_last = 0
     self.takeover_msg_duration = int(self.params.TAKEOVER_MSG_DURATION / DT_CTRL)   # 0.1 s = 10 frame
+
+  # [psa longitudinal] - START
+  def _update_longitudinal(self, CC, CS):
+    """Prepare explicit CAN inputs. Experimental torque mapping; no emission or scheduling here."""
+    self.longitudinal_active = False
+    self.longitudinal_braking = False
+    self.longitudinal_accel = 0.0
+    self.longitudinal_potential_torque = LongitudinalParams.INACTIVE_TORQUE
+    self.longitudinal_wheel_torque = LongitudinalParams.INACTIVE_TORQUE
+    self.longitudinal_min_time = 0.0
+    if not (self.longitudinal_enabled and self.neutral_radar.active and CC.enabled and CC.longActive
+            and CS.out.canValid and not CS.out.gasPressed and not CS.out.brakePressed
+            and math.isfinite(CC.actuators.accel)):
+      return
+
+    self.longitudinal_active = True
+    self.longitudinal_accel = max(LongitudinalParams.ACCEL_LOOKUP[0], min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]))
+    self.longitudinal_braking = self.longitudinal_accel < LongitudinalParams.BRAKE_ACCEL_THRESHOLD
+    if not self.longitudinal_braking:
+      torque = float(interp(self.longitudinal_accel, LongitudinalParams.ACCEL_LOOKUP, LongitudinalParams.TORQUE_LOOKUP))
+      # Separate fields intentionally: equality is only the initial Elkoled approximation.
+      self.longitudinal_potential_torque = torque
+      self.longitudinal_wheel_torque = torque
+      self.longitudinal_min_time = LongitudinalParams.MIN_TIME_GMP_EXPERIMENTAL
+  # [psa longitudinal] - END
 
   def _reset_lat_state(self):
     self.status = 2
@@ -405,23 +442,29 @@ class CarController(CarControllerBase):
         self.neutral_radar.start(now_nanos)
     if self.neutral_radar is not None:
       self.neutral_radar.update(self.frame, now_nanos, CS.out.standstill, CS.out.canValid)
+    # [psa longitudinal] - START
+    self._update_longitudinal(CC, CS)
+    # [psa longitudinal] - END
+    if self.neutral_radar is not None:
       if self.neutral_radar.active:
         radar_frame = self.frame - self.neutral_radar.started_frame
         if radar_frame % 2 == 0:  # 50 Hz
           counter = (radar_frame // 2) % 16
-          # Fixed neutral inputs for this trial. Preserve the recorded inactive encodings.
+          # [psa longitudinal] - START
+          # Default profile retains the recorded neutral encodings. Only the experimental
+          # profile with a confirmed session and authorized longActive may request actuation.
           can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
             self.packer, PSA_ADAS_BUS,
-            mdd_desired_deceleration=2.05,
-            potential_wheel_torque_request=0,
-            min_time_for_desired_gear=0,
-            gmp_potential_wheel_torque=-4000,
-            acc_status=2,
-            gmp_wheel_torque=-4000,
-            wheel_torque_request=0,
+            mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
+            potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
+            min_time_for_desired_gear=self.longitudinal_min_time,
+            gmp_potential_wheel_torque=self.longitudinal_potential_torque,
+            acc_status=4 if self.longitudinal_active else 2,
+            gmp_wheel_torque=self.longitudinal_wheel_torque,
+            wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
             auto_braking_status=3,
-            mdd_decel_type=0,
-            mdd_decel_control_req=0,
+            mdd_decel_type=int(self.longitudinal_braking),
+            mdd_decel_control_req=int(self.longitudinal_braking),
             gear_type=counter & 1,  # observed alternating bit; its DBC name is unverified
             prefill_request=0,
             counter=counter,
@@ -429,7 +472,7 @@ class CarController(CarControllerBase):
           can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
             self.packer, PSA_ADAS_BUS,
             target_detected=0,
-            request_takeover=0,
+            request_takeover=self.takeover_req if self.longitudinal_enabled else 0,
             blind_sensor=0,
             req_visual_coll_alert_arc=0,
             req_audio_coll_alert_arc=0,
@@ -440,11 +483,18 @@ class CarController(CarControllerBase):
             aeb_enabled=0,
             drive_away_request=0,
             display_intervehicle_time=6.2,
-            mdd_decel_control_req=0,
+            mdd_decel_control_req=int(self.longitudinal_braking),
             auto_braking_status=3,
             counter=counter,
             target_position=0,
           ))
+          # The one periodic 0x2F6 also owns lateral takeover, including when longActive is false.
+          if self.longitudinal_enabled and self.takeover_req > 0:
+            self.start_takeover_repeats += 1
+            if self.start_takeover_repeats >= 2:
+              self.takeover_req = 0
+              self.start_takeover_repeats = 0
+          # [psa longitudinal] - END
         if radar_frame % 10 == 0:  # 10 Hz
           can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(
             self.packer, PSA_ADAS_BUS,
@@ -537,6 +587,10 @@ class CarController(CarControllerBase):
 
     # Actuators output
     new_actuators = actuators.as_builder()
+    # [psa longitudinal] - START
+    if self.longitudinal_profile:
+      new_actuators.accel = self.longitudinal_accel
+    # [psa longitudinal] - END
     if self.CP.steerControlType == SteerControlType.torque:
       # Keep last applied torque between 20 Hz LKA updates.
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.

@@ -24,6 +24,11 @@
 #define PSA_ADAS_BUS 1U
 #define PSA_CAM_BUS  2U
 
+// [psa longitudinal] - START
+#define PSA_LONG_CONTROL 1U  // safetyParam; matches opendbc/car/psa/values.py
+static bool psa_long_control = false;
+// [psa longitudinal] - END
+
 static uint8_t psa_get_counter(const CANPacket_t *msg) {
   uint8_t cnt = 0;
   if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
@@ -160,6 +165,48 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     .type = TorqueDriverLimited,
   };
 
+  // [psa longitudinal] - START
+  const bool longitudinal_allowed = psa_long_control && get_longitudinal_allowed() && !brake_pressed_prev;
+  if (msg->addr == PSA_HS2_DYN1_MDD_ETAT_2B6) {
+    const unsigned int accel = msg->data[0];                       // raw * 0.05 - 10.65 m/s^2
+    const unsigned int potential_req = msg->data[1] & 3U;
+    const unsigned int min_time = msg->data[1] >> 2;
+    const unsigned int potential = (msg->data[2] << 4) | (msg->data[3] >> 4); // raw * 4 - 4000 Nm
+    const unsigned int status = msg->data[3] & 15U;
+    const unsigned int wheel = (msg->data[4] << 6) | (msg->data[5] >> 2);     // raw - 4000 Nm
+    const unsigned int wheel_req = msg->data[5] & 3U;
+    const unsigned int auto_braking_status = msg->data[6] & 7U;
+    const unsigned int decel_type = (msg->data[6] >> 3) & 3U;
+    const bool decel_req = (msg->data[6] & 0x20U) != 0U;
+    const unsigned int gear_type = (msg->data[6] >> 6) & 1U;
+    const bool prefill = (msg->data[6] & 0x80U) != 0U;
+
+    const bool no_torque = (potential == 0U) && (wheel == 0U) && (wheel_req == 0U);
+    const bool no_decel = (accel == 254U) && (decel_type == 0U) && !decel_req;
+    const bool inactive = no_torque && no_decel && (potential_req == 0U) &&
+                          (min_time == 0U) && ((status == 2U) || (status == 3U));
+    // Bounds of the offline Elkoled-derived prototype, not calibrated vehicle limits.
+    const bool gmp = (potential_req == 1U) && (wheel_req == 1U) && no_decel &&
+                     (potential >= 900U) && (potential <= 1250U) &&
+                     (wheel >= 3600U) && (wheel <= 5000U) && (min_time == 62U);
+    // -1 .. -0.5 m/s^2: include -0.5 because commands just below the switch quantize to it.
+    const bool braking = (potential_req == 2U) && no_torque && (min_time == 0U) &&
+                         (decel_type == 1U) && decel_req && (accel >= 193U) && (accel <= 203U);
+    tx = !prefill && (auto_braking_status == 3U) && (gear_type == (psa_get_counter(msg) & 1U)) &&
+         (psa_get_checksum(msg) == psa_compute_checksum(msg)) &&
+         (inactive || (longitudinal_allowed && (status == 4U) && (gmp || braking)));
+  }
+
+  if (msg->addr == PSA_HS2_DYN_MDD_ETAT_2F6) {
+    const unsigned int takeover = (msg->data[0] >> 1) & 3U;
+    const bool aeb_or_auto_braking = (msg->data[2] & 0x30U) != 0U;
+    const bool drive_away = (msg->data[4] & 2U) != 0U;
+    const bool decel_req = (msg->data[5] & 4U) != 0U;
+    tx = (takeover <= 2U) && !aeb_or_auto_braking && !drive_away &&
+         (!decel_req || longitudinal_allowed) && (psa_get_checksum(msg) == psa_compute_checksum(msg));
+  }
+  // [psa longitudinal] - END
+
   // // Safety check for LKA
   if (msg->addr == PSA_LANE_KEEP_ASSIST) {
     // TORQUE: 31|11@0-
@@ -205,7 +252,9 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
 }
 
 static safety_config psa_init(uint16_t param) {
-  SAFETY_UNUSED(param);
+  // [psa longitudinal] - START
+  psa_long_control = GET_FLAG(param, PSA_LONG_CONTROL);
+  // [psa longitudinal] - END
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
     {PSA_IS_DAT_DIRA, PSA_CAM_BUS, 4, .check_relay = false}, // hold steering wheel

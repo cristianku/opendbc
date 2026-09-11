@@ -4,6 +4,9 @@ from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.carstate import CarState
 from opendbc.car.psa.values import CAR, LKAS_LIMITS
+# [psa longitudinal] - START
+from opendbc.car.psa.values import PSA_LONG_CONTROL
+# [psa longitudinal] - END
 
 class CarInterface(CarInterfaceBase):
   CarState = CarState
@@ -12,7 +15,16 @@ class CarInterface(CarInterfaceBase):
   def update(self, can_packets):
     if self.CC.neutral_radar is not None:
       can_packets = self.CC.neutral_radar.process_can(can_packets)
-    return super().update(can_packets)
+    # [psa longitudinal] - START
+    ret, ret_sp = super().update(can_packets)
+    if self.CC.longitudinal_profile:
+      radar = self.CC.neutral_radar
+      if not self.CC.longitudinal_enabled or not radar.active:
+        ret.cruiseState.available = False
+        ret.cruiseState.enabled = False
+      ret.accFaulted = ret.accFaulted or radar.stop_reason is not None
+    return ret, ret_sp
+    # [psa longitudinal] - END
 
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
@@ -41,8 +53,13 @@ class CarInterface(CarInterfaceBase):
 
     ret.radarUnavailable = True
 
-    ret.alphaLongitudinalAvailable = False
-    # ret.openpilotLongitudinalControl = alpha_long
+    # [psa longitudinal] - START
+    ret.alphaLongitudinalAvailable = candidate == CAR.PSA_PEUGEOT_3008
+    ret.openpilotLongitudinalControl = ret.alphaLongitudinalAvailable and alpha_long
+    if ret.openpilotLongitudinalControl:
+      ret.dashcamOnly = False
+      ret.safetyConfigs[0].safetyParam |= PSA_LONG_CONTROL
+    # [psa longitudinal] - END
 
     return ret
 
