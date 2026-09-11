@@ -9,6 +9,11 @@ class CarInterface(CarInterfaceBase):
   CarState = CarState
   CarController = CarController
 
+  def update(self, can_packets):
+    if self.CC.neutral_radar is not None:
+      can_packets = self.CC.neutral_radar.process_can(can_packets)
+    return super().update(can_packets)
+
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
     ret.brand = 'psa'
@@ -16,7 +21,7 @@ class CarInterface(CarInterfaceBase):
     ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.psa)]
 
     #
-    ret.dashcamOnly = False
+    ret.dashcamOnly = True
 
     if candidate in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)

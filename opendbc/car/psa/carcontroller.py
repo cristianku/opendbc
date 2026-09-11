@@ -1,9 +1,10 @@
 from opendbc.can.packer import CANPacker
 # [CLAUDE eps-rearm] - START
-from opendbc.car import Bus, structs, DT_CTRL, make_tester_present_msg
+from opendbc.car import Bus, structs, DT_CTRL
 # [CLAUDE eps-rearm] - END
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
+from opendbc.car.can_definitions import CanData
 from opendbc.car.psa.psacan import (
   # create_driver_torque,
   create_lka_steering,
@@ -11,8 +12,13 @@ from opendbc.car.psa.psacan import (
   # create_resume_acc,
   create_steering_hold,
   create_disable_radar,
+  create_HS2_DYN1_MDD_ETAT_2B6,
+  create_HS2_DYN_MDD_ETAT_2F6,
+  create_HS2_DAT_ARTIV_V2_4F6,
+  create_HS2_SUPV_ARTIV_796,
 )
-from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS
+from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
+from opendbc.car.psa.neutral_radar import NeutralRadar
 
 try:
   import openpilot.cereal.messaging as messaging
@@ -130,6 +136,7 @@ class CarController(CarControllerBase):
     # [artiv probe] - START
     self.artiv_programming_requested = False
     self.artiv_probe_last_frame = 0
+    self.neutral_radar = NeutralRadar() if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 else None
     # [artiv probe] - END
     self.bars = 4
     self.steering_hold_counter = 0
@@ -387,8 +394,7 @@ class CarController(CarControllerBase):
     # #  ELKOLED LONGITUDINAL CONTROL
 
     # [artiv probe] - START
-    # Parked ARTIV experiment: inspect 0x696 for 50 02 or 7F 10 xx and the TX echo.
-    # Sending is not proof of acceptance. No retries or TesterPresent keepalive.
+    # Parked ARTIV trial: wait for acceptance and silence before fixed neutral emulation.
     if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and not self.artiv_programming_requested:
       if not CS.out.standstill or not CS.out.canValid:
         # Restart the wait when moving or CAN data is unavailable.
@@ -396,6 +402,63 @@ class CarController(CarControllerBase):
       elif self.frame - self.artiv_probe_last_frame >= int(ARTIV_PROGRAMMING_WAIT / DT_CTRL):
         can_sends.append(create_disable_radar())
         self.artiv_programming_requested = True
+        self.neutral_radar.start(now_nanos)
+    if self.neutral_radar is not None:
+      self.neutral_radar.update(self.frame, now_nanos, CS.out.standstill, CS.out.canValid)
+      if self.neutral_radar.active:
+        radar_frame = self.frame - self.neutral_radar.started_frame
+        if radar_frame % 2 == 0:  # 50 Hz
+          counter = (radar_frame // 2) % 16
+          # Fixed neutral inputs for this trial. Preserve the recorded inactive encodings.
+          can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
+            self.packer, PSA_ADAS_BUS,
+            mdd_desired_deceleration=2.05,
+            potential_wheel_torque_request=0,
+            min_time_for_desired_gear=0,
+            gmp_potential_wheel_torque=-4000,
+            acc_status=2,
+            gmp_wheel_torque=-4000,
+            wheel_torque_request=0,
+            auto_braking_status=3,
+            mdd_decel_type=0,
+            mdd_decel_control_req=0,
+            gear_type=counter & 1,  # observed alternating bit; its DBC name is unverified
+            prefill_request=0,
+            counter=counter,
+          ))
+          can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
+            self.packer, PSA_ADAS_BUS,
+            target_detected=0,
+            request_takeover=0,
+            blind_sensor=0,
+            req_visual_coll_alert_arc=0,
+            req_audio_coll_alert_arc=0,
+            req_haptic_coll_alert_arc=0,
+            inter_vehicle_distance=255.5,
+            arc_status=6,
+            auto_braking_in_progress=0,
+            aeb_enabled=0,
+            drive_away_request=0,
+            display_intervehicle_time=6.2,
+            mdd_decel_control_req=0,
+            auto_braking_status=3,
+            counter=counter,
+            target_position=0,
+          ))
+        if radar_frame % 10 == 0:  # 10 Hz
+          can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(
+            self.packer, PSA_ADAS_BUS,
+            time_gap=25.5, distance_gap=254, relative_speed=93.8,  # recorded no-target sentinels
+            artiv_sensor_state=2, target_detected=0, artiv_target_change_info=0, traffic_direction=0,
+          ))
+        if radar_frame % 100 == 0:  # 1 Hz
+          can_sends.append(create_HS2_SUPV_ARTIV_796(
+            self.packer, PSA_ADAS_BUS,
+            fault_code=0, status_no_config=0, status_partial_wakeup_gmp=0, uce_electr_state=0,
+          ))
+          if radar_frame > 0:
+            can_sends.append(CanData(0x6B6, b'\x02\x3e\x00', PSA_ADAS_BUS))
+            self.neutral_radar.last_tester_present_nanos = now_nanos
     # [artiv probe] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
@@ -446,7 +509,9 @@ class CarController(CarControllerBase):
     #     self.creep_start_frame = 0
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      if self.takeover_req > 0 and self.frame % 2 == 0: # 50 Hz
+      # The neutral trial owns 0x2F6 after its request; never mix in model/lateral alerts.
+      neutral_trial_requested = self.neutral_radar is not None and self.neutral_radar.request_nanos is not None
+      if self.takeover_req > 0 and self.frame % 2 == 0 and not neutral_trial_requested: # 50 Hz
         self.start_takeover_repeats +=1
         # if self.takeover_start_msg_frame == 0:
         #   self.takeover_start_msg_frame = self.frame

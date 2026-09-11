@@ -60,51 +60,78 @@ def create_drive_away_request(packer, hs2_dyn_mdd_etat_2f6):
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, hs2_dyn_mdd_etat_2f6)
 
 
-# Radar, 50 Hz
-def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool, gasPressed: bool,
-                                 braking: bool, brakePressed: bool, standstill: bool, torque: int):
-  # TODO: if gas pressed, ACC_STATUS is set to suspended and decel can be set negative (about -300 Nm / -0.6m/s²) with brake mode inactive
-  # TODO: tune torque multiplier
-  # TODO: check difference between GMP_POTENTIAL_WHEEL_TORQUE and GMP_WHEEL_TORQUE
-  # TODO: transition from waiting to active enables torque control. For now, deactivate autohold or enable on brake pressed
-
+def create_HS2_DYN1_MDD_ETAT_2B6(packer, bus: int, *, mdd_desired_deceleration: float,
+                               potential_wheel_torque_request: int, min_time_for_desired_gear: float,
+                               gmp_potential_wheel_torque: float, acc_status: int, gmp_wheel_torque: float,
+                               wheel_torque_request: int, auto_braking_status: int, mdd_decel_type: int,
+                               mdd_decel_control_req: int, gear_type: int, prefill_request: int, counter: int):
   values = {
-    'MDD_DESIRED_DECELERATION': accel if braking and enabled else 2.05, # m/s²
-    'POTENTIAL_WHEEL_TORQUE_REQUEST': (2 if braking else 1) if enabled else 0,
-    'MIN_TIME_FOR_DESIRED_GEAR': 0.0 if braking or not enabled else 6.2,
-    'GMP_POTENTIAL_WHEEL_TORQUE': torque if not braking and enabled else -4000,
-    'ACC_STATUS': (5 if gasPressed else 2 if brakePressed and not standstill else 4) if enabled else (2 if brakePressed else 3),
-    'GMP_WHEEL_TORQUE': torque if not braking and enabled else -4000,
-    'WHEEL_TORQUE_REQUEST': 1 if enabled and not braking else 0, # TODO: test 1: high torque range 2: low torque range
-    'AUTO_BRAKING_STATUS': 3, # AEB # TODO: testing ALWAYS ENABLED to resolve DTC errors if enabled else 3, # maybe disabled on too high steering angle
-    'MDD_DECEL_TYPE': braking if enabled else 0,
-    'MDD_DECEL_CONTROL_REQ': braking if enabled else 0,
+    'MDD_DESIRED_DECELERATION': mdd_desired_deceleration,
+    'POTENTIAL_WHEEL_TORQUE_REQUEST': potential_wheel_torque_request,
+    'MIN_TIME_FOR_DESIRED_GEAR': min_time_for_desired_gear,
+    'GMP_POTENTIAL_WHEEL_TORQUE': gmp_potential_wheel_torque,
+    'ACC_STATUS': acc_status,
+    'GMP_WHEEL_TORQUE': gmp_wheel_torque,
+    'WHEEL_TORQUE_REQUEST': wheel_torque_request,
+    'AUTO_BRAKING_STATUS': auto_braking_status,
+    'MDD_DECEL_TYPE': mdd_decel_type,
+    'MDD_DECEL_CONTROL_REQ': mdd_decel_control_req,
+    'GEAR_TYPE': gear_type,
+    'PREFILL_REQUEST': prefill_request,
+    'COUNTER': counter,
   }
+  return packer.make_can_msg('HS2_DYN1_MDD_ETAT_2B6', bus, values)
 
-  return packer.make_can_msg('HS2_DYN1_MDD_ETAT_2B6', 1, values)
 
-
-# Radar, 50 Hz
-def create_HS2_DYN_MDD_ETAT_2F6(packer, braking: bool, lead_visible: bool, lead_distance_bars: int):
+def create_HS2_DYN_MDD_ETAT_2F6(packer, bus: int, *, target_detected: int, request_takeover: int, blind_sensor: int,
+                              req_visual_coll_alert_arc: int, req_audio_coll_alert_arc: int, req_haptic_coll_alert_arc: int,
+                              inter_vehicle_distance: float, arc_status: int, auto_braking_in_progress: int, aeb_enabled: int,
+                              drive_away_request: int, display_intervehicle_time: float, mdd_decel_control_req: int,
+                              auto_braking_status: int, counter: int, target_position: int):
   values = {
-    'TARGET_DETECTED': lead_visible,
-    # 'REQUEST_TAKEOVER': 0, # TODO potential signal for HUD message from OP
-    # 'BLIND_SENSOR': 0,
-    # 'REQ_VISUAL_COLL_ALERT_ARC': 0,
-    # 'REQ_AUDIO_COLL_ALERT_ARC': 0,
-    # 'REQ_HAPTIC_COLL_ALERT_ARC': 0,
-    # 'INTER_VEHICLE_DISTANCE': 255.5,#255.5, # TODO: <distance> if enabled else 255.5,
-    # 'ARC_STATUS': 6,  # 12 after 50 frames (1 sec) after AUTO_BRAKING_STATUS else 6
-    # 'AUTO_BRAKING_IN_PROGRESS': 0,
-    # 'AEB_ENABLED': 0,
-    # 'DRIVE_AWAY_REQUEST': 0, # TODO: potential RESUME request?
-    'DISPLAY_INTERVEHICLE_TIME': 5.0, # TODO: <time to vehicle> if enabled else 6.2,
-    'MDD_DECEL_CONTROL_REQ': braking,
-    # 'AUTO_BRAKING_STATUS': 3, # AEB # TODO: testing ALWAYS ENABLED to resolve DTC errors if enabled else 3, # maybe disabled on too high steering angle
-    'TARGET_POSITION': lead_distance_bars, # distance to lead car, far - 4, 3, 2, 1 - near
+    'TARGET_DETECTED': target_detected,
+    'REQUEST_TAKEOVER': request_takeover,
+    'BLIND_SENSOR': blind_sensor,
+    'REQ_VISUAL_COLL_ALERT_ARC': req_visual_coll_alert_arc,
+    'REQ_AUDIO_COLL_ALERT_ARC': req_audio_coll_alert_arc,
+    'REQ_HAPTIC_COLL_ALERT_ARC': req_haptic_coll_alert_arc,
+    'INTER_VEHICLE_DISTANCE': inter_vehicle_distance,
+    'ARC_STATUS': arc_status,
+    'AUTO_BRAKING_IN_PROGRESS': auto_braking_in_progress,
+    'AEB_ENABLED': aeb_enabled,
+    'DRIVE_AWAY_REQUEST': drive_away_request,
+    'DISPLAY_INTERVEHICLE_TIME': display_intervehicle_time,
+    'MDD_DECEL_CONTROL_REQ': mdd_decel_control_req,
+    'AUTO_BRAKING_STATUS': auto_braking_status,
+    'COUNTER': counter,
+    'TARGET_POSITION': target_position,
   }
+  return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', bus, values)
 
-  return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
+
+def create_HS2_DAT_ARTIV_V2_4F6(packer, bus: int, *, time_gap: float, distance_gap: float, relative_speed: float,
+                              artiv_sensor_state: int, target_detected: int, artiv_target_change_info: int, traffic_direction: int):
+  values = {
+    'TIME_GAP': time_gap,
+    'DISTANCE_GAP': distance_gap,
+    'RELATIVE_SPEED': relative_speed,
+    'ARTIV_SENSOR_STATE': artiv_sensor_state,
+    'TARGET_DETECTED': target_detected,
+    'ARTIV_TARGET_CHANGE_INFO': artiv_target_change_info,
+    'TRAFFIC_DIRECTION': traffic_direction,
+  }
+  return packer.make_can_msg('HS2_DAT_ARTIV_V2_4F6', bus, values)
+
+
+def create_HS2_SUPV_ARTIV_796(packer, bus: int, *, fault_code: int, status_no_config: int,
+                            status_partial_wakeup_gmp: int, uce_electr_state: int):
+  values = {
+    'FAULT_CODE': fault_code,
+    'STATUS_NO_CONFIG': status_no_config,
+    'STATUS_PARTIAL_WAKEUP_GMP': status_partial_wakeup_gmp,
+    'UCE_ELECTR_STATE': uce_electr_state,
+  }
+  return packer.make_can_msg('HS2_SUPV_ARTIV_796', bus, values)
 
 # def create_driver_torque(packer, steering, counter):
 #   #0x2F5 message

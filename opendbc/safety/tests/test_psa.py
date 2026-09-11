@@ -95,6 +95,39 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     self.assertTrue(self._rx(msg))
 
   # [artiv probe] - START
+  def test_artiv_neutral_messages(self):
+    from opendbc.can.packer import CANPacker
+    from opendbc.car.psa import psacan
+
+    packer = CANPacker('psa_aee2010_r3')
+    for controls_allowed in (False, True):
+      self.safety.set_controls_allowed(controls_allowed)
+      for counter in range(16):
+        messages = [
+          psacan.create_HS2_DYN1_MDD_ETAT_2B6(
+            packer, self.ADAS_BUS, mdd_desired_deceleration=2.05, potential_wheel_torque_request=0,
+            min_time_for_desired_gear=0, gmp_potential_wheel_torque=-4000, acc_status=2, gmp_wheel_torque=-4000,
+            wheel_torque_request=0, auto_braking_status=3, mdd_decel_type=0, mdd_decel_control_req=0,
+            gear_type=counter & 1, prefill_request=0, counter=counter,
+          ),
+          psacan.create_HS2_DYN_MDD_ETAT_2F6(
+            packer, self.ADAS_BUS, target_detected=0, request_takeover=0, blind_sensor=0,
+            req_visual_coll_alert_arc=0, req_audio_coll_alert_arc=0, req_haptic_coll_alert_arc=0,
+            inter_vehicle_distance=255.5, arc_status=6, auto_braking_in_progress=0, aeb_enabled=0,
+            drive_away_request=0, display_intervehicle_time=6.2, mdd_decel_control_req=0,
+            auto_braking_status=3, counter=counter, target_position=0,
+          ),
+          psacan.create_HS2_DAT_ARTIV_V2_4F6(
+            packer, self.ADAS_BUS, time_gap=25.5, distance_gap=254, relative_speed=93.8,
+            artiv_sensor_state=2, target_detected=0, artiv_target_change_info=0, traffic_direction=0,
+          ),
+          psacan.create_HS2_SUPV_ARTIV_796(
+            packer, self.ADAS_BUS, fault_code=0, status_no_config=0, status_partial_wakeup_gmp=0, uce_electr_state=0,
+          ),
+        ]
+        for address, data, bus in messages:
+          self.assertTrue(self._tx(libsafety_py.make_CANPacket(address, bus, data)))
+
   def test_artiv_short_tester_present(self):
     for controls_allowed in (False, True):
       self.safety.set_controls_allowed(controls_allowed)
