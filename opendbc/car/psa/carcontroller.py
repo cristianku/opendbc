@@ -18,7 +18,7 @@ from opendbc.car.psa.psacan import (
   create_HS2_SUPV_ARTIV_796,
 )
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
-from opendbc.car.psa.neutral_radar import NeutralRadar
+from opendbc.car.carlog import carlog
 # [psa longitudinal] - START
 from numpy import interp
 from opendbc.car.psa.values import LongitudinalParams, PSA_LONG_CONTROL
@@ -41,8 +41,10 @@ SteerControlType = structs.CarParams.SteerControlType
 
 
 # [artiv probe] - START
-ARTIV_PROGRAMMING_WAIT = 3.0  # seconds of valid CAN at standstill before the one-shot request
+ARTIV_PROGRAMMING_WAIT = 3.0  # seconds of valid CAN before the one-shot request, including while moving
 # [artiv probe] - END
+RADAR_IDS = (0x2B6, 0x2F6, 0x4F6, 0x796)
+RADAR_TX_TIMEOUTS = {0x2B6: 250_000_000, 0x2F6: 250_000_000, 0x4F6: 500_000_000, 0x796: 2_000_000_000}
 
 
 # [eps curve] - START
@@ -147,9 +149,19 @@ class CarController(CarControllerBase):
     self.artiv_programming_requested = False
     self.artiv_probe_last_frame = 0
     # [neutral motion] - START
-    # Keep substitutes and TesterPresent running after a parked start, including in reverse.
+    # Allow session startup and continued substitutes/TesterPresent while moving, including in reverse.
     # Actuation remains gated separately by longitudinal_enabled in _update_longitudinal.
-    self.neutral_radar = NeutralRadar(stationary_only=False) if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 else None
+    self.radar_request_nanos = None
+    self.radar_accepted_nanos = None
+    self.radar_started_nanos = None
+    self.radar_started_frame = None
+    self.radar_last_rx_nanos = None
+    self.radar_last_bus_nanos = 0
+    self.radar_last_diag_reply_nanos = 0
+    self.radar_last_tester_present_nanos = None
+    self.radar_last_echo_nanos = {}
+    self.radar_active = False
+    self.radar_stop_reason = None
     # [neutral motion] - END
     # [artiv probe] - END
     # [lead display] - START
@@ -175,6 +187,90 @@ class CarController(CarControllerBase):
     self.eps_state_last = 0
     self.takeover_msg_duration = int(self.params.TAKEOVER_MSG_DURATION / DT_CTRL)   # 0.1 s = 10 frame
 
+  def _stop_radar_session(self, reason):
+    self.radar_active = False
+    if self.radar_stop_reason is None:
+      self.radar_stop_reason = reason
+      carlog.warning('ARTIV session: stopped (%s); no automatic retry', reason)
+
+  def process_radar_can(self, can_packets):
+    if self.car_fingerprint != CAR.PSA_PEUGEOT_3008:
+      return can_packets
+    # Inspect all genuine RX first, so a radar return stops echo remapping even if an echo
+    # precedes it within this batch. src 129 is a TX receipt; src 193 is a blocked TX.
+    for nanos, messages in can_packets:
+      for address, data, src in messages:
+        if src != PSA_ADAS_BUS:
+          continue
+        self.radar_last_bus_nanos = max(self.radar_last_bus_nanos, nanos)
+        if address in RADAR_IDS:
+          self.radar_last_rx_nanos = nanos
+          if self.radar_active and nanos >= self.radar_started_nanos:
+            self._stop_radar_session('stock radar resumed')
+        if (address != 0x696 or self.radar_request_nanos is None or nanos <= self.radar_request_nanos
+            or self.radar_stop_reason is not None or len(data) < 3):
+          continue
+        size = data[0]
+        if not 2 <= size <= 7 or len(data) < size + 1:
+          continue  # only complete ISO-TP single frames, never stale/multiframe fields
+        if data[1:3] == b'\x50\x02' and size == 6 and self.radar_accepted_nanos is None:
+          self.radar_accepted_nanos = nanos
+          self.radar_last_diag_reply_nanos = nanos
+        elif (data[1:3] == b'\x7e\x00' and size == 2 and self.radar_active
+              and self.radar_last_tester_present_nanos is not None and nanos > self.radar_last_tester_present_nanos):
+          self.radar_last_diag_reply_nanos = nanos
+        elif size == 3 and data[1] == 0x7F and data[2] in (0x10, 0x3E) and data[3] != 0x78:
+          self._stop_radar_session(f'diagnostic refusal {data[2]:02x}/{data[3]:02x}')
+
+    if not self.radar_active:
+      return can_packets
+    result = []
+    for nanos, messages in can_packets:
+      received = []
+      for address, data, src in messages:
+        if src == PSA_ADAS_BUS + 128 and address in RADAR_IDS and nanos >= self.radar_started_nanos:
+          self.radar_last_echo_nanos[address] = nanos
+          src = PSA_ADAS_BUS
+        received.append(CanData(address, data, src))
+      result.append((nanos, received))
+    return result
+
+  def _update_radar_session(self, now_nanos, can_valid):
+    if self.radar_request_nanos is None or self.radar_stop_reason is not None:
+      return
+    if not self.radar_active:
+      if now_nanos - self.radar_request_nanos > 1_000_000_000:
+        self._stop_radar_session('no confirmed silent radar within 1 s')
+        return
+      # [radar handover] - START
+      # process_can inspects all genuine RX before update. Start on confirmation without
+      # an extra silence timer, unless stock frames were received at or after that reply.
+      # Equal timestamps cannot establish ordering within a CAN packet, so also block.
+      if (self.radar_accepted_nanos is None or self.radar_last_rx_nanos is None
+          or self.radar_last_rx_nanos >= self.radar_accepted_nanos):
+        return
+      # [radar handover] - END
+      if not can_valid:
+        self._stop_radar_session('vehicle CAN invalid before emulation')
+        return
+      self.radar_active = True
+      self.radar_started_nanos = now_nanos
+      self.radar_started_frame = self.frame
+      # [neutral motion] - START
+      carlog.info('ARTIV: emulation started (motion allowed)')
+      # [neutral motion] - END
+
+    if now_nanos - self.radar_last_bus_nanos > 250_000_000:
+      self._stop_radar_session('ADAS bus RX timeout')
+    elif any(now_nanos - self.radar_last_echo_nanos.get(addr, self.radar_started_nanos) > timeout for addr, timeout in RADAR_TX_TIMEOUTS.items()):
+      self._stop_radar_session('radar TX echo timeout')
+    elif now_nanos - self.radar_started_nanos > 250_000_000 and not can_valid:
+      # Allow the first real echoes/counters to settle, then require all vehicle CAN,
+      # including wheel speed and brake buses, rather than trusting a stale standstill.
+      self._stop_radar_session('vehicle CAN invalid')
+    elif now_nanos - self.radar_last_diag_reply_nanos > 2_000_000_000:
+      self._stop_radar_session('TesterPresent response timeout')
+
   # [psa longitudinal] - START
   def _update_longitudinal(self, CC, CS):
     """Prepare explicit CAN inputs. Experimental torque mapping; no emission or scheduling here."""
@@ -184,7 +280,7 @@ class CarController(CarControllerBase):
     self.longitudinal_potential_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_wheel_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_min_time = 0.0
-    if not (self.longitudinal_enabled and self.neutral_radar.active and CC.enabled and CC.longActive
+    if not (self.longitudinal_enabled and self.radar_active and CC.enabled and CC.longActive
             and CS.out.canValid and not CS.out.gasPressed and not CS.out.brakePressed
             and math.isfinite(CC.actuators.accel)):
       return
@@ -486,89 +582,88 @@ class CarController(CarControllerBase):
     # Only take over the stock radar when openpilot longitudinal is enabled.
     # Cruise engagement gates actuation separately; disengagement keeps the session alive.
     if self.longitudinal_enabled and not self.artiv_programming_requested:
-      if not CS.out.standstill or not CS.out.canValid:
-        # Restart the wait when moving or CAN data is unavailable.
+      if not CS.out.canValid:
+        # Restart the wait only when CAN data is unavailable.
         self.artiv_probe_last_frame = self.frame
       elif self.frame - self.artiv_probe_last_frame >= int(ARTIV_PROGRAMMING_WAIT / DT_CTRL):
         can_sends.append(create_disable_radar())
         self.artiv_programming_requested = True
-        self.neutral_radar.start(now_nanos)
+        self.radar_request_nanos = now_nanos
+        carlog.info('ARTIV session: programming requested; waiting for 50 02 and radar silence')
     # [radar optin] - END
-    if self.neutral_radar is not None:
-      self.neutral_radar.update(self.frame, now_nanos, CS.out.standstill, CS.out.canValid)
+    self._update_radar_session(now_nanos, CS.out.canValid)
     # [psa longitudinal] - START
     self._update_longitudinal(CC, CS)
     # [psa longitudinal] - END
-    if self.neutral_radar is not None:
-      if self.neutral_radar.active:
-        radar_frame = self.frame - self.neutral_radar.started_frame
-        if radar_frame % 2 == 0:  # 50 Hz
-          counter = (radar_frame // 2) % 16
-          # [lead display] - START
-          # Temporarily restore route 45's no-target display for radar fault diagnosis.
-          # lead_detected = self._update_lead_display(CC, CS)
-          lead_detected = False
-          # [lead display] - END
-          # [psa longitudinal] - START
-          # Default profile retains the recorded neutral encodings. Only the experimental
-          # profile with a confirmed session and authorized longActive may request actuation.
-          can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
-            self.packer, PSA_ADAS_BUS,
-            mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
-            potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
-            min_time_for_desired_gear=self.longitudinal_min_time,
-            gmp_potential_wheel_torque=self.longitudinal_potential_torque,
-            acc_status=4 if self.longitudinal_active else 2,
-            gmp_wheel_torque=self.longitudinal_wheel_torque,
-            wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
-            auto_braking_status=3,
-            mdd_decel_type=int(self.longitudinal_braking),
-            mdd_decel_control_req=int(self.longitudinal_braking),
-            gear_type=counter & 1,  # observed alternating bit; its DBC name is unverified
-            prefill_request=0,
-            counter=counter,
-          ))
-          can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
-            self.packer, PSA_ADAS_BUS,
-            # target_detected=int(lead_detected),
-            target_detected=0,
-            request_takeover=self.takeover_req if self.longitudinal_enabled else 0,
-            blind_sensor=0,
-            req_visual_coll_alert_arc=0,
-            req_audio_coll_alert_arc=0,
-            req_haptic_coll_alert_arc=0,
-            inter_vehicle_distance=255.5,
-            arc_status=6,
-            auto_braking_in_progress=0,
-            aeb_enabled=0,
-            drive_away_request=0,
-            display_intervehicle_time=6.2,
-            mdd_decel_control_req=int(self.longitudinal_braking),
-            auto_braking_status=3,
-            counter=counter,
-            target_position=self.bars if lead_detected else 0,
-          ))
-          # The one periodic 0x2F6 also owns lateral takeover, including when longActive is false.
-          if self.longitudinal_enabled and self.takeover_req > 0:
-            self.start_takeover_repeats += 1
-            if self.start_takeover_repeats >= 2:
-              self.takeover_req = 0
-              self.start_takeover_repeats = 0
-          # [psa longitudinal] - END
-        if radar_frame % 10 == 0:  # 10 Hz
-          can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(
-            self.packer, PSA_ADAS_BUS,
-            time_gap=25.5, distance_gap=254, relative_speed=93.8,  # recorded no-target sentinels
-            artiv_sensor_state=2, target_detected=0, artiv_target_change_info=0, traffic_direction=0,
-          ))
-        if radar_frame % 100 == 0:  # 1 Hz
-          can_sends.append(create_HS2_SUPV_ARTIV_796(
-            self.packer, PSA_ADAS_BUS,
-            fault_code=0, status_no_config=0, status_partial_wakeup_gmp=0, uce_electr_state=0,
-          ))
-          if radar_frame > 0:
-            can_sends.append(CanData(0x6B6, b'\x02\x3e\x00', PSA_ADAS_BUS))
-            self.neutral_radar.last_tester_present_nanos = now_nanos
+    if self.radar_active:
+      radar_frame = self.frame - self.radar_started_frame
+      if radar_frame % 2 == 0:  # 50 Hz
+        counter = (radar_frame // 2) % 16
+        # [lead display] - START
+        # Temporarily restore route 45's no-target display for radar fault diagnosis.
+        # lead_detected = self._update_lead_display(CC, CS)
+        lead_detected = False
+        # [lead display] - END
+        # [psa longitudinal] - START
+        # Default profile retains the recorded neutral encodings. Only the experimental
+        # profile with a confirmed session and authorized longActive may request actuation.
+        can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
+          self.packer, PSA_ADAS_BUS,
+          mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
+          potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
+          min_time_for_desired_gear=self.longitudinal_min_time,
+          gmp_potential_wheel_torque=self.longitudinal_potential_torque,
+          acc_status=4 if self.longitudinal_active else 2,
+          gmp_wheel_torque=self.longitudinal_wheel_torque,
+          wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
+          auto_braking_status=3,
+          mdd_decel_type=int(self.longitudinal_braking),
+          mdd_decel_control_req=int(self.longitudinal_braking),
+          gear_type=counter & 1,  # observed alternating bit; its DBC name is unverified
+          prefill_request=0,
+          counter=counter,
+        ))
+        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
+          self.packer, PSA_ADAS_BUS,
+          # target_detected=int(lead_detected),
+          target_detected=0,
+          request_takeover=self.takeover_req if self.longitudinal_enabled else 0,
+          blind_sensor=0,
+          req_visual_coll_alert_arc=0,
+          req_audio_coll_alert_arc=0,
+          req_haptic_coll_alert_arc=0,
+          inter_vehicle_distance=255.5,
+          arc_status=6,
+          auto_braking_in_progress=0,
+          aeb_enabled=0,
+          drive_away_request=0,
+          display_intervehicle_time=6.2,
+          mdd_decel_control_req=int(self.longitudinal_braking),
+          auto_braking_status=3,
+          counter=counter,
+          target_position=self.bars if lead_detected else 0,
+        ))
+        # The one periodic 0x2F6 also owns lateral takeover, including when longActive is false.
+        if self.longitudinal_enabled and self.takeover_req > 0:
+          self.start_takeover_repeats += 1
+          if self.start_takeover_repeats >= 2:
+            self.takeover_req = 0
+            self.start_takeover_repeats = 0
+        # [psa longitudinal] - END
+      if radar_frame % 10 == 0:  # 10 Hz
+        can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(
+          self.packer, PSA_ADAS_BUS,
+          time_gap=25.5, distance_gap=254, relative_speed=93.8,  # recorded no-target sentinels
+          artiv_sensor_state=2, target_detected=0, artiv_target_change_info=0, traffic_direction=0,
+        ))
+      if radar_frame % 100 == 0:  # 1 Hz
+        can_sends.append(create_HS2_SUPV_ARTIV_796(
+          self.packer, PSA_ADAS_BUS,
+          fault_code=0, status_no_config=0, status_partial_wakeup_gmp=0, uce_electr_state=0,
+        ))
+        if radar_frame > 0:
+          can_sends.append(CanData(0x6B6, b'\x02\x3e\x00', PSA_ADAS_BUS))
+          self.radar_last_tester_present_nanos = now_nanos
     # [artiv probe] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
@@ -619,9 +714,9 @@ class CarController(CarControllerBase):
     #     self.creep_start_frame = 0
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      # The neutral trial owns 0x2F6 after its request; never mix in model/lateral alerts.
-      neutral_trial_requested = self.neutral_radar is not None and self.neutral_radar.request_nanos is not None
-      if self.takeover_req > 0 and self.frame % 2 == 0 and not neutral_trial_requested: # 50 Hz
+      # The radar session owns 0x2F6 after its request; avoid separate takeover frames.
+      radar_session_requested = self.radar_request_nanos is not None
+      if self.takeover_req > 0 and self.frame % 2 == 0 and not radar_session_requested: # 50 Hz
         self.start_takeover_repeats +=1
         # if self.takeover_start_msg_frame == 0:
         #   self.takeover_start_msg_frame = self.frame

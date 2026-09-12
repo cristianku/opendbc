@@ -1,7 +1,8 @@
 # [psa longitudinal] - START
 import unittest
 
-from opendbc.car import structs
+from opendbc.car import DT_CTRL, structs
+from opendbc.car.psa.carcontroller import ARTIV_PROGRAMMING_WAIT
 from opendbc.car.psa.interface import CarInterface
 from opendbc.car.psa.tests.test_longitudinal import LongitudinalHarness, RADAR_IDS
 
@@ -20,20 +21,48 @@ class TestLongitudinalSession(unittest.TestCase):
         h.cs.out.vEgo = 5.0
         for _ in range(20):
           h.step()
-        self.assertTrue(h.controller.neutral_radar.active)
+        self.assertTrue(h.controller.radar_active)
         self.assertTrue(any(a in RADAR_IDS for a, _, _ in h.previous))
 
-  def test_moving_before_acceptance_does_not_start_emulation(self):
+  def test_session_can_start_while_moving_after_radar_acceptance(self):
     for engaged in (True, False):
       with self.subTest(engaged=engaged):
         h = LongitudinalHarness()
         h.cc.enabled = engaged
         h.cc.longActive = engaged
-        h.activate()
         h.cs.out.standstill = False
+        h.cs.out.vEgo = 5.0
+        h.activate()
         _, messages = h.step()
-        self.assertFalse(any(a in RADAR_IDS for a, _, _ in messages))
-        self.assertFalse(h.controller.neutral_radar.active)
+        self.assertTrue(any(a in RADAR_IDS for a, _, _ in messages))
+        self.assertTrue(h.controller.radar_active)
+        self.assertIsNone(h.controller.radar_stop_reason)
+
+  def test_moving_start_waits_for_valid_can_and_requests_only_once(self):
+    h = LongitudinalHarness()
+    h.frame = 0
+    h.cs.out.standstill = False
+    h.cs.out.vEgo = 5.0
+    wait_frames = int(ARTIV_PROGRAMMING_WAIT / DT_CTRL)
+    for _ in range(wait_frames):
+      _, messages = h.step()
+      self.assertFalse(any(a == 0x6B6 for a, _, _ in messages))
+    # Invalid CAN resets the wait even though the first interval has elapsed.
+    h.cs.out.canValid = False
+    _, messages = h.step()
+    self.assertFalse(any(a == 0x6B6 for a, _, _ in messages))
+    h.cs.out.canValid = True
+    for _ in range(wait_frames - 1):
+      _, messages = h.step()
+      self.assertFalse(any(a == 0x6B6 for a, _, _ in messages))
+    _, messages = h.step()
+    self.assertIn((0x6B6, b'\x02\x10\x02', 1), messages)
+    self.assertFalse(any(a in RADAR_IDS for a, _, _ in messages))
+    # Without a positive response there must be no emulation or repeated request.
+    for _ in range(120):
+      _, messages = h.step()
+      self.assertFalse(any(a in RADAR_IDS or a == 0x6B6 for a, _, _ in messages))
+    self.assertEqual(h.controller.radar_stop_reason, 'no confirmed silent radar within 1 s')
   # [radar optin] - END
 
   def test_disengagement_keeps_session_and_reengagement_restores_commands(self):
@@ -44,7 +73,7 @@ class TestLongitudinalSession(unittest.TestCase):
     h.cs.out.vEgo = 5.0
     h.cc.longActive = False
     _, values = h.emission()
-    self.assertTrue(h.controller.neutral_radar.active)
+    self.assertTrue(h.controller.radar_active)
     self.assertIn(0x2B6, values)
     self.assertEqual(values[0x2B6]['WHEEL_TORQUE_REQUEST'], 0)
     h.cc.longActive = True
@@ -57,11 +86,11 @@ class TestLongitudinalSession(unittest.TestCase):
     h.cc.actuators.accel = -0.75
     h.emission()
     now = h.frame * 10_000_000
-    h.controller.neutral_radar.process_can([(now, [(0x2F6, bytes.fromhex('00ff8600f8600f00'), 1)])])
+    h.controller.process_radar_can([(now, [(0x2F6, bytes.fromhex('00ff8600f8600f00'), 1)])])
     output, messages = h.step()
     self.assertFalse(any(a in RADAR_IDS or a == 0x6B6 for a, _, _ in messages))
     self.assertEqual(output.accel, 0)
-    self.assertEqual(h.controller.neutral_radar.stop_reason, 'stock radar resumed')
+    self.assertEqual(h.controller.radar_stop_reason, 'stock radar resumed')
 
   def test_invalid_can_cancels_actuation_before_echo_grace_expires(self):
     h = LongitudinalHarness()
@@ -81,11 +110,11 @@ class TestLongitudinalSession(unittest.TestCase):
     # Keep genuine bus RX and TX receipts alive, but no diagnostic replies.
     for frame in range(h.frame, h.frame + 210):
       now = frame * 10_000_000
-      h.controller.neutral_radar.process_can([(now, [(0x212, bytes(8), 1)] +
+      h.controller.process_radar_can([(now, [(0x212, bytes(8), 1)] +
                                                    [(a, d, 129) for a, d, _ in h.previous if a in RADAR_IDS])])
       h.controller.frame = frame
       output, h.previous = h.controller.update(h.cc.as_reader(), structs.CarControlSP(), h.cs, now)
-    self.assertEqual(h.controller.neutral_radar.stop_reason, 'TesterPresent response timeout')
+    self.assertEqual(h.controller.radar_stop_reason, 'TesterPresent response timeout')
     self.assertEqual(output.accel, 0)
     self.assertFalse(any(a in RADAR_IDS for a, _, _ in h.previous))
 
@@ -93,7 +122,7 @@ class TestLongitudinalSession(unittest.TestCase):
     h = LongitudinalHarness()
     interface = CarInterface(h.controller.CP, h.controller.CP_SP)
     # The actual interface/CarState path must export the session failure, independent of stock ACC faults.
-    interface.CC.neutral_radar.stop('TesterPresent response timeout')
+    interface.CC._stop_radar_session('TesterPresent response timeout')
     state, _ = interface.update([(20_000_000_000, [])])
     self.assertTrue(state.accFaulted)
     self.assertFalse(state.cruiseState.available)

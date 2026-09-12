@@ -41,10 +41,10 @@ class LongitudinalHarness:
     self.packer = CANPacker('psa_aee2010_r3')
 
   def activate(self):
-    radar = self.controller.neutral_radar
-    radar.process_can([(10_000_000_000, [(0x2B6, bytes.fromhex('fe0000020000030a'), 1)])])
+    radar = self.controller
+    radar.process_radar_can([(10_000_000_000, [(0x2B6, bytes.fromhex('fe0000020000030a'), 1)])])
     self.step()
-    radar.process_can([(10_067_000_000, [(0x696, bytes.fromhex('06500200c80014'), 1)])])
+    radar.process_radar_can([(10_067_000_000, [(0x696, bytes.fromhex('06500200c80014'), 1)])])
     self.frame = 1011
 
   def step(self):
@@ -52,7 +52,7 @@ class LongitudinalHarness:
     rx = [(0x212, bytes(8), 1)] + [(a, d, 129) for a, d, _ in self.previous if a in RADAR_IDS]
     if any(a == 0x6B6 and d == b'\x02\x3e\x00' for a, d, _ in self.previous):
       rx.append((0x696, b'\x02\x7e\x00', 1))
-    self.controller.neutral_radar.process_can([(now, rx)])
+    self.controller.process_radar_can([(now, rx)])
     self.controller.frame = self.frame
     output, self.previous = self.controller.update(self.cc.as_reader(), structs.CarControlSP(), self.cs, now)
     self.frame += 1
@@ -229,14 +229,14 @@ class TestLongitudinalCommands(unittest.TestCase):
         h = LongitudinalHarness(**kwargs)
         for tick in range(350):
           now = h.frame * 10_000_000
-          h.controller.neutral_radar.process_can([(now, [(0x2B6, bytes.fromhex('fe0000020000030a'), 1)])])
+          h.controller.process_radar_can([(now, [(0x2B6, bytes.fromhex('fe0000020000030a'), 1)])])
           if tick == 10:
-            h.controller.neutral_radar.process_can([(now, [(0x696, bytes.fromhex('06500200c80014'), 1)])])
+            h.controller.process_radar_can([(now, [(0x696, bytes.fromhex('06500200c80014'), 1)])])
           h.cs.out.standstill = tick < 200
           _, messages = h.step()
           self.assertFalse(any(a in RADAR_IDS or a == 0x6B6 for a, _, _ in messages), messages)
         self.assertFalse(h.controller.artiv_programming_requested)
-        self.assertFalse(h.controller.neutral_radar.active)
+        self.assertFalse(h.controller.radar_active)
   # [radar optin] - END
 
   def test_alpha_long_selects_peugeot_profile_and_matching_safety(self):

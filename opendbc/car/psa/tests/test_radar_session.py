@@ -61,7 +61,7 @@ class TestRadarMessageParameters(unittest.TestCase):
             builder(packer, bus=2, **partial)
 
 
-class TestNeutralRadar(unittest.TestCase):
+class TestRadarNeutralMessages(unittest.TestCase):
   def setUp(self):
     # [radar optin] - START
     cp = CarInterface.get_params(CAR.PSA_PEUGEOT_3008, {0: {}, 1: {}, 2: {}}, [], True, False, False)
@@ -71,10 +71,10 @@ class TestNeutralRadar(unittest.TestCase):
     self.cs = SimpleNamespace(eps_active=False, out=structs.CarState())
     self.cs.out.standstill = True
     self.cs.out.canValid = True
-    self.controller.neutral_radar.process_can([(10_000_000_000, [(0x2B6, bytes.fromhex('fe0000020000030a'), 1)])])
+    self.controller.process_radar_can([(10_000_000_000, [(0x2B6, bytes.fromhex('fe0000020000030a'), 1)])])
     self.controller.frame = 1000
     self.controller.update(structs.CarControl().as_reader(), structs.CarControlSP(), self.cs, 10_000_000_000)
-    self.controller.neutral_radar.process_can([(10_067_000_000, [(0x696, bytes.fromhex('06500200c80014'), 1)])])
+    self.controller.process_radar_can([(10_067_000_000, [(0x696, bytes.fromhex('06500200c80014'), 1)])])
     self.previous = []
 
   def messages_at(self, frame):
@@ -82,7 +82,7 @@ class TestNeutralRadar(unittest.TestCase):
     received = [(0x212, bytes(8), 1)] + [(a, d, 129) for a, d, _ in self.previous if a in RADAR_IDS]
     if any(a == 0x6B6 for a, _, _ in self.previous):
       received.append((0x696, b'\x02\x7e\x00', 1))
-    self.controller.neutral_radar.process_can([(now_nanos, received)])
+    self.controller.process_radar_can([(now_nanos, received)])
     self.controller.frame = 1011 + frame
     _, self.previous = self.controller.update(structs.CarControl().as_reader(), structs.CarControlSP(), self.cs, now_nanos)
     return [message for message in self.previous if message[0] in RADAR_IDS]
@@ -126,21 +126,21 @@ class TestNeutralRadar(unittest.TestCase):
     self.assertTrue(parser.can_valid)
 
 
-class TestNeutralRadarSession(unittest.TestCase):
+class TestRadarSession(unittest.TestCase):
   def setUp(self):
     # [radar optin] - START
     cp = CarInterface.get_params(CAR.PSA_PEUGEOT_3008, {0: {}, 1: {}, 2: {}}, [], True, False, False)
     # [radar optin] - END
     cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_PEUGEOT_3008)
     self.controller = CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)
-    self.assertTrue(hasattr(self.controller, 'neutral_radar'))
-    self.radar = self.controller.neutral_radar
+    self.assertTrue(hasattr(self.controller, 'radar_active'))
+    self.radar = self.controller
     self.cs = SimpleNamespace(eps_active=False, out=structs.CarState())
     self.cs.out.standstill = True
     self.cs.out.canValid = True
 
   def receive(self, seconds, messages):
-    return self.radar.process_can([(round(seconds * 1e9), messages)])
+    return self.radar.process_radar_can([(round(seconds * 1e9), messages)])
 
   def step(self, frame, now_nanos, stationary):
     self.controller.frame = frame
@@ -159,7 +159,7 @@ class TestNeutralRadarSession(unittest.TestCase):
     self.request()
     self.receive(10.067, [(0x696, bytes.fromhex('06500200c80014'), 1)])
     messages = self.step(1011, 10_110_000_000, True)
-    self.assertTrue(self.radar.active)
+    self.assertTrue(self.radar.radar_active)
     self.assertEqual({m[0] for m in messages}, RADAR_IDS)
     return messages
 
@@ -189,7 +189,7 @@ class TestNeutralRadarSession(unittest.TestCase):
       (0x4F6, bytes.fromhex('fffe5ffe00'), 1),
       (0x796, bytes(8), 1),
     ])
-    self.assertTrue(self.radar.active)
+    self.assertTrue(self.radar.radar_active)
 
   def test_stock_radar_after_confirmation_prevents_activation_even_after_silence(self):
     self.request()
@@ -198,8 +198,8 @@ class TestNeutralRadarSession(unittest.TestCase):
     self.assertEqual(self.step(1011, 10_110_000_000, True), [])
     self.assertEqual(self.step(1020, 10_200_000_000, True), [])
     self.assertEqual(self.step(1101, 11_010_000_000, True), [])
-    self.assertFalse(self.radar.active)
-    self.assertIsNotNone(self.radar.stop_reason)
+    self.assertFalse(self.radar.radar_active)
+    self.assertIsNotNone(self.radar.radar_stop_reason)
     self.receive(11.1, [(0x696, bytes.fromhex('06500200c80014'), 1)])
     self.assertEqual(self.step(1120, 11_200_000_000, True), [])
 
@@ -214,7 +214,7 @@ class TestNeutralRadarSession(unittest.TestCase):
           self.receive(10.067, [stock, reply] if stock_first else [reply, stock])
           self.assertEqual(self.step(1007, 10_070_000_000, True), [])
           self.assertEqual(self.step(1017, 10_170_000_000, True), [])
-          self.assertFalse(self.radar.active)
+          self.assertFalse(self.radar.radar_active)
   # [radar handover] - END
 
   def test_can_invalid_before_activation_never_starts_emulation(self):
@@ -224,24 +224,25 @@ class TestNeutralRadarSession(unittest.TestCase):
     self.controller.frame = 1011
     _, messages = self.controller.update(structs.CarControl().as_reader(), structs.CarControlSP(), self.cs, 10_110_000_000)
     self.assertFalse(any(m[0] in RADAR_IDS for m in messages))
-    self.assertFalse(self.radar.active)
-    self.assertEqual(self.radar.stop_reason, 'vehicle CAN invalid before emulation')
+    self.assertFalse(self.radar.radar_active)
+    self.assertEqual(self.radar.radar_stop_reason, 'vehicle CAN invalid before emulation')
 
   def test_stock_return_stops_before_remapping_echoes_in_same_batch(self):
     messages = self.activate()
     echo = [(a, d, 129) for a, d, _ in messages]
     packets = [(10_200_000_000, echo + [(0x4F6, bytes.fromhex('fffe5ffe00'), 1)])]
-    self.assertEqual(self.radar.process_can(packets), packets)
-    self.assertFalse(self.radar.active)
+    self.assertEqual(self.radar.process_radar_can(packets), packets)
+    self.assertFalse(self.radar.radar_active)
     self.assertEqual(self.step(1020, 10_200_000_000, True), [])
 
   # [neutral motion] - START
-  def test_motion_before_activation_stops_emulation_without_restarting(self):
+  def test_motion_while_waiting_does_not_cancel_session(self):
     self.request()
+    self.assertEqual(self.step(1006, 10_060_000_000, False), [])
+    self.assertIsNone(self.radar.radar_stop_reason)
     self.receive(10.067, [(0x696, bytes.fromhex('06500200c80014'), 1)])
-    self.assertEqual(self.step(1012, 10_120_000_000, False), [])
-    self.assertEqual(self.radar.stop_reason, 'vehicle moved')
-    self.assertEqual(self.step(2012, 20_120_000_000, True), [])
+    self.assertEqual({m[0] for m in self.step(1012, 10_120_000_000, False)}, RADAR_IDS)
+    self.assertTrue(self.radar.radar_active)
   # [neutral motion] - END
 
   def test_only_real_radar_tx_echoes_feed_parser_during_emulation(self):
@@ -249,15 +250,15 @@ class TestNeutralRadarSession(unittest.TestCase):
     packets = [(10_120_000_000, [(a, d, 129) for a, d, _ in messages] + [
       (0x452, bytes(6), 129), (0x2B6, bytes(8), 193),
     ])]
-    transformed = self.radar.process_can(packets)
+    transformed = self.radar.process_radar_can(packets)
     self.assertEqual([m[2] for m in transformed[0][1]], [1, 1, 1, 1, 129, 193])
     self.assertEqual(packets[0][1][0][2], 129)  # original log data are not mutated
-    self.assertEqual(self.radar.process_can([]), [])
+    self.assertEqual(self.radar.process_radar_can([]), [])
     # [neutral motion] - START
     self.receive(10.13, [(0x4F6, bytes.fromhex('fffe5ffe00'), 1)])
-    self.assertEqual(self.radar.stop_reason, 'stock radar resumed')
+    self.assertEqual(self.radar.radar_stop_reason, 'stock radar resumed')
     # [neutral motion] - END
-    self.assertEqual(self.radar.process_can(packets), packets)
+    self.assertEqual(self.radar.process_radar_can(packets), packets)
 
   # [neutral motion] - START
   def test_neutral_messages_and_keepalive_continue_through_reverse_and_drive(self):
@@ -290,8 +291,8 @@ class TestNeutralRadarSession(unittest.TestCase):
       cc.actuators.accel = 2.0 if (frame // 20) % 2 else -3.0
       cc.hudControl.leadVisible = True
       _, sent = self.controller.update(cc.as_reader(), structs.CarControlSP(), self.cs, round(now * 1e9))
-      self.assertTrue(self.radar.active, f'frame {frame}, {gear}, stationary={stationary}')
-      self.assertIsNone(self.radar.stop_reason)
+      self.assertTrue(self.radar.radar_active, f'frame {frame}, {gear}, stationary={stationary}')
+      self.assertIsNone(self.radar.radar_stop_reason)
       self.assertFalse(self.controller.longitudinal_active)
       self.assertFalse(self.controller.longitudinal_braking)
       previous = sent
@@ -325,7 +326,7 @@ class TestNeutralRadarSession(unittest.TestCase):
     self.activate()
     self.receive(10.5, [(0x212, bytes(8), 1)])
     self.assertEqual(self.step(1050, 10_500_000_000, True), [])
-    self.assertFalse(self.radar.active)
+    self.assertFalse(self.radar.radar_active)
 
   def test_missing_keepalive_reply_stops_even_with_working_can_and_echoes(self):
     previous = self.activate()
@@ -333,15 +334,15 @@ class TestNeutralRadarSession(unittest.TestCase):
       rx = [(0x212, bytes(8), 1)] + [(a, d, 129) for a, d, _ in previous if a in RADAR_IDS]
       self.receive(frame / 100, rx)
       previous = self.step(frame, frame * 10_000_000, True)
-    self.assertFalse(self.radar.active)
-    self.assertEqual(self.radar.stop_reason, 'TesterPresent response timeout')
+    self.assertFalse(self.radar.radar_active)
+    self.assertEqual(self.radar.radar_stop_reason, 'TesterPresent response timeout')
     self.assertEqual(previous, [])
 
   def test_missing_physical_bus_stops_even_with_recent_echoes(self):
     previous = self.activate()
     self.receive(10.32, [(a, d, 129) for a, d, _ in previous])
     self.assertEqual(self.step(1032, 10_320_000_000, True), [])
-    self.assertEqual(self.radar.stop_reason, 'ADAS bus RX timeout')
+    self.assertEqual(self.radar.radar_stop_reason, 'ADAS bus RX timeout')
 
   def test_invalid_vehicle_can_stops_after_initial_echo_grace(self):
     previous = self.activate()
@@ -350,18 +351,18 @@ class TestNeutralRadarSession(unittest.TestCase):
       self.receive(frame / 100, [(0x212, bytes(8), 1)] + [(a, d, 129) for a, d, _ in previous if a in RADAR_IDS])
       self.controller.frame = frame
       _, previous = self.controller.update(structs.CarControl().as_reader(), structs.CarControlSP(), self.cs, frame * 10_000_000)
-    self.assertFalse(self.radar.active)
-    self.assertEqual(self.radar.stop_reason, 'vehicle CAN invalid')
+    self.assertFalse(self.radar.radar_active)
+    self.assertEqual(self.radar.radar_stop_reason, 'vehicle CAN invalid')
 
 
-class TestNeutralRadarInterface(unittest.TestCase):
+class TestRadarSessionInterface(unittest.TestCase):
   def test_real_tx_echoes_maintain_can_valid_and_missing_echoes_are_not_hidden(self):
     # [radar optin] - START
     cp = CarInterface.get_params(CAR.PSA_PEUGEOT_3008, {0: {}, 1: {}, 2: {}}, [], True, False, False)
     # [radar optin] - END
     cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_PEUGEOT_3008)
     interface = CarInterface(cp, cp_sp)
-    self.assertTrue(hasattr(interface.CC, 'neutral_radar'))
+    self.assertTrue(hasattr(interface.CC, 'radar_active'))
     # Register the signals used by the real CarState, then simulate the other ECUs.
     interface.update([(0, [])])
     packers = {bus: CANPacker(parser.dbc_name) for bus, parser in interface.can_parsers.items()}
@@ -389,7 +390,7 @@ class TestNeutralRadarInterface(unittest.TestCase):
       interface.update([(tick * 10_000_000, frames)])
       interface.CC.frame = tick
       _, sent = interface.apply(control, structs.CarControlSP(), tick * 10_000_000)
-    self.assertTrue(interface.CC.neutral_radar.active)
+    self.assertTrue(interface.CC.radar_active)
 
     radar_echo_counts = Counter()
     for tick in range(1012, 1130):
@@ -412,7 +413,7 @@ class TestNeutralRadarInterface(unittest.TestCase):
       interface.CC.frame = tick
       interface.apply(control, structs.CarControlSP(), tick * 10_000_000)
     self.assertFalse(state.canValid)
-    self.assertFalse(interface.CC.neutral_radar.active)
+    self.assertFalse(interface.CC.radar_active)
 
 
 if __name__ == '__main__':

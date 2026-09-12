@@ -13,16 +13,14 @@ class CarInterface(CarInterfaceBase):
   CarController = CarController
 
   def update(self, can_packets):
-    if self.CC.neutral_radar is not None:
-      can_packets = self.CC.neutral_radar.process_can(can_packets)
+    can_packets = self.CC.process_radar_can(can_packets)
     # [psa longitudinal] - START
     ret, ret_sp = super().update(can_packets)
     if self.CC.longitudinal_profile:
-      radar = self.CC.neutral_radar
-      if not self.CC.longitudinal_enabled or not radar.active:
+      if not self.CC.longitudinal_enabled or not self.CC.radar_active:
         ret.cruiseState.available = False
         ret.cruiseState.enabled = False
-      ret.accFaulted = ret.accFaulted or radar.stop_reason is not None
+      ret.accFaulted = ret.accFaulted or self.CC.radar_stop_reason is not None
     return ret, ret_sp
     # [psa longitudinal] - END
 
