@@ -146,9 +146,11 @@ class CarController(CarControllerBase):
     # [artiv probe] - START
     self.artiv_programming_requested = False
     self.artiv_probe_last_frame = 0
-    # [psa longitudinal] - START
-    self.neutral_radar = NeutralRadar(stationary_only=not self.longitudinal_enabled) if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 else None
-    # [psa longitudinal] - END
+    # [neutral motion] - START
+    # Keep substitutes and TesterPresent running after a parked start, including in reverse.
+    # Actuation remains gated separately by longitudinal_enabled in _update_longitudinal.
+    self.neutral_radar = NeutralRadar(stationary_only=False) if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 else None
+    # [neutral motion] - END
     # [artiv probe] - END
     self.bars = 4
     self.steering_hold_counter = 0
@@ -431,7 +433,9 @@ class CarController(CarControllerBase):
     # #  ELKOLED LONGITUDINAL CONTROL
 
     # [artiv probe] - START
-    # Parked ARTIV trial: wait for acceptance and silence before fixed neutral emulation.
+    # [neutral motion] - START
+    # Start ARTIV substitution while parked, after acceptance and stock radar silence.
+    # [neutral motion] - END
     if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and not self.artiv_programming_requested:
       if not CS.out.standstill or not CS.out.canValid:
         # Restart the wait when moving or CAN data is unavailable.

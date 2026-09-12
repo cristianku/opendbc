@@ -231,10 +231,14 @@ class TestNeutralRadarSession(unittest.TestCase):
     self.assertFalse(self.radar.active)
     self.assertEqual(self.step(1020, 10_200_000_000, True), [])
 
-  def test_motion_stops_emulation_and_keepalive_without_restarting(self):
-    self.activate()
+  # [neutral motion] - START
+  def test_motion_before_activation_stops_emulation_without_restarting(self):
+    self.request()
+    self.receive(10.067, [(0x696, bytes.fromhex('06500200c80014'), 1)])
     self.assertEqual(self.step(1012, 10_120_000_000, False), [])
+    self.assertEqual(self.radar.stop_reason, 'vehicle moved')
     self.assertEqual(self.step(2012, 20_120_000_000, True), [])
+  # [neutral motion] - END
 
   def test_only_real_radar_tx_echoes_feed_parser_during_emulation(self):
     messages = self.activate()
@@ -245,14 +249,21 @@ class TestNeutralRadarSession(unittest.TestCase):
     self.assertEqual([m[2] for m in transformed[0][1]], [1, 1, 1, 1, 129, 193])
     self.assertEqual(packets[0][1][0][2], 129)  # original log data are not mutated
     self.assertEqual(self.radar.process_can([]), [])
-    self.step(1013, 10_130_000_000, False)
+    # [neutral motion] - START
+    self.receive(10.13, [(0x4F6, bytes.fromhex('fffe5ffe00'), 1)])
+    self.assertEqual(self.radar.stop_reason, 'stock radar resumed')
+    # [neutral motion] - END
     self.assertEqual(self.radar.process_can(packets), packets)
 
-  def test_keepalive_is_short_and_payloads_ignore_openpilot_commands(self):
-    self.activate()
-    previous = []
+  # [neutral motion] - START
+  def test_neutral_messages_and_keepalive_continue_through_reverse_and_drive(self):
+    previous = self.activate()
     all_messages = []
-    for frame in range(1012, 1212):
+    # Reverse selection, gas while stopped, first movement, stop, then forward motion.
+    phases = [(True, 'reverse', 0.0, False, True), (True, 'reverse', 0.0, True, False),
+              (False, 'reverse', 0.038194444, False, True), (True, 'reverse', 0.0, False, True),
+              (False, 'drive', 5.0, False, False)]
+    for frame in range(1012, 1412):
       now = frame / 100
       rx = [(0x212, bytes(8), 1)] + [(a, d, 129) for a, d, _ in previous if a in RADAR_IDS]
       if any(a == 0x6B6 for a, _, _ in previous):
@@ -260,22 +271,49 @@ class TestNeutralRadarSession(unittest.TestCase):
       self.receive(now, rx)
       self.controller.frame = frame
       self.controller.takeover_req = 3
+      stationary, gear, speed, gas, brake = phases[(frame - 1012) // 80]
+      self.cs.out.standstill = stationary
+      self.cs.out.gearShifter = gear
+      self.cs.out.vEgoRaw = speed
+      self.cs.out.vEgo = speed
+      self.cs.out.gasPressed = gas
+      self.cs.out.brakePressed = brake
       cc = structs.CarControl()
       cc.enabled = True
-      cc.actuators.accel = 2.0 if frame % 2 else -3.0
+      cc.longActive = True
+      cc.actuators.accel = 2.0 if (frame // 20) % 2 else -3.0
       cc.hudControl.leadVisible = True
       _, sent = self.controller.update(cc.as_reader(), structs.CarControlSP(), self.cs, round(now * 1e9))
+      self.assertTrue(self.radar.active, f'frame {frame}, {gear}, stationary={stationary}')
+      self.assertIsNone(self.radar.stop_reason)
+      self.assertFalse(self.controller.longitudinal_active)
+      self.assertFalse(self.controller.longitudinal_braking)
       previous = sent
       all_messages.extend(sent)
-    self.assertTrue(self.radar.active)
-    self.assertEqual([m for m in all_messages if m[0] == 0x6B6], [(0x6B6, b'\x02\x3e\x00', 1)] * 2)
+    self.assertEqual([m for m in all_messages if m[0] == 0x6B6], [(0x6B6, b'\x02\x3e\x00', 1)] * 4)
     self.assertFalse(any(m[0] == 0x452 for m in all_messages))
-    self.assertEqual(sum(m[0] == 0x2F6 for m in all_messages), 100)
-    for addr, data, _ in all_messages:
+    self.assertEqual(Counter(a for a, _, _ in all_messages if a in RADAR_IDS), {0x2B6: 200, 0x2F6: 200, 0x4F6: 40, 0x796: 4})
+    counters = {0x2B6: [], 0x2F6: []}
+    for addr, data, bus in all_messages:
+      if addr in RADAR_IDS:
+        self.assertEqual(bus, 1)
+      if addr in counters:
+        counters[addr].append(data[7 if addr == 0x2B6 else 6] >> 4)
+        self.assertEqual(sum((b >> 4) + (b & 15) for b in data) & 15, 12 if addr == 0x2B6 else 8)
       if addr == 0x2F6:
         self.assertEqual(data[:6], bytes.fromhex('00ff8600f860'))
+        self.assertEqual(data[7], 0)
       elif addr == 0x2B6:
         self.assertEqual(data[:6], bytes.fromhex('fe0000020000'))
+        self.assertEqual(data[6] & ~0x40, 3)  # Only the recorded alternating bit may change.
+        self.assertEqual((data[6] >> 6) & 1, (data[7] >> 4) & 1)
+      elif addr == 0x4F6:
+        self.assertEqual(data, bytes.fromhex('fffe5ffe00'))
+      elif addr == 0x796:
+        self.assertEqual(data, bytes(8))
+    for sequence in counters.values():
+      self.assertEqual(sequence, [counter % 16 for counter in range(1, 201)])
+  # [neutral motion] - END
 
   def test_missing_tx_echoes_end_trial(self):
     self.activate()

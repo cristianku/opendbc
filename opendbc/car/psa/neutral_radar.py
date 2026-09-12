@@ -79,12 +79,12 @@ class NeutralRadar:
   def update(self, frame, now_nanos, stationary, can_valid=True):
     if self.request_nanos is None or self.stop_reason is not None:
       return
-    # [psa longitudinal] - START
-    # Both profiles must start parked. Only a confirmed experimental session may continue moving.
+    # [neutral motion] - START
+    # Every session must start parked; the controller decides whether it may continue moving.
     if not stationary and (self.stationary_only or not self.active):
       self.stop('vehicle moved')
       return
-    # [psa longitudinal] - END
+    # [neutral motion] - END
     if not self.active:
       if now_nanos - self.request_nanos > 1_000_000_000:
         self.stop('no confirmed silent radar within 1 s')
@@ -103,9 +103,9 @@ class NeutralRadar:
       self.active = True
       self.started_nanos = now_nanos
       self.started_frame = frame
-      # [psa longitudinal] - START
-      carlog.info('ARTIV: emulation started (%s)', 'parked neutral trial' if self.stationary_only else 'experimental longitudinal')
-      # [psa longitudinal] - END
+      # [neutral motion] - START
+      carlog.info('ARTIV: emulation started (%s)', 'stationary only' if self.stationary_only else 'motion allowed')
+      # [neutral motion] - END
 
     if now_nanos - self.last_bus_nanos > 250_000_000:
       self.stop('ADAS bus RX timeout')
