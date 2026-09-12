@@ -41,7 +41,7 @@ SteerControlType = structs.CarParams.SteerControlType
 
 
 # [artiv probe] - START
-ARTIV_PROGRAMMING_WAIT = 1.0  # seconds of valid CAN at standstill before the one-shot request
+ARTIV_PROGRAMMING_WAIT = 3.0  # seconds of valid CAN at standstill before the one-shot request
 # [artiv probe] - END
 
 
@@ -505,7 +505,9 @@ class CarController(CarControllerBase):
         if radar_frame % 2 == 0:  # 50 Hz
           counter = (radar_frame // 2) % 16
           # [lead display] - START
-          lead_detected = self._update_lead_display(CC, CS)
+          # Temporarily restore route 45's no-target display for radar fault diagnosis.
+          # lead_detected = self._update_lead_display(CC, CS)
+          lead_detected = False
           # [lead display] - END
           # [psa longitudinal] - START
           # Default profile retains the recorded neutral encodings. Only the experimental
@@ -528,7 +530,8 @@ class CarController(CarControllerBase):
           ))
           can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
             self.packer, PSA_ADAS_BUS,
-            target_detected=int(lead_detected),
+            # target_detected=int(lead_detected),
+            target_detected=0,
             request_takeover=self.takeover_req if self.longitudinal_enabled else 0,
             blind_sensor=0,
             req_visual_coll_alert_arc=0,
