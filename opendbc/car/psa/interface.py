@@ -54,7 +54,10 @@ class CarInterface(CarInterfaceBase):
     ret.radarUnavailable = True
 
     # [psa longitudinal] - START
-    ret.alphaLongitudinalAvailable = candidate == CAR.PSA_PEUGEOT_3008
+    ret.alphaLongitudinalAvailable = candidate in (
+      CAR.PSA_PEUGEOT_3008,
+      CAR.PSA_CITROEN_C4_SPACETOURER,
+    )
     ret.openpilotLongitudinalControl = ret.alphaLongitudinalAvailable and alpha_long
     if ret.openpilotLongitudinalControl:
       ret.dashcamOnly = False
