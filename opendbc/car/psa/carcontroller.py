@@ -41,7 +41,7 @@ SteerControlType = structs.CarParams.SteerControlType
 
 
 # [artiv probe] - START
-ARTIV_PROGRAMMING_WAIT = 10.0  # seconds of valid CAN at standstill before the one-shot request
+ARTIV_PROGRAMMING_WAIT = 3.0  # seconds of valid CAN at standstill before the one-shot request
 # [artiv probe] - END
 
 
