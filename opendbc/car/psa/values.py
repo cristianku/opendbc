@@ -14,9 +14,15 @@ PSA_LONG_CONTROL = 1  # safetyParam bit selected by alpha_long on Peugeot 3008.
 
 
 class LongitudinalParams:
-  # Offline prototype from Elkoled, NOT a vehicle-validated acceleration/torque calibration.
-  ACCEL_LOOKUP = (-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0)
-  TORQUE_LOOKUP = (-400, -300, 120, 350, 550, 800, 1000)
+  # [torque calibration] - START
+  # Ingresso: accelerazione richiesta + 9.81*sin(pitch), m/s^2. Coppie: Nm secondo DBC.
+  # Punti 0..1: curva candidata dalla route 00000049--a95dde6809, confrontata con 3a.
+  # Fonte: openpilot_scripts/plans/longitudinal/analysis-route49/candidate_torque_table.csv.
+  # PROVVISORI (Elkoled): -1, -0.5, +1.5, +2 e interpolazione fuori da 0..1.
+  ACCEL_LOOKUP = (-1.0, -0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
+  TORQUE_LOOKUP = (-400, -300, 179, 301, 424, 547, 670, 800, 1000)
+  POTENTIAL_TORQUE_LOOKUP = (-400, -300, 169, 279, 390, 501, 612, 800, 1000)
+  # [torque calibration] - END
   BRAKE_ACCEL_THRESHOLD = -0.5
   MIN_TIME_GMP_EXPERIMENTAL = 6.2  # Does not reproduce the observed even/odd sequence.
   INACTIVE_ACCEL = 2.05

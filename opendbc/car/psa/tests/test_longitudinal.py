@@ -111,12 +111,66 @@ class TestLongitudinalCommands(unittest.TestCase):
     output, values = self.h.emission()
     self.assertEqual(values[0x2B6]['WHEEL_TORQUE_REQUEST'], 1)
     self.assertEqual(values[0x2B6]['POTENTIAL_WHEEL_TORQUE_REQUEST'], 1)
-    self.assertEqual(values[0x2B6]['GMP_WHEEL_TORQUE'], 350)
-    self.assertEqual(values[0x2B6]['GMP_POTENTIAL_WHEEL_TORQUE'], 352)
+    self.assertEqual(values[0x2B6]['GMP_WHEEL_TORQUE'], 424)
+    self.assertEqual(values[0x2B6]['GMP_POTENTIAL_WHEEL_TORQUE'], 392)
     self.assertEqual(values[0x2B6]['MIN_TIME_FOR_DESIRED_GEAR'], 6.2)
     self.assertEqual(values[0x2B6]['ACC_STATUS'], 4)
     self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], 0)
     self.assertAlmostEqual(output.accel, 0.5)
+
+  # [torque calibration] - START
+  def test_grade_adjusts_both_torque_fields_without_changing_acceleration_target(self):
+    # Same 0.5 m/s2 target, +/-0.25 m/s2 gravity contribution: independent
+    # reference points 0.25/0.50/0.75, with potential quantized to 4 Nm by DBC.
+    for pitch, wheel, potential in ((0.0, 424, 392),
+                                    (math.asin(0.25 / 9.81), 547, 500),
+                                    (-math.asin(0.25 / 9.81), 301, 280)):
+      with self.subTest(pitch=pitch):
+        self.h.cc.orientationNED = [0.0, pitch, 0.0]
+        output, values = self.h.emission()
+        self.assertEqual(values[0x2B6]['GMP_WHEEL_TORQUE'], wheel)
+        self.assertEqual(values[0x2B6]['GMP_POTENTIAL_WHEEL_TORQUE'], potential)
+        self.assertEqual(values[0x2B6]['MDD_DECEL_CONTROL_REQ'], 0)
+        self.assertAlmostEqual(output.accel, 0.5)
+
+  def test_interpolation_uses_separate_calibrated_fields(self):
+    self.h.cc.actuators.accel = 0.125
+    _, values = self.h.emission()
+    self.assertEqual(values[0x2B6]['GMP_WHEEL_TORQUE'], 240)
+    self.assertEqual(values[0x2B6]['GMP_POTENTIAL_WHEEL_TORQUE'], 224)
+
+  def test_grade_compensation_stays_within_existing_torque_bounds(self):
+    for pitch, wheel, potential in ((math.pi / 2, 1000, 1000), (-math.pi / 2, -400, -400)):
+      with self.subTest(pitch=pitch):
+        self.h.cc.orientationNED = [0.0, pitch, 0.0]
+        output, values = self.h.emission()
+        self.assertEqual(values[0x2B6]['GMP_WHEEL_TORQUE'], wheel)
+        self.assertEqual(values[0x2B6]['GMP_POTENTIAL_WHEEL_TORQUE'], potential)
+        self.assertAlmostEqual(output.accel, 0.5)
+
+  def test_invalid_pitch_clears_previous_gmp_request(self):
+    for pitch in (math.nan, math.inf, -math.inf):
+      with self.subTest(pitch=pitch):
+        h = LongitudinalHarness()
+        h.activate()
+        h.emission()
+        h.cc.orientationNED = [0.0, pitch, 0.0]
+        output, values = h.emission()
+        self.assert_inactive(values)
+        self.assertEqual(output.accel, 0)
+
+  def test_grade_does_not_modify_direct_braking_request(self):
+    self.h.cc.actuators.accel = -0.75
+    for pitch in (-0.1, 0.1, math.nan):
+      with self.subTest(pitch=pitch):
+        self.h.cc.orientationNED = [0.0, pitch, 0.0]
+        output, values = self.h.emission()
+        self.assertEqual(values[0x2B6]['MDD_DESIRED_DECELERATION'], -0.75)
+        self.assertEqual(values[0x2B6]['GMP_WHEEL_TORQUE'], -4000)
+        self.assertEqual(values[0x2B6]['GMP_POTENTIAL_WHEEL_TORQUE'], -4000)
+        self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], 1)
+        self.assertAlmostEqual(output.accel, -0.75)
+  # [torque calibration] - END
 
   def test_braking_flags_agree_and_gmp_request_is_removed(self):
     self.h.emission()

@@ -1,6 +1,6 @@
 from opendbc.can.packer import CANPacker
 # [CLAUDE eps-rearm] - START
-from opendbc.car import Bus, structs, DT_CTRL
+from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, Bus, structs, DT_CTRL
 # [CLAUDE eps-rearm] - END
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
@@ -189,15 +189,28 @@ class CarController(CarControllerBase):
             and math.isfinite(CC.actuators.accel)):
       return
 
+    # [torque calibration] - START
+    accel = max(LongitudinalParams.ACCEL_LOOKUP[0], min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]))
+    braking = accel < LongitudinalParams.BRAKE_ACCEL_THRESHOLD
+    pitch = 0.0  # No orientation supplied: use the level-road map.
+    if not braking and len(CC.orientationNED) == 3:
+      pitch = CC.orientationNED[1]
+      if not math.isfinite(pitch):
+        return
+
     self.longitudinal_active = True
-    self.longitudinal_accel = max(LongitudinalParams.ACCEL_LOOKUP[0], min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]))
-    self.longitudinal_braking = self.longitudinal_accel < LongitudinalParams.BRAKE_ACCEL_THRESHOLD
+    self.longitudinal_accel = accel
+    self.longitudinal_braking = braking
     if not self.longitudinal_braking:
-      torque = float(interp(self.longitudinal_accel, LongitudinalParams.ACCEL_LOOKUP, LongitudinalParams.TORQUE_LOOKUP))
-      # Separate fields intentionally: equality is only the initial Elkoled approximation.
-      self.longitudinal_potential_torque = torque
-      self.longitudinal_wheel_torque = torque
+      # Compensate the GMP map only: the brake ECU already takes a deceleration request.
+      # interp saturates to the existing provisional endpoints (-400..1000 Nm).
+      equivalent_accel = accel + ACCELERATION_DUE_TO_GRAVITY * math.sin(pitch)
+      self.longitudinal_potential_torque = float(interp(equivalent_accel, LongitudinalParams.ACCEL_LOOKUP,
+                                                       LongitudinalParams.POTENTIAL_TORQUE_LOOKUP))
+      self.longitudinal_wheel_torque = float(interp(equivalent_accel, LongitudinalParams.ACCEL_LOOKUP,
+                                                   LongitudinalParams.TORQUE_LOOKUP))
       self.longitudinal_min_time = LongitudinalParams.MIN_TIME_GMP_EXPERIMENTAL
+    # [torque calibration] - END
   # [psa longitudinal] - END
 
   # [lead display] - START
