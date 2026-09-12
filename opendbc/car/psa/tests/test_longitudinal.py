@@ -168,13 +168,22 @@ class TestLongitudinalCommands(unittest.TestCase):
         self.assertEqual(values[0x2B6]['MDD_DECEL_CONTROL_REQ'], braking)
         self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], braking)
 
-  def test_dashcam_passive_and_default_profiles_never_actuate(self):
+  # [radar optin] - START
+  def test_disabled_longitudinal_never_programs_or_substitutes_stock_radar(self):
     for kwargs in ({'dashcam': True}, {'passive': True}, {'experimental': False}, {'safety_flag': False}):
       with self.subTest(profile=kwargs):
         h = LongitudinalHarness(**kwargs)
-        h.activate()
-        _, values = h.emission()
-        self.assert_inactive(values)
+        for tick in range(350):
+          now = h.frame * 10_000_000
+          h.controller.neutral_radar.process_can([(now, [(0x2B6, bytes.fromhex('fe0000020000030a'), 1)])])
+          if tick == 10:
+            h.controller.neutral_radar.process_can([(now, [(0x696, bytes.fromhex('06500200c80014'), 1)])])
+          h.cs.out.standstill = tick < 200
+          _, messages = h.step()
+          self.assertFalse(any(a in RADAR_IDS or a == 0x6B6 for a, _, _ in messages), messages)
+        self.assertFalse(h.controller.artiv_programming_requested)
+        self.assertFalse(h.controller.neutral_radar.active)
+  # [radar optin] - END
 
   def test_alpha_long_selects_peugeot_profile_and_matching_safety(self):
     for platform in CAR:

@@ -41,7 +41,7 @@ SteerControlType = structs.CarParams.SteerControlType
 
 
 # [artiv probe] - START
-ARTIV_PROGRAMMING_WAIT = 3.0  # seconds of valid CAN at standstill before the one-shot request
+ARTIV_PROGRAMMING_WAIT = 1.0  # seconds of valid CAN at standstill before the one-shot request
 # [artiv probe] - END
 
 
@@ -152,7 +152,16 @@ class CarController(CarControllerBase):
     self.neutral_radar = NeutralRadar(stationary_only=False) if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 else None
     # [neutral motion] - END
     # [artiv probe] - END
+    # [lead display] - START
+    # Fasce Elkoled: r = distanza [m] / (5 + velocita [m/s]); non sono metri fissi.
+    # Alla comparsa del target: 0 = r < 1, 1 = 1 <= r < 2, 2 = 2 <= r < 3, 3 = r >= 3.
+    # Esempio a 36 km/h (10 m/s): 0 = 0-15 m, 1 = 15-30 m, 2 = 30-45 m, 3 = >=45 m
+    # (estremo superiore escluso). Poi l'isteresi cambia fascia oltre bars+1.2 o sotto bars-0.2.
+    # 4 = nessun target/dato non valido: stato interno, NON una fascia "piu distante".
+    # Sul CAN: target presente -> TARGET_POSITION 0..3; assente -> TARGET_DETECTED=0, POSITION=0.
+    # La corrispondenza grafica delle posizioni sul quadro resta da verificare sulla vettura.
     self.bars = 4
+    # [lead display] - END
     self.steering_hold_counter = 0
     self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
     self.driver_torque_counter = 0
@@ -190,6 +199,47 @@ class CarController(CarControllerBase):
       self.longitudinal_wheel_torque = torque
       self.longitudinal_min_time = LongitudinalParams.MIN_TIME_GMP_EXPERIMENTAL
   # [psa longitudinal] - END
+
+  # [lead display] - START
+  def _update_lead_display(self, CC, CS):
+    """Select the cluster target position using Elkoled's distance/speed heuristic."""
+    previous_bars = self.bars
+    self.bars = 4  # internal no-target sentinel; restart the bucket when a lead returns
+    if not CC.hudControl.leadVisible or self.model_sm is None:
+      return False
+
+    self.model_sm.update(0)
+    if not (self.model_sm.seen['modelV2'] and self.model_sm.valid['modelV2'] and self.model_sm.alive['modelV2']):
+      return False
+    leads = self.model_sm['modelV2'].leadsV3
+    if not leads or not leads[0].x:
+      return False
+    distance = leads[0].x[0]
+    denominator = 5 + CS.out.vEgo
+    if not (math.isfinite(distance) and distance >= 0 and math.isfinite(denominator) and denominator > 0):
+      return False
+    ratio = distance / denominator
+    if not math.isfinite(ratio):
+      return False
+
+    if previous_bars > 3:
+      self.bars = min(3, int(ratio))
+    elif ratio > previous_bars + 1.2:
+      self.bars = min(3, previous_bars + 1)
+    elif ratio < previous_bars - 0.2:
+      self.bars = max(0, previous_bars - 1)
+    else:
+      self.bars = previous_bars
+    # | `self.bars` | Distanza |
+    # |---|---|
+    # | `0` | Meno di 15 m |
+    # | `1` | Da 15 a meno di 30 m |
+    # | `2` | Da 30 a meno di 45 m |
+    # | `3` | 45 m o più |
+    # | `4` | **Nessun target o dati non validi** |
+    self.bars = 2
+    return True
+  # [lead display] - END
 
   def _reset_lat_state(self):
     self.status = 2
@@ -386,20 +436,6 @@ class CarController(CarControllerBase):
 
     # braking = accel_cmd < brake_accel and not CS.out.gasPressed
     # if self.CP.openpilotLongitudinalControl:
-    #   if CC.hudControl.leadVisible:
-    #     sm.update(0)
-    #     leads_v3 = sm['modelV2'].leadsV3
-    #     if leads_v3 and leads_v3[0].x:
-    #       r = leads_v3[0].x[0] / (5 + CS.out.vEgo)
-    #       if self.bars > 3:  # initialize from "no lead"
-    #         self.bars = min(3, int(r))
-    #       elif r > self.bars + 1.2:
-    #         self.bars = min(3, self.bars + 1)
-    #       elif r < self.bars - 0.2:
-    #         self.bars = max(0, self.bars - 1)
-    #   else:
-    #     self.bars = 4
-
     #   # disable radar ECU by setting to programming mode
     #   if self.radar_disabled == 0:
     #     can_sends.append(create_disable_radar())
@@ -433,10 +469,10 @@ class CarController(CarControllerBase):
     # #  ELKOLED LONGITUDINAL CONTROL
 
     # [artiv probe] - START
-    # [neutral motion] - START
-    # Start ARTIV substitution while parked, after acceptance and stock radar silence.
-    # [neutral motion] - END
-    if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and not self.artiv_programming_requested:
+    # [radar optin] - START
+    # Only take over the stock radar when openpilot longitudinal is enabled.
+    # Cruise engagement gates actuation separately; disengagement keeps the session alive.
+    if self.longitudinal_enabled and not self.artiv_programming_requested:
       if not CS.out.standstill or not CS.out.canValid:
         # Restart the wait when moving or CAN data is unavailable.
         self.artiv_probe_last_frame = self.frame
@@ -444,6 +480,7 @@ class CarController(CarControllerBase):
         can_sends.append(create_disable_radar())
         self.artiv_programming_requested = True
         self.neutral_radar.start(now_nanos)
+    # [radar optin] - END
     if self.neutral_radar is not None:
       self.neutral_radar.update(self.frame, now_nanos, CS.out.standstill, CS.out.canValid)
     # [psa longitudinal] - START
@@ -454,6 +491,9 @@ class CarController(CarControllerBase):
         radar_frame = self.frame - self.neutral_radar.started_frame
         if radar_frame % 2 == 0:  # 50 Hz
           counter = (radar_frame // 2) % 16
+          # [lead display] - START
+          lead_detected = self._update_lead_display(CC, CS)
+          # [lead display] - END
           # [psa longitudinal] - START
           # Default profile retains the recorded neutral encodings. Only the experimental
           # profile with a confirmed session and authorized longActive may request actuation.
@@ -475,7 +515,7 @@ class CarController(CarControllerBase):
           ))
           can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
             self.packer, PSA_ADAS_BUS,
-            target_detected=0,
+            target_detected=int(lead_detected),
             request_takeover=self.takeover_req if self.longitudinal_enabled else 0,
             blind_sensor=0,
             req_visual_coll_alert_arc=0,
@@ -490,7 +530,7 @@ class CarController(CarControllerBase):
             mdd_decel_control_req=int(self.longitudinal_braking),
             auto_braking_status=3,
             counter=counter,
-            target_position=0,
+            target_position=self.bars if lead_detected else 0,
           ))
           # The one periodic 0x2F6 also owns lateral takeover, including when longActive is false.
           if self.longitudinal_enabled and self.takeover_req > 0:

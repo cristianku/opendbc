@@ -7,11 +7,13 @@ from opendbc.car.psa.tests.test_longitudinal import LongitudinalHarness, RADAR_I
 
 
 class TestLongitudinalSession(unittest.TestCase):
-  # [neutral motion] - START
-  def test_confirmed_session_can_move_in_both_profiles(self):
-    for experimental in (True, False):
-      with self.subTest(experimental=experimental):
-        h = LongitudinalHarness(experimental=experimental)
+  # [radar optin] - START
+  def test_confirmed_session_can_move_with_cruise_engaged_or_disengaged(self):
+    for engaged in (True, False):
+      with self.subTest(engaged=engaged):
+        h = LongitudinalHarness()
+        h.cc.enabled = engaged
+        h.cc.longActive = engaged
         h.activate()
         h.emission()
         h.cs.out.standstill = False
@@ -22,15 +24,17 @@ class TestLongitudinalSession(unittest.TestCase):
         self.assertTrue(any(a in RADAR_IDS for a, _, _ in h.previous))
 
   def test_moving_before_acceptance_does_not_start_emulation(self):
-    for experimental in (True, False):
-      with self.subTest(experimental=experimental):
-        h = LongitudinalHarness(experimental=experimental)
+    for engaged in (True, False):
+      with self.subTest(engaged=engaged):
+        h = LongitudinalHarness()
+        h.cc.enabled = engaged
+        h.cc.longActive = engaged
         h.activate()
         h.cs.out.standstill = False
         _, messages = h.step()
         self.assertFalse(any(a in RADAR_IDS for a, _, _ in messages))
         self.assertFalse(h.controller.neutral_radar.active)
-  # [neutral motion] - END
+  # [radar optin] - END
 
   def test_disengagement_keeps_session_and_reengagement_restores_commands(self):
     h = LongitudinalHarness()

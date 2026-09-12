@@ -63,7 +63,9 @@ class TestRadarMessageParameters(unittest.TestCase):
 
 class TestNeutralRadar(unittest.TestCase):
   def setUp(self):
-    cp = CarInterface.get_non_essential_params(CAR.PSA_PEUGEOT_3008)
+    # [radar optin] - START
+    cp = CarInterface.get_params(CAR.PSA_PEUGEOT_3008, {0: {}, 1: {}, 2: {}}, [], True, False, False)
+    # [radar optin] - END
     cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_PEUGEOT_3008)
     self.controller = CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)
     self.cs = SimpleNamespace(eps_active=False, out=structs.CarState())
@@ -126,7 +128,9 @@ class TestNeutralRadar(unittest.TestCase):
 
 class TestNeutralRadarSession(unittest.TestCase):
   def setUp(self):
-    cp = CarInterface.get_non_essential_params(CAR.PSA_PEUGEOT_3008)
+    # [radar optin] - START
+    cp = CarInterface.get_params(CAR.PSA_PEUGEOT_3008, {0: {}, 1: {}, 2: {}}, [], True, False, False)
+    # [radar optin] - END
     cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_PEUGEOT_3008)
     self.controller = CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)
     self.assertTrue(hasattr(self.controller, 'neutral_radar'))
@@ -270,7 +274,6 @@ class TestNeutralRadarSession(unittest.TestCase):
         rx.append((0x696, b'\x02\x7e\x00', 1))
       self.receive(now, rx)
       self.controller.frame = frame
-      self.controller.takeover_req = 3
       stationary, gear, speed, gas, brake = phases[(frame - 1012) // 80]
       self.cs.out.standstill = stationary
       self.cs.out.gearShifter = gear
@@ -279,8 +282,11 @@ class TestNeutralRadarSession(unittest.TestCase):
       self.cs.out.gasPressed = gas
       self.cs.out.brakePressed = brake
       cc = structs.CarControl()
-      cc.enabled = True
-      cc.longActive = True
+      # [radar optin] - START
+      # Alpha is enabled, but cruise is disengaged: retain neutral requests while moving.
+      cc.enabled = False
+      cc.longActive = False
+      # [radar optin] - END
       cc.actuators.accel = 2.0 if (frame // 20) % 2 else -3.0
       cc.hudControl.leadVisible = True
       _, sent = self.controller.update(cc.as_reader(), structs.CarControlSP(), self.cs, round(now * 1e9))
@@ -350,7 +356,9 @@ class TestNeutralRadarSession(unittest.TestCase):
 
 class TestNeutralRadarInterface(unittest.TestCase):
   def test_real_tx_echoes_maintain_can_valid_and_missing_echoes_are_not_hidden(self):
-    cp = CarInterface.get_non_essential_params(CAR.PSA_PEUGEOT_3008)
+    # [radar optin] - START
+    cp = CarInterface.get_params(CAR.PSA_PEUGEOT_3008, {0: {}, 1: {}, 2: {}}, [], True, False, False)
+    # [radar optin] - END
     cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_PEUGEOT_3008)
     interface = CarInterface(cp, cp_sp)
     self.assertTrue(hasattr(interface.CC, 'neutral_radar'))
