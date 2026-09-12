@@ -174,12 +174,44 @@ class TestNeutralRadarSession(unittest.TestCase):
     self.receive(10.3, [(0x696, bytes.fromhex('06500200c80014'), 1)])
     self.assertEqual(self.step(1040, 10_400_000_000, True), [])
 
-  def test_positive_response_waits_for_stock_radar_silence(self):
+  # [radar handover] - START
+  def test_starts_on_first_control_cycle_after_positive_response(self):
+    self.request()
+    self.assertEqual(self.step(1006, 10_060_000_000, True), [])
+    self.receive(10.067, [(0x696, bytes.fromhex('06500200c80014'), 1)])
+    self.assertEqual(self.step(1007, 10_070_000_000, True), [
+      (0x2B6, bytes.fromhex('fe0000020000030a'), 1),
+      (0x2F6, bytes.fromhex('00ff8600f8600f00'), 1),
+      (0x4F6, bytes.fromhex('fffe5ffe00'), 1),
+      (0x796, bytes(8), 1),
+    ])
+    self.assertTrue(self.radar.active)
+
+  def test_stock_radar_after_confirmation_prevents_activation_even_after_silence(self):
     self.request()
     self.receive(10.067, [(0x696, bytes.fromhex('06500200c80014'), 1)])
     self.receive(10.09, [(0x2B6, bytes.fromhex('fe00000200004315'), 1)])
     self.assertEqual(self.step(1011, 10_110_000_000, True), [])
-    self.assertEqual({m[0] for m in self.step(1020, 10_200_000_000, True)}, RADAR_IDS)
+    self.assertEqual(self.step(1020, 10_200_000_000, True), [])
+    self.assertEqual(self.step(1101, 11_010_000_000, True), [])
+    self.assertFalse(self.radar.active)
+    self.assertIsNotNone(self.radar.stop_reason)
+    self.receive(11.1, [(0x696, bytes.fromhex('06500200c80014'), 1)])
+    self.assertEqual(self.step(1120, 11_200_000_000, True), [])
+
+  def test_stock_radar_in_confirmation_packet_blocks_activation_in_either_order(self):
+    for address in sorted(RADAR_IDS):
+      for stock_first in (True, False):
+        with self.subTest(address=hex(address), stock_first=stock_first):
+          self.setUp()
+          self.request()
+          stock = (address, bytes(5 if address == 0x4F6 else 8), 1)
+          reply = (0x696, bytes.fromhex('06500200c80014'), 1)
+          self.receive(10.067, [stock, reply] if stock_first else [reply, stock])
+          self.assertEqual(self.step(1007, 10_070_000_000, True), [])
+          self.assertEqual(self.step(1017, 10_170_000_000, True), [])
+          self.assertFalse(self.radar.active)
+  # [radar handover] - END
 
   def test_can_invalid_before_activation_never_starts_emulation(self):
     self.request()

@@ -89,9 +89,14 @@ class NeutralRadar:
       if now_nanos - self.request_nanos > 1_000_000_000:
         self.stop('no confirmed silent radar within 1 s')
         return
+      # [radar handover] - START
+      # process_can inspects all genuine RX before update. Start on confirmation without
+      # an extra silence timer, unless stock frames were received at or after that reply.
+      # Equal timestamps cannot establish ordering within a CAN packet, so also block.
       if (self.accepted_nanos is None or self.last_radar_rx_nanos is None
-          or now_nanos - self.last_radar_rx_nanos < 100_000_000):
+          or self.last_radar_rx_nanos >= self.accepted_nanos):
         return
+      # [radar handover] - END
       if not can_valid:
         self.stop('vehicle CAN invalid before emulation')
         return
