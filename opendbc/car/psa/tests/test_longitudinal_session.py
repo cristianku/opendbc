@@ -135,6 +135,24 @@ class TestLongitudinalSession(unittest.TestCase):
     state, _ = interface.update([(1, [])])
     self.assertFalse(state.cruiseState.available)
 
+  def test_cruise_main_follows_selector_independently_of_radar_session(self):
+    # A radar-ready transition must not look like a cruise-main button press to MADS.
+    for experimental in (False, True):
+      h = LongitudinalHarness(experimental=experimental)
+      interface = CarInterface(h.controller.CP, h.controller.CP_SP)
+      frame = 0
+      for mode, available in ((0, False), (3, True), (2, False), (1, True), (0, False)):
+        for radar_active in (False, True, False):
+          with self.subTest(experimental=experimental, mode=mode, radar_active=radar_active):
+            interface.CC.radar_active = radar_active
+            msg = h.packer.make_can_msg('HS2_DAT_MDD_CMD_452', 1, {
+              'LONGITUDINAL_REGULATION_TYPE': mode, 'RVV_ACC_ACTIVATION_REQ': int(available),
+            })
+            frame += 1
+            state, _ = interface.update([(frame * 50_000_000, [msg])])
+            self.assertEqual(state.cruiseState.available, available)
+            self.assertEqual(state.cruiseState.enabled, available and (not experimental or radar_active))
+
 
 if __name__ == '__main__':
   unittest.main()

@@ -131,6 +131,9 @@ static void psa_rx_hook(const CANPacket_t *msg) {
 
   if (msg->bus == PSA_ADAS_BUS) {
     if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
+      // LONGITUDINAL_REGULATION_TYPE: 0 off, 1 RVV, 2 limiter, 3 ACC.
+      const unsigned int regulation_type = msg->data[0] & 3U;
+      acc_main_on = (regulation_type == 1U) || (regulation_type == 3U);
       pcm_cruise_check((msg->data[2U] >> 7U) & 1U); // RVV_ACC_ACTIVATION_REQ
     }
   }

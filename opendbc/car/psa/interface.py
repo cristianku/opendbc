@@ -18,7 +18,8 @@ class CarInterface(CarInterfaceBase):
     ret, ret_sp = super().update(can_packets)
     if self.CC.longitudinal_profile:
       if not self.CC.longitudinal_enabled or not self.CC.radar_active:
-        ret.cruiseState.available = False
+        # Gate longitudinal engagement only. Changing cruise main here would
+        # create a synthetic MADS enable edge when the radar session starts.
         ret.cruiseState.enabled = False
       ret.accFaulted = ret.accFaulted or self.CC.radar_stop_reason is not None
     return ret, ret_sp

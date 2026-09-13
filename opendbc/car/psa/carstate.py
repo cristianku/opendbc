@@ -198,7 +198,9 @@ class CarState(CarStateBase):
     # PSA's dashboard adds its own display offset. Sunny must compare and
     # command the real CAN setpoint, so do not reproduce that offset here.
     ret.cruiseState.speedCluster = ret.cruiseState.speed
-    ret.cruiseState.available = True # not available for CC-only
+    # Cruise main: RVV or ACC selected, excluding off and the speed limiter.
+    # Keep this identical to acc_main_on in the PSA safety hook.
+    ret.cruiseState.available = cp_adas.vl['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'] in (1, 3)
     ret.cruiseState.nonAdaptive = False # not available for CC-only
 
     ret.cruiseState.standstill = False # not available for CC-only
