@@ -23,7 +23,9 @@ class LongitudinalParams:
   TORQUE_LOOKUP = (-400, -300, 179, 301, 424, 547, 670, 800, 1000)
   POTENTIAL_TORQUE_LOOKUP = (-400, -300, 169, 279, 390, 501, 612, 800, 1000)
   # [torque calibration] - END
-  BRAKE_ACCEL_THRESHOLD = -0.5
+  # [light braking] - START
+  BRAKE_ENTER_ACCEL = -0.5  # Provisional entry crossover; not a lower limit on light braking.
+  # [light braking] - END
   MIN_TIME_GMP_EXPERIMENTAL = 6.2  # Does not reproduce the observed even/odd sequence.
   INACTIVE_ACCEL = 2.05
   INACTIVE_TORQUE = -4000

@@ -148,6 +148,9 @@ class CarController(CarControllerBase):
     self.longitudinal_active = False
     self.acc_on_hold = False
     # [acc hold] - END
+    # [light braking] - START
+    self.longitudinal_braking = False
+    # [light braking] - END
     # [psa longitudinal] - END
     # [artiv probe] - START
     self.artiv_programming_requested = False
@@ -280,11 +283,14 @@ class CarController(CarControllerBase):
     """Prepare explicit CAN inputs. Experimental torque mapping; no emission or scheduling here."""
     # [acc hold] - START
     # Sunnypilot clears CC.enabled for DisengageOnAccelerator; temporary gas override
-    # keeps it enabled and clears longActive. Preserve only a previously active ACC.
+    # keeps it enabled and clears longActive, including engagement with gas already pressed.
     acc_enabled = (self.longitudinal_enabled and self.radar_active and CC.enabled
                    and CS.out.canValid and CS.out.cruiseState.enabled and not CS.out.brakePressed)
-    self.acc_on_hold = bool(acc_enabled and CS.out.gasPressed and (self.longitudinal_active or self.acc_on_hold))
+    self.acc_on_hold = bool(acc_enabled and CS.out.gasPressed)
     # [acc hold] - END
+    # [light braking] - START
+    was_braking = self.longitudinal_braking
+    # [light braking] - END
     self.longitudinal_active = False
     self.longitudinal_braking = False
     self.longitudinal_accel = 0.0
@@ -298,12 +304,24 @@ class CarController(CarControllerBase):
 
     # [torque calibration] - START
     accel = max(LongitudinalParams.ACCEL_LOOKUP[0], min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]))
-    braking = accel < LongitudinalParams.BRAKE_ACCEL_THRESHOLD
+    # [light braking] - START
+    # Keep the service brake through light deceleration and speed holding. Reset
+    # above on every update so pedals, disengagement and invalid accel/CAN clear it.
+    braking = accel < LongitudinalParams.BRAKE_ENTER_ACCEL or (was_braking and accel <= 0.0)
+    # [light braking] - END
     pitch = 0.0  # No orientation supplied: use the level-road map.
     if not braking and len(CC.orientationNED) == 3:
       pitch = CC.orientationNED[1]
       if not math.isfinite(pitch):
         return
+
+    # [light braking] - START
+    equivalent_accel = accel + ACCELERATION_DUE_TO_GRAVITY * math.sin(pitch)
+    # Use the existing provisional GMP/brake crossover with grade compensation
+    # for entry too: on a descent a light/zero target can require service braking.
+    # A positive vehicle-acceleration request always leaves the brake path.
+    braking |= accel <= 0.0 and equivalent_accel < LongitudinalParams.BRAKE_ENTER_ACCEL
+    # [light braking] - END
 
     self.longitudinal_active = True
     self.longitudinal_accel = accel
@@ -311,7 +329,6 @@ class CarController(CarControllerBase):
     if not self.longitudinal_braking:
       # Compensate the GMP map only: the brake ECU already takes a deceleration request.
       # interp saturates to the existing provisional endpoints (-400..1000 Nm).
-      equivalent_accel = accel + ACCELERATION_DUE_TO_GRAVITY * math.sin(pitch)
       self.longitudinal_potential_torque = float(interp(equivalent_accel, LongitudinalParams.ACCEL_LOOKUP,
                                                        LongitudinalParams.POTENTIAL_TORQUE_LOOKUP))
       self.longitudinal_wheel_torque = float(interp(equivalent_accel, LongitudinalParams.ACCEL_LOOKUP,

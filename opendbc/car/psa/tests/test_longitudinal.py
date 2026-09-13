@@ -180,13 +180,27 @@ class TestLongitudinalCommands(unittest.TestCase):
         self.assertNotIn(values[0x2B6]['ACC_STATUS'], (4, 5))
         self.assert_inactive(values)
 
-  def test_gas_without_previous_active_acc_does_not_create_hold(self):
+  def test_engagement_with_gas_already_pressed_creates_hold(self):
     self.h.cc.longActive = False
+    self.h.cc.enabled = False
+    self.h.cs.out.cruiseState.enabled = False
     self.h.cs.out.gasPressed = True
     _, values = self.h.emission()
     self.assertFalse(self.h.controller.acc_on_hold)
     self.assertNotIn(values[0x2B6]['ACC_STATUS'], (4, 5))
     self.assert_inactive(values)
+    self.h.cc.enabled = True
+    self.h.cs.out.cruiseState.enabled = True
+    for _ in range(20):
+      _, values = self.h.emission()
+      self.assertTrue(self.h.controller.acc_on_hold)
+      self.assertEqual(values[0x2B6]['ACC_STATUS'], 5)
+      self.assert_inactive(values)
+    self.h.cs.out.gasPressed = False
+    self.h.cc.longActive = True
+    _, values = self.h.emission()
+    self.assertFalse(self.h.controller.acc_on_hold)
+    self.assertEqual(values[0x2B6]['ACC_STATUS'], 4)
 
   def test_release_waits_for_longitudinal_authorization(self):
     self.h.emission()
@@ -350,6 +364,66 @@ class TestLongitudinalCommands(unittest.TestCase):
     self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], 1)
     self.assertAlmostEqual(output.accel, -0.75)
 
+  # [light braking] - START
+  def test_braking_remains_continuous_across_old_threshold_and_to_zero(self):
+    for accel in (-0.75, -0.49, -0.51, -0.15, -0.05, 0):
+      with self.subTest(accel=accel):
+        self.h.cc.actuators.accel = accel
+        output, values = self.h.emission()
+        b6, f6 = values[0x2B6], values[0x2F6]
+        self.assertEqual(b6['MDD_DECEL_CONTROL_REQ'], 1)
+        self.assertEqual(f6['MDD_DECEL_CONTROL_REQ'], 1)
+        self.assertAlmostEqual(b6['MDD_DESIRED_DECELERATION'], round(accel / 0.05) * 0.05)
+        self.assertEqual(b6['WHEEL_TORQUE_REQUEST'], 0)
+        self.assertEqual(b6['GMP_WHEEL_TORQUE'], -4000)
+        self.assertAlmostEqual(output.accel, accel)
+
+  def test_downhill_enters_light_braking_without_previous_strong_request(self):
+    for accel in (-0.4, -0.15, 0):
+      with self.subTest(accel=accel):
+        h = LongitudinalHarness()
+        h.activate()
+        h.cc.orientationNED = [0, -0.085, 0]  # Median pitch in route 56's repeated-braking interval.
+        h.cc.actuators.accel = accel
+        _, values = h.emission()
+        self.assertEqual(values[0x2B6]['MDD_DECEL_CONTROL_REQ'], 1)
+        self.assertAlmostEqual(values[0x2B6]['MDD_DESIRED_DECELERATION'], accel)
+
+  def test_positive_target_releases_brake_immediately(self):
+    self.h.cc.actuators.accel = -0.75
+    self.h.emission()
+    for accel in (0.01, 0):
+      self.h.cc.actuators.accel = accel
+      _, values = self.h.emission()
+      self.assertEqual(values[0x2B6]['MDD_DECEL_CONTROL_REQ'], 0)
+      self.assertEqual(values[0x2B6]['WHEEL_TORQUE_REQUEST'], 1)
+
+  def test_pedals_disengagement_and_invalid_inputs_reset_braking_mode(self):
+    for reason in ('gas', 'brake', 'enabled', 'longActive', 'cruise', 'canValid', 'accel'):
+      with self.subTest(reason=reason):
+        self.h = LongitudinalHarness()
+        self.h.activate()
+        self.h.cc.actuators.accel = -0.75
+        self.h.emission()
+        obj, field, value = {
+          'gas': (self.h.cs.out, 'gasPressed', True),
+          'brake': (self.h.cs.out, 'brakePressed', True),
+          'enabled': (self.h.cc, 'enabled', False),
+          'longActive': (self.h.cc, 'longActive', False),
+          'cruise': (self.h.cs.out.cruiseState, 'enabled', False),
+          'canValid': (self.h.cs.out, 'canValid', False),
+          'accel': (self.h.cc.actuators, 'accel', math.nan),
+        }[reason]
+        previous = getattr(obj, field)
+        setattr(obj, field, value)
+        _, values = self.h.emission()
+        self.assert_inactive(values)
+        setattr(obj, field, previous)
+        self.h.cc.actuators.accel = -0.15  # Level road: no stale braking mode after an interruption.
+        _, values = self.h.emission()
+        self.assertEqual(values[0x2B6]['MDD_DECEL_CONTROL_REQ'], 0)
+  # [light braking] - END
+
   def test_disengagement_and_pedals_remove_previous_requests(self):
     for field in ('longActive', 'enabled', 'gasPressed', 'brakePressed'):
       for accel in (0.5, -0.75):
@@ -378,6 +452,11 @@ class TestLongitudinalCommands(unittest.TestCase):
   def test_clamp_and_braking_boundary(self):
     for accel, expected_accel, wheel, braking in ((10, 2, 1000, 0), (-10, -1, -4000, 1), (-0.5, -0.5, -300, 0)):
       with self.subTest(accel=accel):
+        # [light braking] - START
+        # Entry boundary: do not inherit a braking episode from the previous case.
+        self.h = LongitudinalHarness()
+        self.h.activate()
+        # [light braking] - END
         self.h.cc.actuators.accel = accel
         output, values = self.h.emission()
         self.assertAlmostEqual(output.accel, expected_accel)

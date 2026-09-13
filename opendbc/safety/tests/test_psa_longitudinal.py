@@ -1,4 +1,8 @@
 # [psa longitudinal] - START
+# [light braking] - START
+import json
+from pathlib import Path
+# [light braking] - END
 import unittest
 
 from opendbc.can.packer import CANPacker
@@ -157,9 +161,58 @@ class TestPsaLongitudinalSafety(unittest.TestCase):
       for torque in (-400-quantum, -400, 1000, 1000+quantum):
         with self.subTest(field=field, torque=torque):
           self.assertEqual(self.tx(self.message(0x2B6, dict(self.gmp, **{field: torque}))), -400 <= torque <= 1000)
-    for accel in (-1.05, -1, -0.55, -0.5, -0.45, 2.05):
+    # [light braking] - START
+    for accel in (-1.05, -1, -0.55, -0.5, -0.45, -0.15, -0.05, 0, 0.05, 2.05):
       with self.subTest(accel=accel):
-        self.assertEqual(self.tx(self.message(0x2B6, dict(self.braking, MDD_DESIRED_DECELERATION=accel))), -1 <= accel <= -0.5)
+        self.assertEqual(self.tx(self.message(0x2B6, dict(self.braking, MDD_DESIRED_DECELERATION=accel))), -1 <= accel <= 0)
+    # [light braking] - END
+
+  # [light braking] - START
+  def test_light_braking_and_zero_keep_all_authorization_gates(self):
+    for accel in (-0.45, -0.15, -0.05, 0):
+      for flag in (0, PSA_LONG_CONTROL):
+        for controls in (False, True):
+          for pedal in ('none', 'gas', 'brake'):
+            with self.subTest(accel=accel, flag=flag, controls=controls, pedal=pedal):
+              self.configure(flag, controls)
+              if pedal == 'gas':
+                self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x228, 0, b'\x00\x00\x01' + bytes(5)))
+              elif pedal == 'brake':
+                self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x412, 2, b'\x20' + bytes(7)))
+              values = dict(self.braking, MDD_DESIRED_DECELERATION=accel)
+              self.assertEqual(self.tx(self.message(0x2B6, values)), bool(flag and controls and pedal == 'none'))
+              for changes in ({'ACC_STATUS': 5}, {'WHEEL_TORQUE_REQUEST': 1}, {'PREFILL_REQUEST': 1}):
+                self.assertFalse(self.tx(self.message(0x2B6, dict(values, **changes))))
+
+  def test_recorded_downhill_targets_keep_braking_and_pass_safety(self):
+    fixture_path = Path(__file__).parents[2] / 'car/psa/tests/fixtures/downhill_route56.json'
+    reference = json.loads(fixture_path.read_text())
+    h = LongitudinalHarness()
+    h.activate()
+    h.cs.out.vEgo = h.cs.out.vEgoRaw = 17.74
+    h.cs.out.standstill = False
+    counters = []
+    for index, (route_seconds, accel, pitch) in enumerate(reference['samples']):
+      h.cc.actuators.accel = accel
+      h.cc.orientationNED = [0, pitch, 0]
+      next_time = reference['samples'][index + 1][0] if index + 1 < len(reference['samples']) else route_seconds + 0.05
+      for _ in range(max(1, round((next_time - route_seconds) / 0.01))):
+        _, messages = h.step()
+        for message in messages:
+          if message[0] in RADAR_IDS:
+            self.assertTrue(self.tx(message), (route_seconds, message))
+          if message[0] == 0x2B6:
+            values = h.decode(message[0], message[1])
+            self.assertEqual(values['ACC_STATUS'], 4)
+            self.assertEqual(values['MDD_DECEL_CONTROL_REQ'], 1, route_seconds)
+            self.assertEqual(values['WHEEL_TORQUE_REQUEST'], 0)
+            self.assertAlmostEqual(values['MDD_DESIRED_DECELERATION'], accel, delta=0.05)
+            counters.append(values['COUNTER'])
+          if message[0] == 0x2F6:
+            self.assertEqual(h.decode(message[0], message[1])['MDD_DECEL_CONTROL_REQ'], 1)
+    self.assertGreater(len(counters), 200)
+    self.assertEqual(counters, [i % 16 for i in range(len(counters))])
+  # [light braking] - END
 
   def test_incompatible_and_unimplemented_requests_rejected(self):
     cases = [(self.neutral, {'GMP_WHEEL_TORQUE': 0}),
