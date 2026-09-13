@@ -26,6 +26,9 @@ class CarState(CarStateBase):
     super().__init__(CP, CP_SP)
     self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
     self.eps_state_lka = 0
+    # [inactive lka] - START
+    self.stock_lka_unknown2 = 24  # Preserve the existing payload until the first camera sample.
+    # [inactive lka] - END
     self.speed_kph = 0.0
     self.actual_gear = 0
     self.synthetic_cruise_kph = None
@@ -172,6 +175,12 @@ class CarState(CarStateBase):
     self.eps_state_lka = int(cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'])
     # [CLAUDE eps-closed-loop] - END
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
+    # [inactive lka] - START
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      stock_unknown2 = cp_cam.vl_all['LANE_KEEP_ASSIST']['unknown2']
+      if stock_unknown2:
+        self.stock_lka_unknown2 = int(stock_unknown2[-1])
+    # [inactive lka] - END
     self.steering = copy.copy(cp.vl['STEERING'])
     self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
 
@@ -243,10 +252,16 @@ class CarState(CarStateBase):
 
   @staticmethod
   def get_can_parsers(CP, CP_SP):
+    # [inactive lka] - START
+    # Observe the camera byte without adding a new CAN-validity requirement.
+    cam_messages = [('LANE_KEEP_ASSIST', math.nan)] if CP.carFingerprint == CAR.PSA_PEUGEOT_3008 else []
+    # [inactive lka] - END
     return {
       Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
       # Evento diagnostico: math.nan lo registra nel parser senza renderlo
       # obbligatorio per canValid quando non stiamo eseguendo il test ARTIV.
       Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [("Rep_Diag_ARTIV", math.nan)], 1),
-      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
+      # [inactive lka] - START
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, 2),
+      # [inactive lka] - END
     }

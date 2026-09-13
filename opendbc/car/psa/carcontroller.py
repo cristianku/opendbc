@@ -540,7 +540,14 @@ class CarController(CarControllerBase):
         else:
           can_torque = 0
         # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status))
-        can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status)) #,apply_new_torque_scaled))
+        # [inactive lka] - START
+        unknown2 = 24
+        if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and not CC.latActive:
+          unknown2 = getattr(CS, 'stock_lka_unknown2', 24)
+        can_sends.append(create_lka_steering(
+          self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status, unknown2=unknown2,
+        ))
+        # [inactive lka] - END
         # Remember the effective (scaled) value for the next frame's rate limit.
         self.apply_torque_scaled_last = apply_new_torque_scaled
         self.apply_can_torque_last = can_torque
