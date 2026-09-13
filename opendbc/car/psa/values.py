@@ -26,6 +26,9 @@ class LongitudinalParams:
   # [light braking] - START
   BRAKE_ENTER_ACCEL = -0.5  # Provisional entry crossover; not a lower limit on light braking.
   # [light braking] - END
+  # [brake limit] - START
+  BRAKE_MIN_ACCEL = -2.0  # Provisional service-brake limit, m/s^2; keep in sync with PSA safety.
+  # [brake limit] - END
   MIN_TIME_GMP_EXPERIMENTAL = 6.2  # Does not reproduce the observed even/odd sequence.
   INACTIVE_ACCEL = 2.05
   INACTIVE_TORQUE = -4000
@@ -61,8 +64,8 @@ class CarControllerParams:
     MIN_TORQUE_FACTOR = 25
 
     # [eps curve] - START
-    EPS_REARM_PERIOD = 18.0  # s
-    EPS_REARM_PERIOD_C4_SPACETOURER = 18.0  # s
+    EPS_REARM_PERIOD = 12.0  # s
+    EPS_REARM_PERIOD_C4_SPACETOURER = 12.0  # s
     EPS_REARM_EARLIEST_PERIOD = 3.0  # s
     # Keep curve prediction independent from the platform-specific hard deadline: after the
     # 3 s cooldown, use the remaining part of the original 8 s EPS window.

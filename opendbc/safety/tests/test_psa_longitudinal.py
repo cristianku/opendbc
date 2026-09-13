@@ -161,15 +161,16 @@ class TestPsaLongitudinalSafety(unittest.TestCase):
       for torque in (-400-quantum, -400, 1000, 1000+quantum):
         with self.subTest(field=field, torque=torque):
           self.assertEqual(self.tx(self.message(0x2B6, dict(self.gmp, **{field: torque}))), -400 <= torque <= 1000)
-    # [light braking] - START
-    for accel in (-1.05, -1, -0.55, -0.5, -0.45, -0.15, -0.05, 0, 0.05, 2.05):
+    # [brake limit] - START
+    for accel in (-2.05, -2, -1.85, -1.05, -1, -0.55, -0.5, -0.45, -0.15, -0.05, 0, 0.05, 2.05):
       with self.subTest(accel=accel):
-        self.assertEqual(self.tx(self.message(0x2B6, dict(self.braking, MDD_DESIRED_DECELERATION=accel))), -1 <= accel <= 0)
-    # [light braking] - END
+        self.assertEqual(self.tx(self.message(0x2B6, dict(self.braking, MDD_DESIRED_DECELERATION=accel))), -2 <= accel <= 0)
+    # [brake limit] - END
 
   # [light braking] - START
-  def test_light_braking_and_zero_keep_all_authorization_gates(self):
-    for accel in (-0.45, -0.15, -0.05, 0):
+  # [brake limit] - START
+  def test_braking_and_zero_keep_all_authorization_gates(self):
+    for accel in (-2, -1.85, -0.45, -0.15, -0.05, 0):
       for flag in (0, PSA_LONG_CONTROL):
         for controls in (False, True):
           for pedal in ('none', 'gas', 'brake'):
@@ -183,6 +184,7 @@ class TestPsaLongitudinalSafety(unittest.TestCase):
               self.assertEqual(self.tx(self.message(0x2B6, values)), bool(flag and controls and pedal == 'none'))
               for changes in ({'ACC_STATUS': 5}, {'WHEEL_TORQUE_REQUEST': 1}, {'PREFILL_REQUEST': 1}):
                 self.assertFalse(self.tx(self.message(0x2B6, dict(values, **changes))))
+  # [brake limit] - END
 
   def test_recorded_downhill_targets_keep_braking_and_pass_safety(self):
     fixture_path = Path(__file__).parents[2] / 'car/psa/tests/fixtures/downhill_route56.json'
@@ -213,6 +215,34 @@ class TestPsaLongitudinalSafety(unittest.TestCase):
     self.assertGreater(len(counters), 200)
     self.assertEqual(counters, [i % 16 for i in range(len(counters))])
   # [light braking] - END
+
+  # [brake limit] - START
+  def test_controller_strong_braking_to_release_passes_safety(self):
+    h = LongitudinalHarness()
+    h.activate()
+    counters = []
+    # Route 58 requested about -1.84; preserve it, then exercise the new limit,
+    # continuous light braking and immediate release on a positive target.
+    for requested, applied, encoded, braking in ((-1.84, -1.84, -1.85, 1), (-2.05, -2, -2, 1),
+                                                 (-0.49, -0.49, -0.5, 1), (0, 0, 0, 1), (0.01, 0.01, 2.05, 0)):
+      for _ in range(20):
+        h.cc.actuators.accel = requested
+        output, messages = h.step()
+        self.assertAlmostEqual(output.accel, applied)
+        for message in messages:
+          if message[0] in RADAR_IDS:
+            self.assertTrue(self.tx(message), (requested, message))
+          if message[0] == 0x2B6:
+            values = h.decode(message[0], message[1])
+            self.assertAlmostEqual(values['MDD_DESIRED_DECELERATION'], encoded)
+            self.assertEqual(values['MDD_DECEL_CONTROL_REQ'], braking)
+            self.assertEqual(values['WHEEL_TORQUE_REQUEST'], 1 - braking)
+            counters.append(values['COUNTER'])
+          if message[0] == 0x2F6:
+            self.assertEqual(h.decode(message[0], message[1])['MDD_DECEL_CONTROL_REQ'], braking)
+    self.assertEqual(len(counters), 50)
+    self.assertEqual(counters, [i % 16 for i in range(len(counters))])
+  # [brake limit] - END
 
   def test_incompatible_and_unimplemented_requests_rejected(self):
     cases = [(self.neutral, {'GMP_WHEEL_TORQUE': 0}),

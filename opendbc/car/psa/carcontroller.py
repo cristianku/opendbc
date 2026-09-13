@@ -323,6 +323,13 @@ class CarController(CarControllerBase):
     braking |= accel <= 0.0 and equivalent_accel < LongitudinalParams.BRAKE_ENTER_ACCEL
     # [light braking] - END
 
+    # [brake limit] - START
+    # The brake ECU takes vehicle deceleration directly, with its own limit.
+    # Preserve the requested value independently of the GMP map and pitch.
+    if braking:
+      accel = max(LongitudinalParams.BRAKE_MIN_ACCEL, min(CC.actuators.accel, 0.0))
+    # [brake limit] - END
+
     self.longitudinal_active = True
     self.longitudinal_accel = accel
     self.longitudinal_braking = braking

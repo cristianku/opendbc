@@ -424,9 +424,10 @@ class TestLongitudinalCommands(unittest.TestCase):
         self.assertEqual(values[0x2B6]['MDD_DECEL_CONTROL_REQ'], 0)
   # [light braking] - END
 
+  # [brake limit] - START
   def test_disengagement_and_pedals_remove_previous_requests(self):
     for field in ('longActive', 'enabled', 'gasPressed', 'brakePressed'):
-      for accel in (0.5, -0.75):
+      for accel in (0.5, -0.75, -2):
         with self.subTest(field=field, accel=accel):
           h = LongitudinalHarness()
           h.activate()
@@ -437,6 +438,7 @@ class TestLongitudinalCommands(unittest.TestCase):
           output, values = h.emission()
           self.assert_inactive(values)
           self.assertEqual(output.accel, 0)
+  # [brake limit] - END
 
   def test_non_finite_acceleration_cannot_leave_a_request_latched(self):
     for accel in (math.nan, math.inf, -math.inf):
@@ -449,8 +451,9 @@ class TestLongitudinalCommands(unittest.TestCase):
         self.assert_inactive(values)
         self.assertEqual(output.accel, 0)
 
+  # [brake limit] - START
   def test_clamp_and_braking_boundary(self):
-    for accel, expected_accel, wheel, braking in ((10, 2, 1000, 0), (-10, -1, -4000, 1), (-0.5, -0.5, -300, 0)):
+    for accel, expected_accel, wheel, braking in ((10, 2, 1000, 0), (-10, -2, -4000, 1), (-0.5, -0.5, -300, 0)):
       with self.subTest(accel=accel):
         # [light braking] - START
         # Entry boundary: do not inherit a braking episode from the previous case.
@@ -463,6 +466,25 @@ class TestLongitudinalCommands(unittest.TestCase):
         self.assertEqual(values[0x2B6]['GMP_WHEEL_TORQUE'], wheel)
         self.assertEqual(values[0x2B6]['MDD_DECEL_CONTROL_REQ'], braking)
         self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], braking)
+
+  def test_direct_braking_has_its_own_limit_independent_of_torque_and_grade(self):
+    for requested, applied, encoded in ((-1.84, -1.84, -1.85), (-2, -2, -2), (-2.05, -2, -2), (-10, -2, -2)):
+      for pitch in (-0.1, 0, 0.1):
+        with self.subTest(requested=requested, pitch=pitch):
+          self.h.cc.actuators.accel = requested
+          self.h.cc.orientationNED = [0, pitch, 0]
+          output, values = self.h.emission()
+          b6, f6 = values[0x2B6], values[0x2F6]
+          self.assertAlmostEqual(output.accel, applied)
+          self.assertAlmostEqual(b6['MDD_DESIRED_DECELERATION'], encoded)
+          self.assertEqual(b6['MDD_DECEL_CONTROL_REQ'], 1)
+          self.assertEqual(f6['MDD_DECEL_CONTROL_REQ'], 1)
+          self.assertEqual(b6['MDD_DECEL_TYPE'], 1)
+          self.assertEqual(b6['POTENTIAL_WHEEL_TORQUE_REQUEST'], 2)
+          self.assertEqual(b6['WHEEL_TORQUE_REQUEST'], 0)
+          self.assertEqual(b6['GMP_WHEEL_TORQUE'], -4000)
+          self.assertEqual(b6['GMP_POTENTIAL_WHEEL_TORQUE'], -4000)
+  # [brake limit] - END
 
   # [radar optin] - START
   def test_disabled_longitudinal_never_programs_or_substitutes_stock_radar(self):

@@ -215,12 +215,12 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     const bool gmp = (potential_req == 1U) && (wheel_req == 1U) && no_decel &&
                      (potential >= 900U) && (potential <= 1250U) &&
                      (wheel >= 3600U) && (wheel <= 5000U) && (min_time == 62U);
-    // [light braking] - START
-    // -1 .. 0 m/s^2: permit light braking/speed holding as observed from the stock
-    // radar, with the same strongest-braking limit and all actuation gates intact.
+    // [brake limit] - START
+    // -2 .. 0 m/s^2, including light braking/speed holding. Provisional service-brake
+    // limit, matching LongitudinalParams.BRAKE_MIN_ACCEL; all actuation gates apply.
     const bool braking = (potential_req == 2U) && no_torque && (min_time == 0U) &&
-                         (decel_type == 1U) && decel_req && (accel >= 193U) && (accel <= 213U);
-    // [light braking] - END
+                         (decel_type == 1U) && decel_req && (accel >= 173U) && (accel <= 213U);
+    // [brake limit] - END
     tx = !prefill && (auto_braking_status == 3U) && (gear_type == (psa_get_counter(msg) & 1U)) &&
          (psa_get_checksum(msg) == psa_compute_checksum(msg)) &&
          (inactive || (longitudinal_allowed && (status == 4U) && (gmp || braking)));
