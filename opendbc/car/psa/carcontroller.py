@@ -144,6 +144,10 @@ class CarController(CarControllerBase):
     self.longitudinal_enabled = (self.longitudinal_profile and not CP.dashcamOnly and not CP.passive
                                  and any(c.safetyModel == structs.CarParams.SafetyModel.psa and c.safetyParam & PSA_LONG_CONTROL
                                          for c in CP.safetyConfigs))
+    # [acc hold] - START
+    self.longitudinal_active = False
+    self.acc_on_hold = False
+    # [acc hold] - END
     # [psa longitudinal] - END
     # [artiv probe] - START
     self.artiv_programming_requested = False
@@ -274,16 +278,23 @@ class CarController(CarControllerBase):
   # [psa longitudinal] - START
   def _update_longitudinal(self, CC, CS):
     """Prepare explicit CAN inputs. Experimental torque mapping; no emission or scheduling here."""
+    # [acc hold] - START
+    # Sunnypilot clears CC.enabled for DisengageOnAccelerator; temporary gas override
+    # keeps it enabled and clears longActive. Preserve only a previously active ACC.
+    acc_enabled = (self.longitudinal_enabled and self.radar_active and CC.enabled
+                   and CS.out.canValid and CS.out.cruiseState.enabled and not CS.out.brakePressed)
+    self.acc_on_hold = bool(acc_enabled and CS.out.gasPressed and (self.longitudinal_active or self.acc_on_hold))
+    # [acc hold] - END
     self.longitudinal_active = False
     self.longitudinal_braking = False
     self.longitudinal_accel = 0.0
     self.longitudinal_potential_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_wheel_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_min_time = 0.0
-    if not (self.longitudinal_enabled and self.radar_active and CC.enabled and CC.longActive
-            and CS.out.canValid and not CS.out.gasPressed and not CS.out.brakePressed
-            and math.isfinite(CC.actuators.accel)):
+    # [acc hold] - START
+    if not (acc_enabled and CC.longActive and not CS.out.gasPressed and math.isfinite(CC.actuators.accel)):
       return
+    # [acc hold] - END
 
     # [torque calibration] - START
     accel = max(LongitudinalParams.ACCEL_LOOKUP[0], min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]))
@@ -608,6 +619,9 @@ class CarController(CarControllerBase):
         # Default profile retains the recorded neutral encodings. Only the experimental
         # profile with a confirmed session and authorized longActive may request actuation.
         acc_waiting = not CS.out.brakePressed and CS.out.vEgoRaw >= self.CP.minEnableSpeed
+        # [acc hold] - START
+        acc_status = 5 if self.acc_on_hold else (4 if self.longitudinal_active else (3 if acc_waiting else 2))
+        # [acc hold] - END
         can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
           self.packer, PSA_ADAS_BUS,
           mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
@@ -616,7 +630,9 @@ class CarController(CarControllerBase):
           gmp_potential_wheel_torque=self.longitudinal_potential_torque,
           # Stock radar announces Waiting before the BSI requests ACC activation.
           # Readiness does not authorize torque or braking requests.
-          acc_status=4 if self.longitudinal_active else (3 if acc_waiting else 2),
+          # [acc hold] - START
+          acc_status=acc_status,
+          # [acc hold] - END
           gmp_wheel_torque=self.longitudinal_wheel_torque,
           wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
           auto_braking_status=3,

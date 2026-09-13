@@ -119,6 +119,106 @@ class TestLongitudinalCommands(unittest.TestCase):
     self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], 0)
     self.assertAlmostEqual(output.accel, 0.5)
 
+  # [acc hold] - START
+  def test_accelerator_hold_releases_actuation_and_resumes_current_target(self):
+    for initial_accel in (0.5, -0.75):
+      with self.subTest(initial_accel=initial_accel):
+        self.h.cc.actuators.accel = initial_accel
+        self.h.emission()
+        self.h.cs.out.gasPressed = True
+        # Sunnypilot keeps enabled during pedal override when DisengageOnAccelerator is off.
+        self.h.cc.longActive = False
+        for _ in range(20):
+          output, values = self.h.emission()
+          self.assertEqual(values[0x2B6]['ACC_STATUS'], 5)
+          self.assertTrue(self.h.controller.acc_on_hold)
+          self.assert_inactive(values)
+          self.assertEqual(output.accel, 0)
+        self.h.cs.out.gasPressed = False
+        self.h.cc.longActive = True
+        self.h.cc.actuators.accel = 0.125
+        _, values = self.h.emission()
+        self.assertFalse(self.h.controller.acc_on_hold)
+        self.assertEqual(values[0x2B6]['ACC_STATUS'], 4)
+        self.assertEqual(values[0x2B6]['GMP_WHEEL_TORQUE'], 240)
+
+  def test_disengage_on_accelerator_does_not_resume_on_release(self):
+    self.h.emission()
+    # With DisengageOnAccelerator on, Sunnypilot also clears CC.enabled.
+    self.h.cc.enabled = False
+    self.h.cc.longActive = False
+    for gas in (True, False):
+      self.h.cs.out.gasPressed = gas
+      _, values = self.h.emission()
+      self.assertFalse(self.h.controller.acc_on_hold)
+      self.assertNotIn(values[0x2B6]['ACC_STATUS'], (4, 5))
+      self.assert_inactive(values)
+
+  def test_brake_cancel_and_invalid_can_clear_hold(self):
+    for reason in ('brake', 'cancel', 'cruise_off', 'invalid_can'):
+      with self.subTest(reason=reason):
+        self.h = LongitudinalHarness()
+        self.h.activate()
+        self.h.emission()
+        self.h.cs.out.gasPressed = True
+        self.h.cc.longActive = False
+        self.h.emission()
+        self.assertTrue(self.h.controller.acc_on_hold)
+        if reason == 'brake':
+          self.h.cs.out.brakePressed = True
+        elif reason == 'cancel':
+          self.h.cc.enabled = False
+        elif reason == 'cruise_off':
+          self.h.cs.out.cruiseState.enabled = False
+        else:
+          self.h.cs.out.canValid = False
+        _, values = self.h.emission()
+        self.assertFalse(self.h.controller.acc_on_hold)
+        self.assert_inactive(values)
+        self.h.cs.out.gasPressed = False
+        _, values = self.h.emission()
+        self.assertNotIn(values[0x2B6]['ACC_STATUS'], (4, 5))
+        self.assert_inactive(values)
+
+  def test_gas_without_previous_active_acc_does_not_create_hold(self):
+    self.h.cc.longActive = False
+    self.h.cs.out.gasPressed = True
+    _, values = self.h.emission()
+    self.assertFalse(self.h.controller.acc_on_hold)
+    self.assertNotIn(values[0x2B6]['ACC_STATUS'], (4, 5))
+    self.assert_inactive(values)
+
+  def test_release_waits_for_longitudinal_authorization(self):
+    self.h.emission()
+    self.h.cs.out.gasPressed = True
+    self.h.cc.longActive = False
+    self.h.emission()
+    self.h.cs.out.gasPressed = False
+    _, values = self.h.emission()
+    self.assertFalse(self.h.controller.acc_on_hold)
+    self.assertNotIn(values[0x2B6]['ACC_STATUS'], (4, 5))
+    self.assert_inactive(values)
+
+  def test_cruise_off_blocks_stale_active_command(self):
+    self.h.emission()
+    self.h.cs.out.cruiseState.enabled = False
+    _, values = self.h.emission()
+    self.assert_inactive(values)
+
+  def test_session_loss_clears_hold_and_stops_transmission(self):
+    self.h.emission()
+    self.h.cs.out.gasPressed = True
+    self.h.cc.longActive = False
+    self.h.emission()
+    self.assertTrue(self.h.controller.acc_on_hold)
+    now = self.h.frame * 10_000_000
+    self.h.controller.process_radar_can([(now, [(0x2F6, bytes.fromhex('00ff8600f8600f00'), 1)])])
+    output, messages = self.h.step()
+    self.assertFalse(self.h.controller.acc_on_hold)
+    self.assertEqual(output.accel, 0)
+    self.assertFalse(any(a in RADAR_IDS for a, _, _ in messages))
+  # [acc hold] - END
+
   def test_acc_waiting_before_engagement_and_after_brake_release(self):
     # Stock routes 3a/49 announce Waiting before the BSI activation request.
     self.h.cs.out.standstill = False

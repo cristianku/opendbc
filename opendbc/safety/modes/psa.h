@@ -5,6 +5,9 @@
 #define PSA_STEERING              757U  // RX from XXX, driver torque
 #define PSA_STEERING_ALT          773U  // RX from EPS, steering angle
 #define PSA_DRIVER                1390U // RX from XXX, gas pedal
+// [acc hold] - START
+#define PSA_DYN5_CMM               552U  // RX from engine, physical accelerator on 3008
+// [acc hold] - END
 #define PSA_DYN4_FRE              781U  // RX from CDS, wheel speeds
 #define PSA_HS2_DYN_UCF_MDD_32D   813U  // RX from UC_FREIN, standstill
 #define PSA_HS2_DYN_ABR_38D       909U  // RX from UC_FREIN, speed
@@ -28,6 +31,16 @@
 #define PSA_LONG_CONTROL 1U  // safetyParam; matches opendbc/car/psa/values.py
 static bool psa_long_control = false;
 // [psa longitudinal] - END
+
+// [acc hold] - START
+// Shared checks; the gas source is selected separately for each profile.
+#define PSA_COMMON_RX_CHECKS \
+  {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, {0}, {0}}}, \
+  {.msg = {{PSA_DYN4_FRE, PSA_MAIN_BUS, 8, 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, {0}, {0}}}, \
+  {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_MAIN_BUS, 8, 25U, .max_counter = 15U, .ignore_quality_flag = true}, {0}, {0}}}, \
+  {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .max_counter = 15U, .ignore_quality_flag = true}, {0}, {0}}}, \
+  {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, {0}, {0}}},
+// [acc hold] - END
 
 static uint8_t psa_get_counter(const CANPacket_t *msg) {
   uint8_t cnt = 0;
@@ -114,6 +127,11 @@ static void psa_rx_hook(const CANPacket_t *msg) {
   // }
 
   if (msg->bus == PSA_MAIN_BUS) {
+    // [acc hold] - START
+    if (psa_long_control && (msg->addr == PSA_DYN5_CMM)) {
+      gas_pressed = msg->data[2] > 0U; // P334_ACCPed_Position, same source as carstate.py
+    }
+    // [acc hold] - END
     // Wheel speeds from Dyn4_FRE - calculate average like carstate.py parse_wheel_speeds
     if (msg->addr == PSA_DYN4_FRE) {
       int fl = (msg->data[0] << 8) | msg->data[1];  // P263_VehV_VPsvValWhlFrtL
@@ -140,9 +158,11 @@ static void psa_rx_hook(const CANPacket_t *msg) {
 
 
   if (msg->bus == PSA_CAM_BUS) {
-    if (msg->addr == PSA_DRIVER) {
+    // [acc hold] - START
+    if (!psa_long_control && (msg->addr == PSA_DRIVER)) {
       gas_pressed = msg->data[3] > 0U; // GAS_PEDAL
     }
+    // [acc hold] - END
     if (msg->addr == PSA_DAT_BSI) {
       brake_pressed = (msg->data[0U] >> 5U) & 1U; // P013_MainBrake
     }
@@ -186,8 +206,11 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
 
     const bool no_torque = (potential == 0U) && (wheel == 0U) && (wheel_req == 0U);
     const bool no_decel = (accel == 254U) && (decel_type == 0U) && !decel_req;
+    // [acc hold] - START
+    // Suspended carries no actuation, including across pedal release/disengagement.
     const bool inactive = no_torque && no_decel && (potential_req == 0U) &&
-                          (min_time == 0U) && ((status == 2U) || (status == 3U));
+                          (min_time == 0U) && ((status == 2U) || (status == 3U) || (psa_long_control && (status == 5U)));
+    // [acc hold] - END
     // Bounds of the offline Elkoled-derived prototype, not calibrated vehicle limits.
     const bool gmp = (potential_req == 1U) && (wheel_req == 1U) && no_decel &&
                      (potential >= 900U) && (potential <= 1250U) &&
@@ -274,33 +297,24 @@ static safety_config psa_init(uint16_t param) {
     {PSA_HS2_DYN_MDD_ETAT_2F6, PSA_ADAS_BUS, 8, .check_relay = false},  // radar emulation
   };
 
+  // [acc hold] - START
+  // Require the physical 100 Hz pedal for the 3008 longitudinal profile; do not
+  // allow the constant-zero DRIVER message to satisfy this receive check instead.
+  static RxCheck psa_long_rx_checks[] = {
+    PSA_COMMON_RX_CHECKS
+    {.msg = {{PSA_DYN5_CMM, PSA_MAIN_BUS, 8, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, {0}, {0}}},
+  };
   static RxCheck psa_rx_checks[] = {
-    {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                        // cruise state
-    {.msg = {{PSA_DYN4_FRE, PSA_MAIN_BUS, 8, 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},      // wheel speeds (50Hz)
-    {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_MAIN_BUS, 8, 25U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                            // speed
-    // [CLAUDE steering-rx-counter] - START
-    // {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
-    // [CLAUDE steering-rx-checksum] - START
-    // {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .max_counter = 15U, .ignore_checksum = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},             // driver torque (counter verified, checksum TBD)
-    {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},             // driver torque (counter + checksum verified)
-    // [CLAUDE steering-rx-checksum] - END
-    // [CLAUDE steering-rx-counter] - END
-    {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},        // brake
-    // GAS_PEDAL - DRIVER -> 208: 6 Bytes, 508: 7 Bytes
-    // TODO: Berlingo uses Dyn5_CMM on MAIN_BUS for gas pedal
-    {.msg = {                                                                                                                                         // gas_pedal
+    PSA_COMMON_RX_CHECKS
+    {.msg = {
       {PSA_DRIVER, PSA_CAM_BUS, 5, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
       {PSA_DRIVER, PSA_CAM_BUS, 6, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
       {PSA_DRIVER, PSA_CAM_BUS, 7, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
     }},
-    // {.msg = {                                                                                                                                         // steering angle
-    //   {PSA_STEERING_ALT, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
-    //   {PSA_STEERING_ALT, PSA_CAM_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
-    //   { 0 },
-    // }},
   };
 
-  return BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
+  return psa_long_control ? BUILD_SAFETY_CFG(psa_long_rx_checks, PSA_TX_MSGS) : BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
+  // [acc hold] - END
 }
 
 const safety_hooks psa_hooks = {

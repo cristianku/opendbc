@@ -54,7 +54,9 @@ class TestPsaLongitudinalSafety(unittest.TestCase):
       with self.subTest(pedal=pedal):
         self.configure()
         if pedal == 'gas':
-          packet = libsafety_py.make_CANPacket(0x56E, 2, b'\x00\x00\x00\x01\x00')
+          # [acc hold] - START
+          packet = libsafety_py.make_CANPacket(0x228, 0, b'\x00\x00\x01' + bytes(5))
+          # [acc hold] - END
         else:
           packet = libsafety_py.make_CANPacket(0x412, 2, b'\x20' + bytes(7))
         self.assertTrue(self.safety.safety_rx_hook(packet))
@@ -64,6 +66,91 @@ class TestPsaLongitudinalSafety(unittest.TestCase):
         self.assertFalse(self.tx(self.message(0x2B6, self.braking)))
         self.assertFalse(self.tx(self.message(0x2F6, dict(self.display, MDD_DECEL_CONTROL_REQ=1))))
         self.assertTrue(self.tx(self.message(0x2B6, self.neutral)))
+
+  # [acc hold] - START
+  def test_hold_allows_only_neutral_payload_in_longitudinal_profile(self):
+    for flag in (0, PSA_LONG_CONTROL):
+      for controls in (False, True):
+        for gas in (False, True):
+          with self.subTest(flag=flag, controls=controls, gas=gas):
+            self.configure(flag, controls)
+            self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x228, 0, bytes([0, 0, int(gas), 0, 0, 0, 0, 0])))
+            hold = dict(self.neutral, ACC_STATUS=5)
+            self.assertEqual(self.tx(self.message(0x2B6, hold)), bool(flag))
+            for field, value in (('GMP_WHEEL_TORQUE', 0), ('GMP_POTENTIAL_WHEEL_TORQUE', 0),
+                                 ('WHEEL_TORQUE_REQUEST', 1), ('POTENTIAL_WHEEL_TORQUE_REQUEST', 1),
+                                 ('MIN_TIME_FOR_DESIRED_GEAR', 6.2), ('MDD_DESIRED_DECELERATION', -0.75),
+                                 ('MDD_DECEL_CONTROL_REQ', 1), ('MDD_DECEL_TYPE', 1), ('PREFILL_REQUEST', 1)):
+              self.assertFalse(self.tx(self.message(0x2B6, dict(hold, **{field: value}))), field)
+            for active in (self.gmp, self.braking):
+              self.assertFalse(self.tx(self.message(0x2B6, dict(active, ACC_STATUS=5))))
+
+  def test_physical_pedal_source_is_selected_and_reset_with_profile(self):
+    for flag in (PSA_LONG_CONTROL, 0, PSA_LONG_CONTROL):
+      with self.subTest(flag=flag):
+        self.configure(flag)
+        address, bus, length, byte = (0x228, 0, 8, 2) if flag else (0x56E, 2, 5, 3)
+        data = bytearray(length)
+        data[byte] = 1
+        self.assertTrue(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(address, bus, data)))
+        self.assertTrue(self.safety.get_gas_pressed_prev())
+        # The unused source cannot overwrite the real pedal with a constant zero.
+        other_address, other_bus, other_length = (0x56E, 2, 5) if flag else (0x228, 0, 8)
+        self.safety.safety_rx_hook(libsafety_py.make_CANPacket(other_address, other_bus, bytes(other_length)))
+        self.assertTrue(self.safety.get_gas_pressed_prev())
+        self.assertTrue(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(address, bus, bytes(length))))
+        self.assertFalse(self.safety.get_gas_pressed_prev())
+
+  def test_controller_hold_frames_pass_safety_with_physical_pedal(self):
+    for disengage in (False, True):
+      with self.subTest(disengage=disengage):
+        self.configure()
+        h = LongitudinalHarness()
+        h.activate()
+        counters = []
+        for index in range(60):
+          gas = 10 <= index < 40
+          h.cs.out.gasPressed = gas
+          h.cc.enabled = not (disengage and index >= 10)
+          h.cc.longActive = h.cc.enabled and not gas
+          self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x228, 0, bytes([0, 0, int(gas), 0, 0, 0, 0, 0])))
+          if disengage and index == 10:
+            self.safety.set_controls_allowed(False)
+          self.assertEqual(self.safety.get_controls_allowed(), h.cc.enabled)
+          _, messages = h.step()
+          for message in messages:
+            if message[0] in RADAR_IDS:
+              self.assertTrue(self.tx(message), (index, message))
+            if message[0] == 0x2B6:
+              values = h.decode(message[0], message[1])
+              expected = 2 if disengage and index >= 10 else (5 if gas else 4)
+              self.assertEqual(values['ACC_STATUS'], expected)
+              counters.append(values['COUNTER'])
+        self.assertEqual(counters, [i % 16 for i in range(len(counters))])
+
+  def test_missing_or_stale_physical_pedal_invalidates_rx_checks(self):
+    for now in (2_000_000, 3_000_001):
+      self.safety.set_timer(now)
+      for address, bus in ((0x452, 1), (0x30D, 0), (0x38D, 0), (0x2F5, 0), (0x412, 2)):
+        address, data, bus = self.message(address, {}, bus)
+        self.assertTrue(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(address, bus, data)))
+      # Legacy DRIVER traffic must neither replace nor refresh the physical pedal check.
+      self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x56E, 2, bytes(5)))
+      self.safety.set_controls_allowed(True)
+      self.safety.safety_tick_current_safety_config()
+      self.assertFalse(self.safety.safety_config_valid())
+      self.assertFalse(self.safety.get_controls_allowed())
+      self.assertTrue(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x228, 0, bytes(8))))
+      self.safety.safety_tick_current_safety_config()
+      self.assertTrue(self.safety.safety_config_valid())
+
+  def test_wrong_bus_or_length_cannot_release_physical_pedal(self):
+    self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x228, 0, b'\x00\x00\x01' + bytes(5)))
+    for bus, length in ((1, 8), (2, 8), (0, 7)):
+      self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x228, bus, bytes(length)))
+      self.assertTrue(self.safety.get_gas_pressed_prev())
+      self.assertFalse(self.tx(self.message(0x2B6, self.gmp)))
+  # [acc hold] - END
 
   def test_torque_and_deceleration_boundaries(self):
     for field, quantum in (('GMP_WHEEL_TORQUE', 1), ('GMP_POTENTIAL_WHEEL_TORQUE', 4)):
