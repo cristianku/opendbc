@@ -88,6 +88,7 @@ class TestRadarNeutralMessages(unittest.TestCase):
     return [message for message in self.previous if message[0] in RADAR_IDS]
 
   def test_fixed_payloads_match_recorded_stationary_inhibited_state(self):
+    self.cs.out.brakePressed = True
     self.assertEqual(self.messages_at(0), [
       (0x2B6, bytes.fromhex('fe 00 00 02 00 00 03 0a'), 1),
       (0x2F6, bytes.fromhex('00 ff 86 00 f8 60 0f 00'), 1),
@@ -96,6 +97,7 @@ class TestRadarNeutralMessages(unittest.TestCase):
     ])
 
   def test_rates_counter_wrap_checksums_and_disabled_requests(self):
+    self.cs.out.vEgoRaw = 10.0
     parser = CANParser('psa_aee2010_r3', [(0x2B6, 50), (0x2F6, 50)], 1)
     counts = Counter()
     counters = {0x2B6: [], 0x2F6: []}
@@ -115,7 +117,7 @@ class TestRadarNeutralMessages(unittest.TestCase):
           for signal in ('POTENTIAL_WHEEL_TORQUE_REQUEST', 'WHEEL_TORQUE_REQUEST', 'MDD_DECEL_CONTROL_REQ',
                          'MDD_DECEL_TYPE', 'PREFILL_REQUEST'):
             self.assertEqual(parser.vl[addr][signal], 0)
-          self.assertEqual(parser.vl[addr]['ACC_STATUS'], 2)
+          self.assertEqual(parser.vl[addr]['ACC_STATUS'], 3)
         elif addr == 0x2F6:
           for signal in ('MDD_DECEL_CONTROL_REQ', 'DRIVE_AWAY_REQUEST', 'AUTO_BRAKING_IN_PROGRESS', 'AEB_ENABLED',
                          'REQUEST_TAKEOVER', 'TARGET_DETECTED'):
@@ -311,7 +313,9 @@ class TestRadarSession(unittest.TestCase):
         self.assertEqual(data[:6], bytes.fromhex('00ff8600f860'))
         self.assertEqual(data[7], 0)
       elif addr == 0x2B6:
-        self.assertEqual(data[:6], bytes.fromhex('fe0000020000'))
+        self.assertEqual(data[:3], bytes.fromhex('fe0000'))
+        self.assertEqual(data[3], 2)  # All phases are below the Waiting speed threshold.
+        self.assertEqual(data[4:6], bytes(2))
         self.assertEqual(data[6] & ~0x40, 3)  # Only the recorded alternating bit may change.
         self.assertEqual((data[6] >> 6) & 1, (data[7] >> 4) & 1)
       elif addr == 0x4F6:

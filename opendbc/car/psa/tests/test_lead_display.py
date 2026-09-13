@@ -32,6 +32,7 @@ class TestLeadDisplay(unittest.TestCase):
     h.controller.model_sm = ModelFeed(distance)
     h.activate()
     h.cs.out.vEgo = 10.0
+    h.cs.out.vEgoRaw = 10.0
     return h
 
   def assert_target(self, h, detected, position):
@@ -46,7 +47,7 @@ class TestLeadDisplay(unittest.TestCase):
       with self.subTest(distance=distance):
         h = self.harness(distance)
         values = self.assert_target(h, 1, position)
-        self.assertEqual(values[0x2B6]['ACC_STATUS'], 2)
+        self.assertEqual(values[0x2B6]['ACC_STATUS'], 3)
         self.assertEqual(values[0x2B6]['POTENTIAL_WHEEL_TORQUE_REQUEST'], 0)
         self.assertEqual(values[0x2B6]['WHEEL_TORQUE_REQUEST'], 0)
         self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], 0)

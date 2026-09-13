@@ -61,6 +61,8 @@ class CarInterface(CarInterfaceBase):
     if ret.openpilotLongitudinalControl:
       ret.dashcamOnly = False
       ret.safetyConfigs[0].safetyParam |= PSA_LONG_CONTROL
+      # ACC Waiting threshold in Dyn4_FRE CAN speed (~30 km/h on the cluster).
+      ret.minEnableSpeed = 27.0 * CV.KPH_TO_MS
     # [psa longitudinal] - END
 
     return ret

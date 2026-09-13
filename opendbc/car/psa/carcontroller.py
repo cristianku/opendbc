@@ -607,13 +607,16 @@ class CarController(CarControllerBase):
         # [psa longitudinal] - START
         # Default profile retains the recorded neutral encodings. Only the experimental
         # profile with a confirmed session and authorized longActive may request actuation.
+        acc_waiting = not CS.out.brakePressed and CS.out.vEgoRaw >= self.CP.minEnableSpeed
         can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
           self.packer, PSA_ADAS_BUS,
           mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
           potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
           min_time_for_desired_gear=self.longitudinal_min_time,
           gmp_potential_wheel_torque=self.longitudinal_potential_torque,
-          acc_status=4 if self.longitudinal_active else 2,
+          # Stock radar announces Waiting before the BSI requests ACC activation.
+          # Readiness does not authorize torque or braking requests.
+          acc_status=4 if self.longitudinal_active else (3 if acc_waiting else 2),
           gmp_wheel_torque=self.longitudinal_wheel_torque,
           wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
           auto_braking_status=3,

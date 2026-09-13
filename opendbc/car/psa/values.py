@@ -59,8 +59,8 @@ class CarControllerParams:
     MIN_TORQUE_FACTOR = 25
 
     # [eps curve] - START
-    EPS_REARM_PERIOD = 12.0  # s
-    EPS_REARM_PERIOD_C4_SPACETOURER = 12.0  # s
+    EPS_REARM_PERIOD = 18.0  # s
+    EPS_REARM_PERIOD_C4_SPACETOURER = 18.0  # s
     EPS_REARM_EARLIEST_PERIOD = 3.0  # s
     # Keep curve prediction independent from the platform-specific hard deadline: after the
     # 3 s cooldown, use the remaining part of the original 8 s EPS window.

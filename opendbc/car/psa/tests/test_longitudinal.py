@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from opendbc.can.packer import CANPacker
 from opendbc.can.parser import get_raw_value
 from opendbc.car import Bus, structs
+from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa import psacan
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.interface import CarInterface
@@ -20,7 +21,7 @@ RADAR_IDS = {0x2B6, 0x2F6, 0x4F6, 0x796}
 
 class LongitudinalHarness:
   def __init__(self, *, dashcam=False, passive=False, experimental=True, safety_flag=True):
-    cp = CarInterface.get_non_essential_params(CAR.PSA_PEUGEOT_3008)
+    cp = CarInterface.get_params(CAR.PSA_PEUGEOT_3008, {0: {}, 1: {}, 2: {}}, [], experimental, False, False)
     cp.openpilotLongitudinalControl = experimental
     cp.dashcamOnly = dashcam
     cp.passive = passive
@@ -117,6 +118,68 @@ class TestLongitudinalCommands(unittest.TestCase):
     self.assertEqual(values[0x2B6]['ACC_STATUS'], 4)
     self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], 0)
     self.assertAlmostEqual(output.accel, 0.5)
+
+  def test_acc_waiting_before_engagement_and_after_brake_release(self):
+    # Stock routes 3a/49 announce Waiting before the BSI activation request.
+    self.h.cs.out.standstill = False
+    self.h.cs.out.vEgo = 15.0
+    self.h.cs.out.vEgoRaw = 15.0
+    for enabled, brake_pressed, status in ((False, False, 3), (True, False, 4),
+                                           (False, True, 2), (False, False, 3)):
+      with self.subTest(enabled=enabled, brake_pressed=brake_pressed):
+        self.h.cc.enabled = enabled
+        self.h.cc.longActive = enabled
+        self.h.cs.out.cruiseState.enabled = enabled
+        self.h.cs.out.brakePressed = brake_pressed
+        _, values = self.h.emission()
+        self.assertEqual(values[0x2B6]['ACC_STATUS'], status)
+        if not enabled:
+          self.assert_inactive(values)
+        else:
+          self.assertEqual(values[0x2B6]['WHEEL_TORQUE_REQUEST'], 1)
+
+  def test_acc_waiting_speed_parameter_uses_raw_can_speed(self):
+    self.assertAlmostEqual(self.h.controller.CP.minEnableSpeed, 27 * CV.KPH_TO_MS)
+    self.h.cc.enabled = False
+    self.h.cc.longActive = False
+    self.h.cs.out.cruiseState.enabled = False
+    self.h.cs.out.standstill = False
+    for threshold_kph in (27, 20):
+      self.h.controller.CP.minEnableSpeed = threshold_kph * CV.KPH_TO_MS
+      for speed_kph, brake, expected in ((threshold_kph - 0.1, False, 2),
+                                       (threshold_kph, False, 3),
+                                       (threshold_kph + 0.1, False, 3),
+                                       (threshold_kph + 0.1, True, 2),
+                                       (threshold_kph - 0.1, False, 2)):
+        with self.subTest(threshold_kph=threshold_kph, speed_kph=speed_kph, brake=brake):
+          self.h.cs.out.vEgoRaw = speed_kph * CV.KPH_TO_MS
+          # Deliberately disagree with the raw speed on either side of the threshold.
+          self.h.cs.out.vEgo = (threshold_kph + (5 if expected == 2 else -5)) * CV.KPH_TO_MS
+          self.h.cs.out.brakePressed = brake
+          _, values = self.h.emission()
+          self.assertEqual(values[0x2B6]['ACC_STATUS'], expected)
+          self.assert_inactive(values)
+
+  def test_active_acc_stays_active_below_waiting_speed(self):
+    self.h.cs.out.vEgoRaw = 20 * CV.KPH_TO_MS
+    self.h.cs.out.vEgo = self.h.cs.out.vEgoRaw
+    _, values = self.h.emission()
+    self.assertEqual(values[0x2B6]['ACC_STATUS'], 4)
+    self.assertEqual(values[0x2B6]['WHEEL_TORQUE_REQUEST'], 1)
+
+  def test_display_set_speed_does_not_change_longitudinal_can_commands(self):
+    for accel in (0.5, -0.75):
+      commands = []
+      for display_kph in (47, 50):
+        h = LongitudinalHarness()
+        h.cc.actuators.accel = accel
+        h.cs.out.cruiseState.speed = 47 * CV.KPH_TO_MS
+        h.cs.out.cruiseState.speedCluster = display_kph * CV.KPH_TO_MS
+        h.cc.hudControl.setSpeed = h.cs.out.cruiseState.speedCluster
+        h.activate()
+        output, values = h.emission()
+        commands.append((output.accel, values))
+      self.assertEqual(commands[0], commands[1])
 
   # [torque calibration] - START
   def test_grade_adjusts_both_torque_fields_without_changing_acceleration_target(self):

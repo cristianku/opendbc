@@ -2,12 +2,28 @@
 import unittest
 
 from opendbc.car import DT_CTRL, structs
+from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.carcontroller import ARTIV_PROGRAMMING_WAIT
 from opendbc.car.psa.interface import CarInterface
 from opendbc.car.psa.tests.test_longitudinal import LongitudinalHarness, RADAR_IDS
 
 
 class TestLongitudinalSession(unittest.TestCase):
+  def test_peugeot_cluster_set_speed_offset_preserves_control_setpoint(self):
+    for experimental in (False, True):
+      h = LongitudinalHarness(experimental=experimental)
+      interface = CarInterface(h.controller.CP, h.controller.CP_SP)
+      interface.update([(1, [])])  # Register the lazily subscribed CAN signals.
+      for frame, (can_kph, cluster_kph) in enumerate(((27, 30), (47, 50), (97, 100), (0, 0), (255, 255)), 1):
+        with self.subTest(experimental=experimental, can_kph=can_kph):
+          msg = h.packer.make_can_msg('HS2_DAT_MDD_CMD_452', 1, {
+            'LONGITUDINAL_REGULATION_TYPE': 3, 'SPEED_SETPOINT': can_kph,
+          })
+          state, _ = interface.update([(frame * 50_000_000, [msg])])
+          self.assertAlmostEqual(state.cruiseState.speed * CV.MS_TO_KPH, can_kph, places=4)
+          self.assertAlmostEqual(state.cruiseState.speedCluster * CV.MS_TO_KPH, cluster_kph, places=4)
+          self.assertEqual(interface.CS.hs2_dat_mdd_cmd_452['SPEED_SETPOINT'], can_kph)
+
   # [radar optin] - START
   def test_confirmed_session_can_move_with_cruise_engaged_or_disengaged(self):
     for engaged in (True, False):

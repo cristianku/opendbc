@@ -195,9 +195,11 @@ class CarState(CarStateBase):
     #   # events. Keep all control/planner values in the real 0x452 domain and
     #   # synthesize +/- edges whenever that stock setpoint changes.
     #   ret.buttonEvents = self._update_cruise_button_events(cruise_speed_kph, ret.cruiseState.enabled)
-    # PSA's dashboard adds its own display offset. Sunny must compare and
-    # command the real CAN setpoint, so do not reproduce that offset here.
+    # Match the Peugeot cluster only in the display field; control keeps the
+    # original 0x452 SPEED_SETPOINT. Preserve zero/unset (255) sentinels.
     ret.cruiseState.speedCluster = ret.cruiseState.speed
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008 and 0 < cruise_speed_kph < 255:
+      ret.cruiseState.speedCluster += 3.0 * CV.KPH_TO_MS
     # Cruise main: RVV or ACC selected, excluding off and the speed limiter.
     # Keep this identical to acc_main_on in the PSA safety hook.
     ret.cruiseState.available = cp_adas.vl['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'] in (1, 3)
