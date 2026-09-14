@@ -254,7 +254,11 @@ class CarState(CarStateBase):
   def get_can_parsers(CP, CP_SP):
     # [inactive lka] - START
     # Observe the camera byte without adding a new CAN-validity requirement.
-    cam_messages = [('LANE_KEEP_ASSIST', math.nan)] if CP.carFingerprint == CAR.PSA_PEUGEOT_3008 else []
+    cam_messages = (
+      [('LANE_KEEP_ASSIST', math.nan)]
+      if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER)
+      else []
+    )
     # [inactive lka] - END
     return {
       Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
