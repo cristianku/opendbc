@@ -8,6 +8,17 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
   chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x2f6: 0x8, 0x2b6: 0xC, 0x42D: 0xC}.get(address, 0xB)
   byte = sig.start_bit // 8
   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
+  # <TEST_ANGLE_START>
+  if address == 0x305:
+    # STEERING_ALT: XOR of nibbles in bytes 0..4, checksum nibble cleared.
+    # Bytes 5/6 are outside this checksum. Verified against unmodified 3008
+    # recordings, including route 00000066--f4919151f0 that exposed the error.
+    # Previously this fell through to the generic (0xB - sum) checksum below.
+    checksum = 0
+    for b in d[:5]:
+      checksum ^= (b >> 4) ^ (b & 0xF)
+    return checksum
+  # <TEST_ANGLE_START_END>
   checksum = sum((b >> 4) + (b & 0xF) for b in d)
   return (chk_ini - checksum) & 0xF
 

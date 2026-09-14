@@ -392,7 +392,8 @@ class TestRadarSessionInterface(unittest.TestCase):
             angle_counter = (angle_counter + 1) % 16
             data = bytearray(packers[bus].make_can_msg(address, parser.bus, {'0_COUNTER': angle_counter})[1])
             data[4] &= 15
-            data[4] |= ((11 - sum((b >> 4) + (b & 15) for b in data)) & 15) << 4
+            sig = parser.dbc.addr_to_msg[address].sigs['0_CHECKSUM']
+            data[4] |= psacan.psa_checksum(address, sig, data) << 4
             frames.append((address, bytes(data), parser.bus))
           else:
             frames.append(packers[bus].make_can_msg(address, parser.bus, {}))

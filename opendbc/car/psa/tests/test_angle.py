@@ -7,7 +7,7 @@ from unittest.mock import patch
 from opendbc.car import Bus, structs
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.interface import CarInterface
-from opendbc.car.psa.psacan import create_lka_steering
+from opendbc.car.psa.psacan import create_lka_steering, psa_checksum
 from opendbc.car.psa.values import CAR
 
 
@@ -158,7 +158,8 @@ class TestAngleController(unittest.TestCase):
     interface.update([(1, [])])
     p = h.controller.packer
     data = bytearray(p.make_can_msg('STEERING_ALT', 0, {'ANGLE': 12, '0_COUNTER': 1})[1])
-    data[4] |= ((11 - sum((b >> 4) + (b & 15) for b in data)) & 15) << 4
+    sig = interface.can_parsers[Bus.main].dbc.addr_to_msg[0x305].sigs['0_CHECKSUM']
+    data[4] |= psa_checksum(0x305, sig, data) << 4
     interface.update([(10_000_000, [(0x305, bytes(data), 0),
                                    p.make_can_msg('IS_DAT_DIRA', 0, {'EPS_STATE_LKA': 3})])])
     interface.update([(20_000_000, [])])

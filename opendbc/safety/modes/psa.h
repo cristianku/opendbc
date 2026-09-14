@@ -133,7 +133,17 @@ static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
   uint8_t chk = 0;
   // <TEST_ANGLE_START>
   if (msg->addr == PSA_STEERING_ALT) {
-    return _psa_compute_checksum(msg, 0xB, 4, true);
+    // return _psa_compute_checksum(msg, 0xB, 4, true);
+    // 3008 recorded STEERING_ALT uses XOR over bytes 0..4 only, with
+    // the checksum nibble cleared. It does not use the generic PSA sum.
+    for (int i = 0; i < 5; i++) {
+      uint8_t b = msg->data[i];
+      if (i == 4) {
+        b &= 0xFU;
+      }
+      chk ^= (b >> 4) ^ (b & 0xFU);
+    }
+    return chk;
   }
   // <TEST_ANGLE_START_END>
   if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {

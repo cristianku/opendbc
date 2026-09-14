@@ -2,7 +2,9 @@
 import unittest
 
 from opendbc.can.packer import CANPacker
+from opendbc.can.dbc import DBC
 from opendbc.car import structs
+from opendbc.car.psa.psacan import psa_checksum
 from opendbc.safety.tests.libsafety import libsafety_py
 
 
@@ -17,6 +19,29 @@ def angle_packet(angle=12, active=True, **fields):
 
 
 class TestPsaAngleSafety(unittest.TestCase):
+  def test_real_3008_feedback_passes_compiled_safety(self):
+    from opendbc.car.psa.tests.test_steering_checksum import recorded_steering_sequences
+    for segment, sequence in recorded_steering_sequences().items():
+      with self.subTest(segment=segment):
+        self.setUp()
+        for ts, payload in sequence:
+          self.safety.set_timer((ts - sequence[0][0]) // 1000)
+          data = bytes.fromhex(payload)
+          self.assertTrue(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x305, 0, data)), payload)
+        angle = int.from_bytes(data[:2], signed=True)
+        self.assertGreaterEqual(self.safety.get_angle_meas_max(), angle)
+        self.assertLessEqual(self.safety.get_angle_meas_min(), angle)
+
+  def test_corrupted_recorded_angle_is_rejected(self):
+    from opendbc.car.psa.tests.test_steering_checksum import recorded_steering_sequences
+    _, payload = recorded_steering_sequences()['00000066--f4919151f0--0'][0]
+    for bit in range(40):
+      self.setUp()
+      data = bytearray.fromhex(payload)
+      self.assertTrue(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x305, 0, data)))
+      data[bit // 8] ^= 1 << (bit % 8)
+      self.assertFalse(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x305, 0, data)), bit)
+
   def setUp(self):
     self.safety = libsafety_py.libsafety
     self.assertEqual(self.safety.set_safety_hooks(structs.CarParams.SafetyModel.psa, 2), 0)
@@ -41,7 +66,8 @@ class TestPsaAngleSafety(unittest.TestCase):
     data = bytearray(self.packer.make_can_msg('STEERING_ALT', bus, {'ANGLE': angle, '0_COUNTER': self.angle_counter})[1])
     self.angle_counter = (self.angle_counter + 1) % 16
     data[4] &= 15
-    data[4] |= ((11 - sum((b >> 4) + (b & 15) for b in data)) & 15) << 4
+    sig = DBC('psa_aee2010_r3').addr_to_msg[0x305].sigs['0_CHECKSUM']
+    data[4] |= psa_checksum(0x305, sig, data) << 4
     self.assertTrue(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x305, bus, data)))
 
   def test_accepts_neutral_and_valid_active_angle(self):
@@ -206,7 +232,8 @@ class TestPsaAngleSafety(unittest.TestCase):
             counter = (counter + 1) % 16
           data = bytearray(self.packer.make_can_msg('STEERING_ALT', 0, {'ANGLE': 12, '0_COUNTER': counter})[1])
           data[4] &= 15
-          data[4] |= ((11 - sum((b >> 4) + (b & 15) for b in data)) & 15) << 4
+          sig = parser.dbc.addr_to_msg[0x305].sigs['0_CHECKSUM']
+          data[4] |= psa_checksum(0x305, sig, data) << 4
           if fault == 'checksum' and corrupt:
             data[4] ^= 16
           self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x305, 0, data))
