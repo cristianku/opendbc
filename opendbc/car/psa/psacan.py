@@ -27,19 +27,37 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
 
 
 # [inactive lka] - START
-def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_factor: int, status: int, *, unknown2: int):
+# <TEST_ANGLE_START>
+# def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_factor: int, status: int, *, unknown2: int):
+#   values = {
+#     'unknown2': unknown2,
+#     'TORQUE': apply_torque,
+#     'STATUS': status,
+#     'TORQUE_FACTOR': torque_factor,
+#   }
+#   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
+def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_factor: int, status: int, *, unknown2: int,
+                        drive: int, lxa_activation: int, set_angle: float, counter: int | None):
   values = {
     'unknown2': unknown2,
     'TORQUE': apply_torque,
     # 'LANE_DEPARTURE':0 if not lat_active else 1 if torque>0 else 2,
-    # 'DRIVE': 1,
+    'DRIVE': drive,
     'STATUS': status,
-    # 'LXA_ACTIVATION': 1,
+    'LXA_ACTIVATION': lxa_activation,
     'TORQUE_FACTOR': torque_factor, # * 100,
-    # 'SET_ANGLE': set_angle,
+    'SET_ANGLE': set_angle,
   }
 
+  # None explicitly retains the legacy torque payload (zero counter/checksum).
+  # The prefixed DBC names are not processed automatically by CANPacker.
+  if counter is not None:
+    values['0_COUNTER'] = counter
+    data = bytearray(packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)[1])
+    checksum_sig = packer.dbc.name_to_msg['LANE_KEEP_ASSIST'].sigs['0_CHECKSUM']
+    values['0_CHECKSUM'] = psa_checksum(0x3F2, checksum_sig, data)
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
+# <TEST_ANGLE_START_END>
 # [inactive lka] - END
 
 

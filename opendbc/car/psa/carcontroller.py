@@ -3,6 +3,10 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, Bus, structs, DT_CTRL
 # [CLAUDE eps-rearm] - END
 from opendbc.car.lateral import apply_driver_steer_torque_limits
+# <TEST_ANGLE_START>
+from opendbc.car.lateral import apply_std_steer_angle_limits
+from opendbc.car.psa.values import PSA_TEST_ANGLE, PSA_TEST_ANGLE_LIMITS
+# <TEST_ANGLE_START_END>
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.can_definitions import CanData
 from opendbc.car.psa.psacan import (
@@ -41,7 +45,7 @@ SteerControlType = structs.CarParams.SteerControlType
 
 
 # [artiv probe] - START
-ARTIV_PROGRAMMING_WAIT = 3.0  # seconds of valid CAN before the one-shot request, including while moving
+ARTIV_PROGRAMMING_WAIT = 2.0  # seconds of valid CAN before the one-shot request, including while moving
 # [artiv probe] - END
 RADAR_IDS = (0x2B6, 0x2F6, 0x4F6, 0x796)
 RADAR_TX_TIMEOUTS = {0x2B6: 250_000_000, 0x2F6: 250_000_000, 0x4F6: 500_000_000, 0x796: 2_000_000_000}
@@ -138,6 +142,15 @@ class CarController(CarControllerBase):
     # this is the frame when the latactive is being pressed
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
+    # <TEST_ANGLE_START>
+    self.test_angle = (self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and CP.steerControlType == SteerControlType.angle
+                       and any(s.safetyParam & PSA_TEST_ANGLE for s in CP.safetyConfigs))
+    self.apply_angle_last = 0.0
+    self.angle_request_frames = 0
+    self.angle_no_ack_frames = 0
+    self.angle_failed = False
+    self.angle_eps_active_last = False
+    # <TEST_ANGLE_START_END>
     self.radar_disabled = False
     # [psa longitudinal] - START
     self.longitudinal_profile = self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and CP.openpilotLongitudinalControl
@@ -476,6 +489,58 @@ class CarController(CarControllerBase):
       self.takeover_req = 1
       self.takeover_req_already_sent = True
 
+  # <TEST_ANGLE_START>
+  def _update_test_angle(self, CC, CS):
+    measured = CS.out.steeringAngleDeg
+    target = CC.actuators.steeringAngleDeg
+    raw_driver_torque = getattr(CS, 'steering', {}).get('DRIVER_TORQUE', 0) * 3
+    ack_lost = self.angle_eps_active_last and not CS.eps_active and self.angle_request_frames > 0
+    self.angle_eps_active_last = CS.eps_active
+    if not CC.latActive:
+      self.angle_failed = False
+    finite = all(math.isfinite(v) for v in (measured, target, CS.out.vEgoRaw, raw_driver_torque))
+    request = (CC.latActive and finite and CS.out.canValid and not self.CP.dashcamOnly and not self.CP.passive
+               and abs(measured) <= PSA_TEST_ANGLE_LIMITS.STEER_ANGLE_MAX
+               and CS.out.vEgoRaw >= self.CP.minSteerSpeed and not CS.out.steeringPressed and not CS.out.brakePressed
+               and abs(raw_driver_torque) <= self.params.STEER_DRIVER_ALLOWANCE
+               and not CS.out.steerFaultTemporary and not CS.out.steerFaultPermanent
+               and getattr(CS, 'eps_state_lka', 0) < 4 and not self.angle_failed)
+    if request:
+      self.angle_no_ack_frames = 0 if CS.eps_active else self.angle_no_ack_frames + 1
+      if self.angle_no_ack_frames > int(self.params.EPS_ACK_TIMEOUT / DT_CTRL):
+        self.angle_failed = True
+        request = False
+        carlog.warning('TEST_ANGLE: EPS acknowledgement missing; request released until lateral disengagement')
+    else:
+      self.angle_no_ack_frames = 0
+    # Release once on ACK loss to resynchronize at the measured position. Keep
+    # the timeout counting; do not jump from the last target to measured while active.
+    if ack_lost:
+      request = False
+
+    # Do not encode an invented angle if the measurement itself is invalid.
+    if not math.isfinite(measured):
+      self.angle_request_frames = 0
+      return None
+
+    # Start from the physical wheel position, and hold that request while awaiting
+    # ACK, even if the measured wheel moves. Raw driver input releases immediately,
+    # matching Panda before CarState's filtered/debounced steeringPressed catches up.
+    tracking = request and self.angle_request_frames > 0
+    requested_angle = target if CS.eps_active else self.apply_angle_last
+    self.apply_angle_last = apply_std_steer_angle_limits(
+      requested_angle if finite else measured, self.apply_angle_last, CS.out.vEgoRaw if finite else 0,
+      measured, tracking, PSA_TEST_ANGLE_LIMITS,
+    )
+    # e208 route 4e: STATUS continues 2/3/4 at 50 ms per state even with EPS_STATE_LKA=3.
+    status = (2, 3, 4)[self.angle_request_frames // 5 % 3] if request else 0
+    self.angle_request_frames = self.angle_request_frames + 1 if request else 0
+    return create_lka_steering(
+      self.packer, request, 0, 100 if request else 0, status,
+      unknown2=0, drive=1, lxa_activation=1, set_angle=self.apply_angle_last, counter=self.frame % 16,
+    )
+  # <TEST_ANGLE_START_END>
+
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
@@ -487,6 +552,13 @@ class CarController(CarControllerBase):
     can_torque = 0
 
     # lateral control
+    # <TEST_ANGLE_START>
+    # The original torque branch below remains available for rollback and for C4.
+    if self.test_angle:
+      angle_message = self._update_test_angle(CC, CS)
+      if angle_message is not None:
+        can_sends.append(angle_message)
+    # <TEST_ANGLE_START_END>
     if self.CP.steerControlType == SteerControlType.torque:
       if self.frame % self.params.STEER_STEP == 0:
         if not CC.latActive:
@@ -551,9 +623,15 @@ class CarController(CarControllerBase):
         unknown2 = 24
         if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and not CC.latActive:
           unknown2 = getattr(CS, 'stock_lka_unknown2', 24)
+        # <TEST_ANGLE_START>
+        # can_sends.append(create_lka_steering(
+        #   self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status, unknown2=unknown2,
+        # ))
         can_sends.append(create_lka_steering(
           self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status, unknown2=unknown2,
+          drive=0, lxa_activation=0, set_angle=0, counter=None,
         ))
+        # <TEST_ANGLE_START_END>
         # [inactive lka] - END
         # Remember the effective (scaled) value for the next frame's rate limit.
         self.apply_torque_scaled_last = apply_new_torque_scaled
@@ -716,7 +794,10 @@ class CarController(CarControllerBase):
           self.radar_last_tester_present_nanos = now_nanos
     # [artiv probe] - END
 
-    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+    # <TEST_ANGLE_START>
+    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+    if not self.test_angle and self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+      # <TEST_ANGLE_START_END>
       # # Keep requesting the ARTIV programming session. A single request can be
       # # missed or rejected while the ECU/gateway is still initializing.
       # if not self.radar_disabled and self.frame > 200:
@@ -792,6 +873,12 @@ class CarController(CarControllerBase):
 
     # Actuators output
     new_actuators = actuators.as_builder()
+    # <TEST_ANGLE_START>
+    if self.test_angle:
+      new_actuators.steeringAngleDeg = self.apply_angle_last
+      new_actuators.torque = 0.0
+      new_actuators.torqueOutputCan = 0
+    # <TEST_ANGLE_START_END>
     # [psa longitudinal] - START
     if self.longitudinal_profile:
       new_actuators.accel = self.longitudinal_accel

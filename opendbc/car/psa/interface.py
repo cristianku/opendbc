@@ -4,6 +4,11 @@ from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.carstate import CarState
 from opendbc.car.psa.values import CAR, LKAS_LIMITS
+# <TEST_ANGLE_START>
+from opendbc.car.psa.values import PSA_TEST_ANGLE
+
+TEST_ANGLE_ENABLED = True  # Peugeot 3008: True = angle experiment; False = original torque control.
+# <TEST_ANGLE_START_END>
 # [psa longitudinal] - START
 from opendbc.car.psa.values import PSA_LONG_CONTROL
 # [psa longitudinal] - END
@@ -36,7 +41,15 @@ class CarInterface(CarInterfaceBase):
 
     if candidate in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
-      ret.steerControlType = structs.CarParams.SteerControlType.torque
+      # <TEST_ANGLE_START>
+      # ret.steerControlType = structs.CarParams.SteerControlType.torque
+      if candidate == CAR.PSA_PEUGEOT_3008 and TEST_ANGLE_ENABLED:
+        ret.steerControlType = structs.CarParams.SteerControlType.angle
+        ret.safetyConfigs[0].safetyParam |= PSA_TEST_ANGLE
+      else:
+        ret.steerControlType = structs.CarParams.SteerControlType.torque
+      # <TEST_ANGLE_START_END>
+
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
       # Measured from route 00000029--0f498d7077 with FIXED_TORQUE_FACTOR: torque request ->
       # steering rate response lag ~140ms. The old 0.376803 was tuned on the variable
@@ -62,7 +75,7 @@ class CarInterface(CarInterfaceBase):
       # ret.dashcamOnly = False
       ret.safetyConfigs[0].safetyParam |= PSA_LONG_CONTROL
       # ACC Waiting threshold in Dyn4_FRE CAN speed (~30 km/h on the cluster).
-      ret.minEnableSpeed = 21.0 * CV.KPH_TO_MS
+      ret.minEnableSpeed = 1.0 * CV.KPH_TO_MS
     # [psa longitudinal] - END
 
     return ret
