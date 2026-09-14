@@ -140,7 +140,7 @@ class CarController(CarControllerBase):
     self.params = CarControllerParams(CP)
     self.radar_disabled = False
     # [psa longitudinal] - START
-    self.longitudinal_profile = self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and CP.openpilotLongitudinalControl
+    self.longitudinal_profile = self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and CP.openpilotLongitudinalControl
     self.longitudinal_enabled = (self.longitudinal_profile and not CP.dashcamOnly and not CP.passive
                                  and any(c.safetyModel == structs.CarParams.SafetyModel.psa and c.safetyParam & PSA_LONG_CONTROL
                                          for c in CP.safetyConfigs))
@@ -208,7 +208,7 @@ class CarController(CarControllerBase):
       carlog.warning('ARTIV session: stopped (%s); no automatic retry', reason)
 
   def process_radar_can(self, can_packets):
-    if self.car_fingerprint != CAR.PSA_PEUGEOT_3008:
+    if self.car_fingerprint not in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       return can_packets
     # Inspect all genuine RX first, so a radar return stops echo remapping even if an echo
     # precedes it within this batch. src 129 is a TX receipt; src 193 is a blocked TX.
@@ -568,7 +568,7 @@ class CarController(CarControllerBase):
         # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status))
         # [inactive lka] - START
         unknown2 = 24
-        if self.car_fingerprint == CAR.PSA_PEUGEOT_3008 and not CC.latActive:
+        if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and not CC.latActive:
           unknown2 = getattr(CS, 'stock_lka_unknown2', 24)
         can_sends.append(create_lka_steering(
           self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status, unknown2=unknown2,

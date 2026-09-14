@@ -176,7 +176,7 @@ class CarState(CarStateBase):
     # [CLAUDE eps-closed-loop] - END
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
     # [inactive lka] - START
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+    if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       stock_unknown2 = cp_cam.vl_all['LANE_KEEP_ASSIST']['unknown2']
       if stock_unknown2:
         self.stock_lka_unknown2 = int(stock_unknown2[-1])
@@ -207,7 +207,7 @@ class CarState(CarStateBase):
     # Match the Peugeot cluster only in the display field; control keeps the
     # original 0x452 SPEED_SETPOINT. Preserve zero/unset (255) sentinels.
     ret.cruiseState.speedCluster = ret.cruiseState.speed
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008 and 0 < cruise_speed_kph < 255:
+    if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and 0 < cruise_speed_kph < 255:
       ret.cruiseState.speedCluster += 3.0 * CV.KPH_TO_MS
     # Cruise main: RVV or ACC selected, excluding off and the speed limiter.
     # Keep this identical to acc_main_on in the PSA safety hook.
