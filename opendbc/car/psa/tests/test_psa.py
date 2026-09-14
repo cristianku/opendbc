@@ -331,11 +331,6 @@ def test_new_eps_active_cycle_clears_shared_takeover_latch():
 
 def test_active_eps_sends_takeover_without_releasing_steering_torque():
   cp = CarInterface.get_non_essential_params(CAR.PSA_PEUGEOT_3008)
-  # <TEST_ANGLE_START>
-  # Regression of the preserved torque implementation, including a later rollback.
-  cp.steerControlType = structs.CarParams.SteerControlType.torque
-  cp.safetyConfigs[0].safetyParam &= ~2
-  # <TEST_ANGLE_START_END>
   cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_PEUGEOT_3008)
   controller = psa_carcontroller.CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)
   controller.model_sm = None
@@ -395,11 +390,6 @@ def test_c4_spacetourer_uses_12_second_eps_rearm_deadline():
 
 def test_peugeot_3008_keeps_12_second_eps_rearm_deadline():
   cp = CarInterface.get_non_essential_params(CAR.PSA_PEUGEOT_3008)
-  # <TEST_ANGLE_START>
-  # Regression of the preserved torque implementation; angle has no periodic rearm.
-  cp.steerControlType = structs.CarParams.SteerControlType.torque
-  cp.safetyConfigs[0].safetyParam &= ~2
-  # <TEST_ANGLE_START_END>
   cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_PEUGEOT_3008)
   controller = psa_carcontroller.CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)
   controller.model_sm = None

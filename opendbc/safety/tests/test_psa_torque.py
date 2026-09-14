@@ -1,12 +1,33 @@
-# <TEST_ANGLE_START>
-"""Torque rollback checks against the compiled hook, including variable factor."""
+# [torque safety] - START
+"""Torque control checks against the compiled hook, including variable factor."""
 import unittest
+from types import SimpleNamespace
 
 from opendbc.can.packer import CANPacker
-from opendbc.car import structs
-from opendbc.car.psa.tests.test_angle import AngleHarness, decode_lka
+from opendbc.car import Bus, structs
+from opendbc.car.psa.carcontroller import CarController
+from opendbc.car.psa.interface import CarInterface
 from opendbc.car.psa.values import CAR
 from opendbc.safety.tests.libsafety import libsafety_py
+
+
+class TorqueHarness:
+  def __init__(self, candidate):
+    cp = CarInterface.get_non_essential_params(candidate)
+    cp_sp = CarInterface.get_non_essential_params_sp(cp, candidate)
+    self.controller = CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)
+    self.controller.model_sm = None
+    self.cs = SimpleNamespace(out=structs.CarState(), eps_active=True, eps_state_lka=3,
+                              speed_kph=72, is_dat_dira={}, HS2_DYN_MDD_ETAT_2F6={}, steering={'DRIVER_TORQUE': 0})
+    self.cs.out.canValid = True
+    self.cs.out.vEgo = self.cs.out.vEgoRaw = 20
+    self.cs.out.steeringAngleDeg = 12
+    self.cc = structs.CarControl()
+    self.cc.latActive = True
+
+  def step(self):
+    now = (self.controller.frame + 1) * 10_000_000
+    return self.controller.update(self.cc.as_reader(), structs.CarControlSP(), self.cs, now)
 
 
 class TestPsaTorqueSafety(unittest.TestCase):
@@ -52,7 +73,7 @@ class TestPsaTorqueSafety(unittest.TestCase):
   def test_generated_torque_modes_with_factor_changes_and_raw_driver_override(self):
     for candidate in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
       self.setUp()
-      h = AngleHarness(candidate, angle_enabled=False)
+      h = TorqueHarness(candidate)
       h.cc.actuators.torque = 1.0
       for frame in range(250):
         self.safety.set_timer(frame * 10_000)
@@ -67,9 +88,8 @@ class TestPsaTorqueSafety(unittest.TestCase):
         _, messages = h.step()
         for addr, data, bus in messages:
           if addr == 0x3F2:
-            fields = decode_lka(data)
             if raw:
-              self.assertEqual(fields.torque, 0)
+              self.assertEqual((data[3] << 3) | (data[4] >> 5), 0)
             self.assertTrue(self.safety.safety_tx_hook(libsafety_py.make_CANPacket(addr, bus, data)),
                             (candidate, frame, data.hex()))
 
@@ -81,4 +101,4 @@ class TestPsaTorqueSafety(unittest.TestCase):
 
 if __name__ == '__main__':
   unittest.main()
-# <TEST_ANGLE_START_END>
+# [torque safety] - END

@@ -1,10 +1,5 @@
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
-# <TEST_ANGLE_START>
-from dataclasses import replace
-from opendbc.can.dbc import SignalType
-from opendbc.car.psa.psacan import psa_checksum
-# <TEST_ANGLE_START_END>
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams
 # , LKAS_LIMITS
@@ -31,10 +26,6 @@ class CarState(CarStateBase):
     super().__init__(CP, CP_SP)
     self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
     self.eps_state_lka = 0
-    # <TEST_ANGLE_START>
-    self.angle_feedback_ts = 0
-    self.eps_feedback_ts = 0
-    # <TEST_ANGLE_START_END>
     # [inactive lka] - START
     self.stock_lka_unknown2 = 24  # Preserve the existing payload until the first camera sample.
     # [inactive lka] - END
@@ -182,11 +173,6 @@ class CarState(CarStateBase):
     # gradino solo quando l'EPS ha confermato quello precedente (vedi EPS_STATUS_ACK
     # in carcontroller.py).
     self.eps_state_lka = int(cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'])
-    # <TEST_ANGLE_START>
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-      self.angle_feedback_ts = cp.ts_nanos['STEERING_ALT']['ANGLE']
-      self.eps_feedback_ts = cp.ts_nanos['IS_DAT_DIRA']['EPS_STATE_LKA']
-    # <TEST_ANGLE_START_END>
     # [CLAUDE eps-closed-loop] - END
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
     # [inactive lka] - START
@@ -270,24 +256,8 @@ class CarState(CarStateBase):
     # Observe the camera byte without adding a new CAN-validity requirement.
     cam_messages = [('LANE_KEEP_ASSIST', math.nan)] if CP.carFingerprint == CAR.PSA_PEUGEOT_3008 else []
     # [inactive lka] - END
-    # <TEST_ANGLE_START>
-    main_parser = CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0)
-    if CP.carFingerprint == CAR.PSA_PEUGEOT_3008 and CP.steerControlType == structs.CarParams.SteerControlType.angle:
-      # The DBC's prefixed names are not automatically validated by CANParser.
-      # Enable its standard checks for this experiment so timestamps reflect only
-      # accepted samples, like Panda. Copy signals: the cached DBC is shared with
-      # other parsers and packers, including the torque rollback profile.
-      _ = main_parser.vl['STEERING_ALT']
-      state = main_parser.message_states[0x305]
-      state.signals = [replace(sig, type=SignalType.COUNTER) if sig.name == '0_COUNTER' else
-                       replace(sig, type=SignalType.PSA_CHECKSUM, calc_checksum=psa_checksum) if sig.name == '0_CHECKSUM' else sig
-                       for sig in state.signals]
-    # <TEST_ANGLE_START_END>
     return {
-      # <TEST_ANGLE_START>
-      # Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
-      Bus.main: main_parser,
-      # <TEST_ANGLE_START_END>
+      Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
       # Evento diagnostico: math.nan lo registra nel parser senza renderlo
       # obbligatorio per canValid quando non stiamo eseguendo il test ARTIV.
       Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [("Rep_Diag_ARTIV", math.nan)], 1),

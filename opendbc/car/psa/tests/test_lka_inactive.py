@@ -10,11 +10,6 @@ from opendbc.car.psa.values import CAR
 class TestInactiveLka(unittest.TestCase):
   def setUp(self):
     cp = CarInterface.get_non_essential_params(CAR.PSA_PEUGEOT_3008)
-    # <TEST_ANGLE_START>
-    # Exercise the retained torque path so rollback still has payload regression coverage.
-    cp.steerControlType = structs.CarParams.SteerControlType.torque
-    cp.safetyConfigs[0].safetyParam &= ~2
-    # <TEST_ANGLE_START_END>
     cp_sp = CarInterface.get_non_essential_params_sp(cp, CAR.PSA_PEUGEOT_3008)
     self.interface = CarInterface(cp, cp_sp)
     self.controller = CarController({Bus.main: 'psa_aee2010_r3'}, cp, cp_sp)

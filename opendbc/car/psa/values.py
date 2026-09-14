@@ -9,20 +9,6 @@ Ecu = CarParams.Ecu
 
 PSA_ADAS_BUS = 1
 
-# <TEST_ANGLE_START>
-from opendbc.car.lateral import AngleSteeringLimits
-
-PSA_TEST_ANGLE = 2  # safetyParam; requires the matching PSA angle safety implementation.
-
-# Experimental bounds, not a firmware capability claim. Rates are degrees per
-# 10 ms command: the earlier PSA 20 Hz limits scaled by 1/5 for this 100 Hz test.
-PSA_TEST_ANGLE_LIMITS = AngleSteeringLimits(
-  STEER_ANGLE_MAX=90,
-  ANGLE_RATE_LIMIT_UP=([0, 5, 25], [0.5, 0.3, 0.04]),
-  ANGLE_RATE_LIMIT_DOWN=([0, 5, 25], [1.0, 0.4, 0.06]),
-)
-# <TEST_ANGLE_START_END>
-
 # [psa longitudinal] - START
 PSA_LONG_CONTROL = 1  # safetyParam bit selected by alpha_long on Peugeot 3008.
 

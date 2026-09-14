@@ -32,26 +32,9 @@
 static bool psa_long_control = false;
 // [psa longitudinal] - END
 
-// <TEST_ANGLE_START>
-#define PSA_TEST_ANGLE 2U
-static bool psa_test_angle = false;
-static bool psa_angle_seen = false;
-static bool psa_eps_seen = false;
-static bool psa_angle_requested = false;
-static bool psa_angle_driver_pressed = false;
-static uint32_t psa_angle_ts = 0U;
-static uint32_t psa_eps_ts = 0U;
-static unsigned int psa_eps_state = 0U;
-
-// Provisional 100 Hz limits; keep synchronized with PSA_TEST_ANGLE_LIMITS.
-static const AngleSteeringLimits PSA_ANGLE_LIMITS = {
-  .max_angle = 900,
-  .angle_deg_to_can = 10,
-  .angle_rate_up_lookup = {{0., 5., 25.}, {0.5, 0.3, 0.04}},
-  .angle_rate_down_lookup = {{0., 5., 25.}, {1.0, 0.4, 0.06}},
-  .frequency = 100,
-};
-// <TEST_ANGLE_START_END>
+// [torque override] - START
+static bool psa_driver_pressed = false;
+// [torque override] - END
 
 // [acc hold] - START
 // Shared checks; the gas source is selected separately for each profile.
@@ -65,11 +48,11 @@ static const AngleSteeringLimits PSA_ANGLE_LIMITS = {
 
 static uint8_t psa_get_counter(const CANPacket_t *msg) {
   uint8_t cnt = 0;
-  // <TEST_ANGLE_START>
+  // [steering checksum] - START
   if (msg->addr == PSA_STEERING_ALT) {
     return msg->data[4] & 0xFU;
   }
-  // <TEST_ANGLE_START_END>
+  // [steering checksum] - END
   if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
     cnt = (msg->data[3] >> 4) & 0xFU;
   } else if (msg->addr == PSA_HS2_DYN_ABR_38D) {
@@ -89,11 +72,11 @@ static uint8_t psa_get_counter(const CANPacket_t *msg) {
 
 static uint32_t psa_get_checksum(const CANPacket_t *msg) {
   uint8_t chksum = 0;
-  // <TEST_ANGLE_START>
+  // [steering checksum] - START
   if (msg->addr == PSA_STEERING_ALT) {
     return msg->data[4] >> 4;
   }
-  // <TEST_ANGLE_START_END>
+  // [steering checksum] - END
   if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
     chksum = msg->data[5] & 0xFU;
   } else if (msg->addr == PSA_HS2_DYN_ABR_38D) {
@@ -131,9 +114,8 @@ static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, in
 
 static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
   uint8_t chk = 0;
-  // <TEST_ANGLE_START>
+  // [steering checksum] - START
   if (msg->addr == PSA_STEERING_ALT) {
-    // return _psa_compute_checksum(msg, 0xB, 4, true);
     // 3008 recorded STEERING_ALT uses XOR over bytes 0..4 only, with
     // the checksum nibble cleared. It does not use the generic PSA sum.
     for (int i = 0; i < 5; i++) {
@@ -145,7 +127,7 @@ static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
     }
     return chk;
   }
-  // <TEST_ANGLE_START_END>
+  // [steering checksum] - END
   if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
     chk = _psa_compute_checksum(msg, 0x4, 5, false);   // checksum in LOW nibble of byte 5
   } else if (msg->addr == PSA_HS2_DYN_ABR_38D) {
@@ -174,10 +156,7 @@ static void psa_rx_hook(const CANPacket_t *msg) {
 
   if (msg->bus == PSA_MAIN_BUS) {
     // [acc hold] - START
-    // <TEST_ANGLE_START>
-    // if (psa_long_control && (msg->addr == PSA_DYN5_CMM)) {
-    if ((psa_long_control || psa_test_angle) && (msg->addr == PSA_DYN5_CMM)) {
-    // <TEST_ANGLE_START_END>
+    if (psa_long_control && (msg->addr == PSA_DYN5_CMM)) {
       gas_pressed = msg->data[2] > 0U; // P334_ACCPed_Position, same source as carstate.py
     }
     // [acc hold] - END
@@ -208,10 +187,7 @@ static void psa_rx_hook(const CANPacket_t *msg) {
 
   if (msg->bus == PSA_CAM_BUS) {
     // [acc hold] - START
-    // <TEST_ANGLE_START>
-    // if (!psa_long_control && (msg->addr == PSA_DRIVER)) {
-    if (!psa_long_control && !psa_test_angle && (msg->addr == PSA_DRIVER)) {
-    // <TEST_ANGLE_START_END>
+    if (!psa_long_control && (msg->addr == PSA_DRIVER)) {
       gas_pressed = msg->data[3] > 0U; // GAS_PEDAL
     }
     // [acc hold] - END
@@ -221,46 +197,29 @@ static void psa_rx_hook(const CANPacket_t *msg) {
   }
 
   // CAN0 or CAN2
-  // <TEST_ANGLE_START>
-  // if (msg->addr == PSA_STEERING_ALT) {
-  if ((msg->addr == PSA_STEERING_ALT) && (!psa_test_angle || (msg->bus == PSA_MAIN_BUS))) {
-  // <TEST_ANGLE_START_END>
+  if (msg->addr == PSA_STEERING_ALT) {
     int angle_meas_new = to_signed((msg->data[0] << 8) | msg->data[1], 16); // ANGLE
     update_sample(&angle_meas, angle_meas_new);
-    // <TEST_ANGLE_START>
-    psa_angle_seen = true;
-    psa_angle_ts = microsecond_timer_get();
-    // <TEST_ANGLE_START_END>
   }
-  // <TEST_ANGLE_START>
-  // if (psa_test_angle && (msg->bus == PSA_MAIN_BUS)) {
-  if (msg->bus == PSA_MAIN_BUS) {
-    if (psa_test_angle && (msg->addr == PSA_IS_DAT_DIRA)) {
-      psa_eps_state = (msg->data[2] >> 2) & 7U;
-      psa_eps_seen = true;
-      psa_eps_ts = microsecond_timer_get();
-    }
-    if (msg->addr == PSA_STEERING) {
-      // CarState's 3008 driver torque uses raw * 3 with a threshold of 50.
-      int driver_torque = to_signed(msg->data[1], 8) * 3;
-      psa_angle_driver_pressed = (driver_torque > 50) || (driver_torque < -50);
-      update_sample(&torque_driver, driver_torque);
-    }
+  // [torque override] - START
+  if ((msg->bus == PSA_MAIN_BUS) && (msg->addr == PSA_STEERING)) {
+    // CarState's 3008 driver torque uses raw * 3 with a threshold of 50.
+    int driver_torque = to_signed(msg->data[1], 8) * 3;
+    psa_driver_pressed = (driver_torque > 50) || (driver_torque < -50);
+    update_sample(&torque_driver, driver_torque);
   }
-  // <TEST_ANGLE_START_END>
+  // [torque override] - END
 }
 
 static bool psa_tx_hook(const CANPacket_t *msg) {
   // SAFETY_UNUSED(msg);
   bool tx = true;
   static const TorqueSteeringLimits PSA_STEERING_LIMITS = {
-    // <TEST_ANGLE_START>
-    // .max_torque = 200,
-    // .max_rate_up = 22,
+    // [torque limits] - START
     // Effective torque, matching CarControllerParams after TORQUE_FACTOR.
     .max_torque = 150,
     .max_rate_up = 8,
-    // <TEST_ANGLE_START_END>
+    // [torque limits] - END
     .max_rate_down = 38,
     .driver_torque_allowance = 50,
     .driver_torque_multiplier = 1,
@@ -326,87 +285,48 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     uint8_t torque_factor = (msg->data[5] & 0xFEU) >> 1;
     bool lka_active = torque_factor != 0U;
 
-    // <TEST_ANGLE_START>
-    // if (steer_torque_cmd_checks(desired_torque, lka_active, PSA_STEERING_LIMITS)) {
-    //   // tx = false;
-    //   tx = true;
-    // }
-    if (psa_test_angle) {
-      int desired_angle = to_signed((msg->data[6] << 6) | (msg->data[7] >> 2), 14);
-      unsigned int status = (msg->data[4] >> 2) & 7U;
-      bool shape_valid = (msg->data[0] == 0x40U) && (msg->data[2] == 0U) &&
-                         (desired_torque == 0) && ((msg->data[4] & 3U) == 0U) &&
-                         ((msg->data[5] & 1U) != 0U) && ((msg->data[7] & 3U) == 0U) &&
-                         (torque_factor <= 100U) &&
-                         (lka_active ? ((status >= 2U) && (status <= 4U)) : (status == 0U)) &&
-                         ((msg->data[1] >> 4) == _psa_compute_checksum(msg, 0xB, 1, true));
-      uint32_t now = microsecond_timer_get();
-      bool feedback_valid = psa_angle_seen && psa_eps_seen &&
-                            (safety_get_ts_elapsed(now, psa_angle_ts) <= 100000U) &&
-                            (safety_get_ts_elapsed(now, psa_eps_ts) <= 1000000U);
-      // A rising request must start at the measured angle, never at an arbitrary
-      // target. This also initializes the rate limiter after an inactive interval.
-      bool first_request = lka_active && !psa_angle_requested;
-      bool start_violation = first_request && steer_angle_cmd_inactive_check(desired_angle, PSA_ANGLE_LIMITS.max_angle);
-      if (first_request) {
-        desired_angle_last = SAFETY_CLAMP(angle_meas.values[0], -PSA_ANGLE_LIMITS.max_angle, PSA_ANGLE_LIMITS.max_angle);
-      }
-      bool violation = steer_angle_cmd_checks(desired_angle, lka_active, PSA_ANGLE_LIMITS);
-      violation |= safety_max_limit_check(desired_angle, PSA_ANGLE_LIMITS.max_angle, -PSA_ANGLE_LIMITS.max_angle);
-      tx = shape_valid && !start_violation && !violation &&
-           (!lka_active || (feedback_valid && (psa_eps_state < 4U) && !psa_angle_driver_pressed && !brake_pressed_prev &&
-                           !safety_max_limit_check(angle_meas.values[0], PSA_ANGLE_LIMITS.max_angle, -PSA_ANGLE_LIMITS.max_angle)));
-      psa_angle_requested = tx && lka_active;
-      if (!tx) {
-        desired_angle_last = SAFETY_CLAMP(angle_meas.values[0], -PSA_ANGLE_LIMITS.max_angle, PSA_ANGLE_LIMITS.max_angle);
-      }
-    } else {
-      // if (steer_torque_cmd_checks(desired_torque, lka_active, PSA_STEERING_LIMITS)) {
-      //   tx = true;
-      // }
-      // The legacy controller limits effective torque, then divides by factor.
-      // E.g. raw 448 at factor 25 is effective 112, a valid release from 150.
-      int product = desired_torque * torque_factor;
-      int effective_torque = (SAFETY_ABS(product) + 50) / 100;
-      if (product < 0) {
-        effective_torque = -effective_torque;
-      }
-      bool shape_valid = ((msg->data[0] & 0x40U) == 0U) && ((msg->data[5] & 1U) == 0U) &&
-                         (msg->data[6] == 0U) && ((msg->data[7] & 0xFCU) == 0U) &&
-                         (torque_factor <= 100U) && (lka_active || (desired_torque == 0));
-      // Zero torque is an immediate release (driver override, rearm, disengage).
-      if (shape_valid && (desired_torque == 0)) {
-        desired_torque_last = 0;
-        rt_torque_last = 0;
-        ts_torque_check_last = microsecond_timer_get();
-      }
-      // The generic driver check permits faster decreases absent opposition;
-      // also enforce the controller's normal 8/38 envelope in effective units.
-      int highest = desired_torque_last > 0 ? desired_torque_last + PSA_STEERING_LIMITS.max_rate_up :
-                    SAFETY_MIN(desired_torque_last + PSA_STEERING_LIMITS.max_rate_down, PSA_STEERING_LIMITS.max_rate_up);
-      int lowest = desired_torque_last > 0 ?
-                   SAFETY_MAX(desired_torque_last - PSA_STEERING_LIMITS.max_rate_down, -PSA_STEERING_LIMITS.max_rate_up) :
-                   desired_torque_last - PSA_STEERING_LIMITS.max_rate_up;
-      bool violation = safety_max_limit_check(effective_torque, highest, lowest);
-      violation |= steer_torque_cmd_checks(effective_torque, lka_active, PSA_STEERING_LIMITS);
-      tx = shape_valid && !violation &&
-           ((desired_torque == 0) || ((controls_allowed || controls_allowed_lateral) &&
-                                    !brake_pressed_prev && !psa_angle_driver_pressed));
-      if (!tx) {
-        desired_torque_last = 0;
-        rt_torque_last = 0;
-        ts_torque_check_last = microsecond_timer_get();
-      }
+    // [torque limits] - START
+    // The legacy controller limits effective torque, then divides by factor.
+    // E.g. raw 448 at factor 25 is effective 112, a valid release from 150.
+    int product = desired_torque * torque_factor;
+    int effective_torque = (SAFETY_ABS(product) + 50) / 100;
+    if (product < 0) {
+      effective_torque = -effective_torque;
     }
-    // <TEST_ANGLE_START_END>
+    bool shape_valid = ((msg->data[0] & 0x40U) == 0U) && ((msg->data[5] & 1U) == 0U) &&
+                       (msg->data[6] == 0U) && ((msg->data[7] & 0xFCU) == 0U) &&
+                       (torque_factor <= 100U) && (lka_active || (desired_torque == 0));
+    // Zero torque is an immediate release (driver override, rearm, disengage).
+    if (shape_valid && (desired_torque == 0)) {
+      desired_torque_last = 0;
+      rt_torque_last = 0;
+      ts_torque_check_last = microsecond_timer_get();
+    }
+    // The generic driver check permits faster decreases absent opposition;
+    // also enforce the controller's normal 8/38 envelope in effective units.
+    int highest = desired_torque_last > 0 ? desired_torque_last + PSA_STEERING_LIMITS.max_rate_up :
+                  SAFETY_MIN(desired_torque_last + PSA_STEERING_LIMITS.max_rate_down, PSA_STEERING_LIMITS.max_rate_up);
+    int lowest = desired_torque_last > 0 ?
+                 SAFETY_MAX(desired_torque_last - PSA_STEERING_LIMITS.max_rate_down, -PSA_STEERING_LIMITS.max_rate_up) :
+                 desired_torque_last - PSA_STEERING_LIMITS.max_rate_up;
+    bool violation = safety_max_limit_check(effective_torque, highest, lowest);
+    violation |= steer_torque_cmd_checks(effective_torque, lka_active, PSA_STEERING_LIMITS);
+    tx = shape_valid && !violation &&
+         ((desired_torque == 0) || ((controls_allowed || controls_allowed_lateral) &&
+                                  !brake_pressed_prev && !psa_driver_pressed));
+    if (!tx) {
+      desired_torque_last = 0;
+      rt_torque_last = 0;
+      ts_torque_check_last = microsecond_timer_get();
+    }
+    // [torque limits] - END
   }
 
-  // <TEST_ANGLE_START>
-  // if (psa_test_angle && ((msg->addr == PSA_IS_DAT_DIRA) || (msg->addr == PSA_STEERING))) {
-  if ((psa_test_angle && (msg->addr == PSA_IS_DAT_DIRA)) || (msg->addr == PSA_STEERING)) {
-    tx = false;  // Keep physical EPS and driver feedback; no synthetic hands-on.
+  // [torque override] - START
+  if (msg->addr == PSA_STEERING) {
+    tx = false;  // Keep physical driver feedback.
   }
-  // <TEST_ANGLE_START_END>
+  // [torque override] - END
 
   // [artiv probe] - START
   // ARTIV diagnostics: allow exact unpadded TesterPresent and programming requests.
@@ -437,19 +357,12 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
 }
 
 static safety_config psa_init(uint16_t param) {
+  // [torque override] - START
+  psa_driver_pressed = false;
+  // [torque override] - END
   // [psa longitudinal] - START
   psa_long_control = GET_FLAG(param, PSA_LONG_CONTROL);
   // [psa longitudinal] - END
-  // <TEST_ANGLE_START>
-  psa_test_angle = GET_FLAG(param, PSA_TEST_ANGLE);
-  psa_angle_seen = false;
-  psa_eps_seen = false;
-  psa_angle_requested = false;
-  psa_angle_driver_pressed = false;
-  psa_angle_ts = 0U;
-  psa_eps_ts = 0U;
-  psa_eps_state = 0U;
-  // <TEST_ANGLE_START_END>
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
     {PSA_IS_DAT_DIRA, PSA_CAM_BUS, 4, .check_relay = false}, // hold steering wheel
@@ -482,19 +395,7 @@ static safety_config psa_init(uint16_t param) {
     }},
   };
 
-  // <TEST_ANGLE_START>
-  // return psa_long_control ? BUILD_SAFETY_CFG(psa_long_rx_checks, PSA_TX_MSGS) : BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
-  static RxCheck psa_angle_rx_checks[] = {
-    PSA_COMMON_RX_CHECKS
-    {.msg = {{PSA_DYN5_CMM, PSA_MAIN_BUS, 8, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, {0}, {0}}},
-    {.msg = {{PSA_STEERING_ALT, PSA_MAIN_BUS, 7, 100U, .max_counter = 15U, .ignore_quality_flag = true}, {0}, {0}}},
-    {.msg = {{PSA_IS_DAT_DIRA, PSA_MAIN_BUS, 4, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, {0}, {0}}},
-  };
-  if (psa_test_angle) {
-    return BUILD_SAFETY_CFG(psa_angle_rx_checks, PSA_TX_MSGS);
-  }
   return psa_long_control ? BUILD_SAFETY_CFG(psa_long_rx_checks, PSA_TX_MSGS) : BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
-  // <TEST_ANGLE_START_END>
   // [acc hold] - END
 }
 
