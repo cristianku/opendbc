@@ -90,10 +90,30 @@ class TestAngleController(unittest.TestCase):
       self.assertEqual(values.status, (2, 3, 4)[frame // 5 % 3])
       self.assertEqual(values.factor, 100)
       self.assertEqual(values.torque, 0)
-      self.assertEqual(message[1][1] & 15, frame % 16)
+      self.assertEqual(message[1][1] & 15, (frame // 5) % 16)
       self.assertEqual(sum((b >> 4) + (b & 15) for b in message[1]) % 16, 11)
       self.assertEqual((output.torque, output.torqueOutputCan), (0, 0))
       h.cs.out.steeringAngleDeg = values.angle
+
+  # [angle counter] - START
+  def test_counter_matches_recorded_e208_cadence_across_wrap_and_release(self):
+    # Raw 0x3F2 counter nibbles from 6a7075a4fdd765ee/0000004e--1f612006dd,
+    # 100.004424705–100.844607976 s: 85 messages at 100 Hz, counter at 20 Hz.
+    recorded = '777778888899999aaaaabbbbbcccccdddddeeeeefffff0000011111222223333344444555556666677777'
+    for interrupt in (False, True):
+      with self.subTest(interrupt=interrupt):
+        h = AngleHarness()
+        h.controller.frame = 35  # Align the initial counter with the recorded 7.
+        actual = ''
+        for index in range(len(recorded)):
+          h.cc.latActive = not (interrupt and 20 <= index < 30)
+          h.cs.out.steeringPressed = interrupt and 42 <= index < 48
+          _, values, message = h.lka()  # Requires one transmitted frame every tick.
+          actual += format(message[1][1] & 15, 'x')
+          self.assertEqual(values.factor, 100 if h.cc.latActive and not h.cs.out.steeringPressed else 0)
+          self.assertEqual(sum((b >> 4) + (b & 15) for b in message[1]) % 16, 11)
+        self.assertEqual(actual, recorded)
+  # [angle counter] - END
 
   def test_release_on_driver_brake_bad_can_fault_and_nonfinite_target(self):
     for field, value in [('steeringPressed', True), ('brakePressed', True), ('canValid', False),

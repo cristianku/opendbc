@@ -544,9 +544,15 @@ class CarController(CarControllerBase):
     # e208 route 4e: STATUS continues 2/3/4 at 50 ms per state even with EPS_STATE_LKA=3.
     status = (2, 3, 4)[self.angle_request_frames // 5 % 3] if request else 0
     self.angle_request_frames = self.angle_request_frames + 1 if request else 0
+    # [angle counter] - START
+    # e208 route 4e: transmit at 100 Hz, but advance the counter at 20 Hz,
+    # including neutral frames. Keep the previous cadence for easy rollback.
+    # counter = self.frame % 16
+    counter = (self.frame // 5) % 16
+    # [angle counter] - END
     return create_lka_steering(
       self.packer, request, 0, 100 if request else 0, status,
-      unknown2=0, drive=1, lxa_activation=1, set_angle=self.apply_angle_last, counter=self.frame % 16,
+      unknown2=0, drive=1, lxa_activation=1, set_angle=self.apply_angle_last, counter=counter,
     )
   # <TEST_ANGLE_START_END>
 
