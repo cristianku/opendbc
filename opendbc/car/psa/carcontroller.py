@@ -490,16 +490,25 @@ class CarController(CarControllerBase):
       self.takeover_req_already_sent = True
 
   # <TEST_ANGLE_START>
-  def _update_test_angle(self, CC, CS):
+  def _update_test_angle(self, CC, CS, now_nanos):
     measured = CS.out.steeringAngleDeg
     target = CC.actuators.steeringAngleDeg
     raw_driver_torque = getattr(CS, 'steering', {}).get('DRIVER_TORQUE', 0) * 3
     ack_lost = self.angle_eps_active_last and not CS.eps_active and self.angle_request_frames > 0
     self.angle_eps_active_last = CS.eps_active
-    if not CC.latActive:
+    # if not CC.latActive:
+    # A fault itself clears latActive. Require cruise main off as well so the
+    # surfaced fault cannot trigger an automatic clear/retry loop.
+    if not CC.latActive and not CS.out.cruiseState.available:
       self.angle_failed = False
+    # Release before Panda's 100 ms / 1 s limits, allowing scheduling margin.
+    # canValid alone debounces brief losses and cannot synchronize rate limiters.
+    angle_ts = getattr(CS, 'angle_feedback_ts', 0)
+    eps_ts = getattr(CS, 'eps_feedback_ts', 0)
+    feedback_fresh = (angle_ts > 0 and 0 <= now_nanos - angle_ts <= 80_000_000
+                      and eps_ts > 0 and 0 <= now_nanos - eps_ts <= 900_000_000)
     finite = all(math.isfinite(v) for v in (measured, target, CS.out.vEgoRaw, raw_driver_torque))
-    request = (CC.latActive and finite and CS.out.canValid and not self.CP.dashcamOnly and not self.CP.passive
+    request = (CC.latActive and finite and feedback_fresh and CS.out.canValid and not self.CP.dashcamOnly and not self.CP.passive
                and abs(measured) <= PSA_TEST_ANGLE_LIMITS.STEER_ANGLE_MAX
                and CS.out.vEgoRaw >= self.CP.minSteerSpeed and not CS.out.steeringPressed and not CS.out.brakePressed
                and abs(raw_driver_torque) <= self.params.STEER_DRIVER_ALLOWANCE
@@ -510,7 +519,7 @@ class CarController(CarControllerBase):
       if self.angle_no_ack_frames > int(self.params.EPS_ACK_TIMEOUT / DT_CTRL):
         self.angle_failed = True
         request = False
-        carlog.warning('TEST_ANGLE: EPS acknowledgement missing; request released until lateral disengagement')
+        carlog.warning('TEST_ANGLE: EPS acknowledgement missing; switch cruise main off to reset')
     else:
       self.angle_no_ack_frames = 0
     # Release once on ACK loss to resynchronize at the measured position. Keep
@@ -555,7 +564,7 @@ class CarController(CarControllerBase):
     # <TEST_ANGLE_START>
     # The original torque branch below remains available for rollback and for C4.
     if self.test_angle:
-      angle_message = self._update_test_angle(CC, CS)
+      angle_message = self._update_test_angle(CC, CS, now_nanos)
       if angle_message is not None:
         can_sends.append(angle_message)
     # <TEST_ANGLE_START_END>
@@ -590,7 +599,12 @@ class CarController(CarControllerBase):
               self.status = 4 # 4: EPS ACTIVE
               self._maybe_request_eps_takeover(CS.out.vEgo, actuators.curvature)
 
-              if (CS.out.steeringPressed):
+              # <TEST_ANGLE_START>
+              # if (CS.out.steeringPressed):
+              # Match Panda before the filtered/debounced driver flag catches up.
+              raw_driver_torque = getattr(CS, 'steering', {}).get('DRIVER_TORQUE', 0) * 3
+              if CS.out.steeringPressed or abs(raw_driver_torque) > self.params.STEER_DRIVER_ALLOWANCE:
+                # <TEST_ANGLE_START_END>
                 #### DRIVER STEERING DETECTED
                 # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
                 self.apply_torque_factor = 0

@@ -161,6 +161,66 @@ class TestPsaAngleSafety(unittest.TestCase):
           self.assertTrue(self.safety.safety_tx_hook(libsafety_py.make_CANPacket(message[0], message[2], message[1])),
                           (event, frame, message[1].hex()))
 
+  def test_brief_feedback_gap_releases_and_recovers_while_canvalid_stays_true(self):
+    from opendbc.can.parser import CANParser
+    from opendbc.car.psa.tests.test_angle import AngleHarness
+    h = AngleHarness()
+    parser = CANParser('psa_aee2010_r3', [('STEERING_ALT', 100), ('Dyn4_FRE', 50)], 0)
+    released = False
+    for frame in range(45):
+      now = (frame + 1) * 10_000_000
+      self.safety.set_timer(now // 1000)
+      angle_rx = not 10 <= frame < 21
+      frames = [self.packer.make_can_msg('Dyn4_FRE', 0, {})]
+      if angle_rx:
+        frames.append(self.packer.make_can_msg('STEERING_ALT', 0, {'ANGLE': 12}))
+        self.rx_angle(12)
+      self.rx('IS_DAT_DIRA', 0, {'EPS_STATE_LKA': 3})
+      parser.update([(now, frames)])
+      self.assertTrue(parser.can_valid)
+      h.cs.angle_feedback_ts = parser.ts_nanos['STEERING_ALT']['ANGLE']
+      _, values, message = h.lka(update_angle=False)
+      self.assertTrue(self.safety.safety_tx_hook(libsafety_py.make_CANPacket(message[0], message[2], message[1])), frame)
+      released |= values.factor == 0
+      if frame >= 21:
+        self.assertEqual(values.factor, 100)
+    self.assertTrue(released)
+
+  def test_corrupt_angle_feedback_releases_and_recovers(self):
+    from opendbc.car import Bus
+    from opendbc.car.psa.carstate import CarState
+    from opendbc.car.psa.tests.test_angle import AngleHarness
+    for fault in ('checksum', 'counter'):
+      with self.subTest(fault=fault):
+        self.setUp()
+        h = AngleHarness()
+        parser = CarState.get_can_parsers(h.cp, h.controller.CP_SP)[Bus.main]
+        _ = parser.vl['STEERING_ALT']  # Match CarState's lazy signal registration.
+        released = False
+        counter = 0
+        for frame in range(45):
+          now = (frame + 1) * 10_000_000
+          self.safety.set_timer(now // 1000)
+          corrupt = 10 <= frame < 25
+          if fault != 'counter' or not corrupt:
+            counter = (counter + 1) % 16
+          data = bytearray(self.packer.make_can_msg('STEERING_ALT', 0, {'ANGLE': 12, '0_COUNTER': counter})[1])
+          data[4] &= 15
+          data[4] |= ((11 - sum((b >> 4) + (b & 15) for b in data)) & 15) << 4
+          if fault == 'checksum' and corrupt:
+            data[4] ^= 16
+          self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x305, 0, data))
+          parser.update([(now, [(0x305, bytes(data), 0)])])
+          self.rx('IS_DAT_DIRA', 0, {'EPS_STATE_LKA': 3})
+          h.cs.angle_feedback_ts = parser.ts_nanos['STEERING_ALT']['ANGLE']
+          _, values, message = h.lka(update_angle=False)
+          self.assertTrue(self.safety.safety_tx_hook(libsafety_py.make_CANPacket(message[0], message[2], message[1])),
+                          (fault, frame, message[1].hex()))
+          released |= values.factor == 0
+          if frame >= 25:
+            self.assertEqual(values.factor, 100)
+        self.assertTrue(released)
+
 
 if __name__ == '__main__':
   unittest.main()

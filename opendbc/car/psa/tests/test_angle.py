@@ -37,12 +37,17 @@ class AngleHarness:
     self.cc.latActive = True
     self.cc.actuators.steeringAngleDeg = -20
 
-  def step(self):
+  def step(self, *, update_angle=True, update_eps=True):
+    now = (self.controller.frame + 1) * 10_000_000
+    if update_angle:
+      self.cs.angle_feedback_ts = now
+    if update_eps:
+      self.cs.eps_feedback_ts = now
     return self.controller.update(self.cc.as_reader(), structs.CarControlSP(), self.cs,
-                                  (self.controller.frame + 1) * 10_000_000)
+                                  now)
 
-  def lka(self):
-    output, messages = self.step()
+  def lka(self, **kwargs):
+    output, messages = self.step(**kwargs)
     frames = [m for m in messages if m[0] == 0x3F2]
     assert len(frames) == 1, f'expected one angle frame, got {frames}'
     return output, decode_lka(frames[0][1]), frames[0]
@@ -59,6 +64,7 @@ class TestAngleController(unittest.TestCase):
                          else structs.CarParams.SteerControlType.torque)
         self.assertEqual(bool(h.cp.safetyConfigs[0].safetyParam & 2), enabled)
         self.assertEqual(h.controller.test_angle, enabled)
+        self.assertEqual(h.cp.lateralTuning.which(), 'pid' if enabled else 'torque')
         self.assertEqual((values.drive, values.lxa), (1, 1) if enabled else (0, 0))
 
   def test_only_3008_selects_experiment(self):
@@ -126,6 +132,50 @@ class TestAngleController(unittest.TestCase):
     h.lka()
     h.cc.latActive = True
     self.assertEqual(h.lka()[1].factor, 100)
+
+  def test_timeout_fault_reaches_carstate_and_requires_cruise_main_off(self):
+    h = AngleHarness()
+    h.cs.out.cruiseState.available = True
+    h.cs.eps_active = False
+    h.cs.eps_state_lka = 2
+    for _ in range(51):
+      h.lka()
+    interface = CarInterface(h.cp, h.controller.CP_SP)
+    interface.CC = h.controller
+    state, _ = interface.update([(600_000_000, [])])
+    self.assertTrue(state.steerFaultTemporary)
+    # Fault-induced loss of latActive alone must not clear the fault and retry.
+    h.cc.latActive = False
+    h.lka()
+    self.assertTrue(h.controller.angle_failed)
+    h.cs.out.cruiseState.available = False
+    h.lka()
+    self.assertFalse(h.controller.angle_failed)
+
+  def test_carstate_exports_last_received_feedback_timestamps(self):
+    h = AngleHarness()
+    interface = CarInterface(h.cp, h.controller.CP_SP)
+    interface.update([(1, [])])
+    p = h.controller.packer
+    data = bytearray(p.make_can_msg('STEERING_ALT', 0, {'ANGLE': 12, '0_COUNTER': 1})[1])
+    data[4] |= ((11 - sum((b >> 4) + (b & 15) for b in data)) & 15) << 4
+    interface.update([(10_000_000, [(0x305, bytes(data), 0),
+                                   p.make_can_msg('IS_DAT_DIRA', 0, {'EPS_STATE_LKA': 3})])])
+    interface.update([(20_000_000, [])])
+    self.assertEqual(interface.CS.angle_feedback_ts, 10_000_000)
+    self.assertEqual(interface.CS.eps_feedback_ts, 10_000_000)
+
+  def test_angle_parser_checks_do_not_mutate_shared_dbc_or_torque_parser(self):
+    from opendbc.car.psa.carstate import CarState
+    h = AngleHarness()
+    angle = CarState.get_can_parsers(h.cp, h.controller.CP_SP)[Bus.main]
+    h = AngleHarness(angle_enabled=False)
+    torque = CarState.get_can_parsers(h.cp, h.controller.CP_SP)[Bus.main]
+    _ = torque.vl['STEERING_ALT']
+    self.assertIsNone(torque.dbc.addr_to_msg[0x305].sigs['0_CHECKSUM'].calc_checksum)
+    for parser, checked in ((angle, True), (torque, False)):
+      sig = next(s for s in parser.message_states[0x305].signals if s.name == '0_CHECKSUM')
+      self.assertEqual(sig.calc_checksum is not None, checked)
 
   def test_waiting_for_ack_holds_initial_angle_when_measurement_changes(self):
     h = AngleHarness()

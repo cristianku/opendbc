@@ -371,13 +371,32 @@ class TestRadarSessionInterface(unittest.TestCase):
     interface.update([(0, [])])
     packers = {bus: CANPacker(parser.dbc_name) for bus, parser in interface.can_parsers.items()}
 
+    # <TEST_ANGLE_START>
+    angle_counter = 0
+    # <TEST_ANGLE_START_END>
+
     def physical_frames(include_radar=False):
+      # <TEST_ANGLE_START>
+      nonlocal angle_counter
+      # <TEST_ANGLE_START_END>
       frames = []
       for bus, parser in interface.can_parsers.items():
         for address in parser.addresses:
           if address == 0x696 or (address in RADAR_IDS and not include_radar):
             continue
-          frames.append(packers[bus].make_can_msg(address, parser.bus, {}))
+          # <TEST_ANGLE_START>
+          # frames.append(packers[bus].make_can_msg(address, parser.bus, {}))
+          if address == 0x305:
+            # Simulate valid physical feedback: prefixed DBC names are not
+            # filled by the packer automatically, but angle now validates them.
+            angle_counter = (angle_counter + 1) % 16
+            data = bytearray(packers[bus].make_can_msg(address, parser.bus, {'0_COUNTER': angle_counter})[1])
+            data[4] &= 15
+            data[4] |= ((11 - sum((b >> 4) + (b & 15) for b in data)) & 15) << 4
+            frames.append((address, bytes(data), parser.bus))
+          else:
+            frames.append(packers[bus].make_can_msg(address, parser.bus, {}))
+          # <TEST_ANGLE_START_END>
       return frames
 
     for tick in range(990, 1001):

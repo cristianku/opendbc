@@ -223,8 +223,9 @@ static void psa_rx_hook(const CANPacket_t *msg) {
     // <TEST_ANGLE_START_END>
   }
   // <TEST_ANGLE_START>
-  if (psa_test_angle && (msg->bus == PSA_MAIN_BUS)) {
-    if (msg->addr == PSA_IS_DAT_DIRA) {
+  // if (psa_test_angle && (msg->bus == PSA_MAIN_BUS)) {
+  if (msg->bus == PSA_MAIN_BUS) {
+    if (psa_test_angle && (msg->addr == PSA_IS_DAT_DIRA)) {
       psa_eps_state = (msg->data[2] >> 2) & 7U;
       psa_eps_seen = true;
       psa_eps_ts = microsecond_timer_get();
@@ -233,6 +234,7 @@ static void psa_rx_hook(const CANPacket_t *msg) {
       // CarState's 3008 driver torque uses raw * 3 with a threshold of 50.
       int driver_torque = to_signed(msg->data[1], 8) * 3;
       psa_angle_driver_pressed = (driver_torque > 50) || (driver_torque < -50);
+      update_sample(&torque_driver, driver_torque);
     }
   }
   // <TEST_ANGLE_START_END>
@@ -242,8 +244,13 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
   // SAFETY_UNUSED(msg);
   bool tx = true;
   static const TorqueSteeringLimits PSA_STEERING_LIMITS = {
-    .max_torque = 200,
-    .max_rate_up = 22,
+    // <TEST_ANGLE_START>
+    // .max_torque = 200,
+    // .max_rate_up = 22,
+    // Effective torque, matching CarControllerParams after TORQUE_FACTOR.
+    .max_torque = 150,
+    .max_rate_up = 8,
+    // <TEST_ANGLE_START_END>
     .max_rate_down = 38,
     .driver_torque_allowance = 50,
     .driver_torque_multiplier = 1,
@@ -344,16 +351,49 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
         desired_angle_last = SAFETY_CLAMP(angle_meas.values[0], -PSA_ANGLE_LIMITS.max_angle, PSA_ANGLE_LIMITS.max_angle);
       }
     } else {
-      // Legacy torque behavior retained only for the non-experimental profile.
-      if (steer_torque_cmd_checks(desired_torque, lka_active, PSA_STEERING_LIMITS)) {
-        tx = true;
+      // if (steer_torque_cmd_checks(desired_torque, lka_active, PSA_STEERING_LIMITS)) {
+      //   tx = true;
+      // }
+      // The legacy controller limits effective torque, then divides by factor.
+      // E.g. raw 448 at factor 25 is effective 112, a valid release from 150.
+      int product = desired_torque * torque_factor;
+      int effective_torque = (SAFETY_ABS(product) + 50) / 100;
+      if (product < 0) {
+        effective_torque = -effective_torque;
+      }
+      bool shape_valid = ((msg->data[0] & 0x40U) == 0U) && ((msg->data[5] & 1U) == 0U) &&
+                         (msg->data[6] == 0U) && ((msg->data[7] & 0xFCU) == 0U) &&
+                         (torque_factor <= 100U) && (lka_active || (desired_torque == 0));
+      // Zero torque is an immediate release (driver override, rearm, disengage).
+      if (shape_valid && (desired_torque == 0)) {
+        desired_torque_last = 0;
+        rt_torque_last = 0;
+        ts_torque_check_last = microsecond_timer_get();
+      }
+      // The generic driver check permits faster decreases absent opposition;
+      // also enforce the controller's normal 8/38 envelope in effective units.
+      int highest = desired_torque_last > 0 ? desired_torque_last + PSA_STEERING_LIMITS.max_rate_up :
+                    SAFETY_MIN(desired_torque_last + PSA_STEERING_LIMITS.max_rate_down, PSA_STEERING_LIMITS.max_rate_up);
+      int lowest = desired_torque_last > 0 ?
+                   SAFETY_MAX(desired_torque_last - PSA_STEERING_LIMITS.max_rate_down, -PSA_STEERING_LIMITS.max_rate_up) :
+                   desired_torque_last - PSA_STEERING_LIMITS.max_rate_up;
+      bool violation = safety_max_limit_check(effective_torque, highest, lowest);
+      violation |= steer_torque_cmd_checks(effective_torque, lka_active, PSA_STEERING_LIMITS);
+      tx = shape_valid && !violation &&
+           ((desired_torque == 0) || ((controls_allowed || controls_allowed_lateral) &&
+                                    !brake_pressed_prev && !psa_angle_driver_pressed));
+      if (!tx) {
+        desired_torque_last = 0;
+        rt_torque_last = 0;
+        ts_torque_check_last = microsecond_timer_get();
       }
     }
     // <TEST_ANGLE_START_END>
   }
 
   // <TEST_ANGLE_START>
-  if (psa_test_angle && ((msg->addr == PSA_IS_DAT_DIRA) || (msg->addr == PSA_STEERING))) {
+  // if (psa_test_angle && ((msg->addr == PSA_IS_DAT_DIRA) || (msg->addr == PSA_STEERING))) {
+  if ((psa_test_angle && (msg->addr == PSA_IS_DAT_DIRA)) || (msg->addr == PSA_STEERING)) {
     tx = false;  // Keep physical EPS and driver feedback; no synthetic hands-on.
   }
   // <TEST_ANGLE_START_END>
