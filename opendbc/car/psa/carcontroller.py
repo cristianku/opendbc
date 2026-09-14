@@ -9,13 +9,14 @@ from opendbc.car.psa.psacan import (
   # create_driver_torque,
   create_lka_steering,
   create_request_takeover,
-  # create_resume_acc,
+  create_resume_acc,
   create_steering_hold,
   create_disable_radar,
   create_HS2_DYN1_MDD_ETAT_2B6,
   create_HS2_DYN_MDD_ETAT_2F6,
   create_HS2_DAT_ARTIV_V2_4F6,
   create_HS2_SUPV_ARTIV_796,
+  
 )
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
 from opendbc.car.carlog import carlog
@@ -122,7 +123,6 @@ class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
     CarControllerBase.__init__(self, dbc_names, CP, CP_SP)
     self.latActiveLast = False
-    self.eps_active_last = False
     self.packer = CANPacker(dbc_names[Bus.main])
     self.apply_torque_scaled_last = 0
     self.apply_can_torque_last = 0  # raw CAN torque logged to steeringAngleDeg (debug); init so it always exists
@@ -502,16 +502,19 @@ class CarController(CarControllerBase):
     can_torque = 0
 
     # lateral control
+    lat_active = CC.latActive
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
+      # Gate locally too: latActive can lag the raw wheel-speed threshold.
+      # Drop float32 conversion noise at exactly 51 km/h (wheel resolution: 0.0025).
+      lat_active = lat_active and round(CS.speed_kph, 4) > LKAS_LIMITS.ENABLE_SPEED
     if self.CP.steerControlType == SteerControlType.torque:
       if self.frame % self.params.STEER_STEP == 0:
-        if not CC.latActive:
+        if not lat_active:
           if self.latActiveLast:
              self.takeover_req = 1
           self._reset_lat_state()
         else:
           if not CS.eps_active:
-            if self.eps_active_last and CS.speed_kph <= LKAS_LIMITS.DISABLE_SPEED:
-              self.takeover_req = 1
             self._activate_eps(CS, actuators.curvature)
 
           else:
@@ -568,10 +571,10 @@ class CarController(CarControllerBase):
         # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status))
         # [inactive lka] - START
         unknown2 = 24
-        if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and not CC.latActive:
+        if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and not lat_active:
           unknown2 = getattr(CS, 'stock_lka_unknown2', 24)
         can_sends.append(create_lka_steering(
-          self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status, unknown2=unknown2,
+          self.packer, lat_active, can_torque, self.apply_torque_factor, self.status, unknown2=unknown2,
         ))
         # [inactive lka] - END
         # Remember the effective (scaled) value for the next frame's rate limit.
@@ -759,7 +762,7 @@ class CarController(CarControllerBase):
       # if self.frame % 100 == 50 and self.radar_disabled:
       #   can_sends.append(make_tester_present_msg(0x6b6, PSA_ADAS_BUS, suppress_response=False))
 
-      if not CC.latActive:
+      if not lat_active:
         self.steering_hold_counter = 0                       # alla ripresa il primo
         self.next_steering_hold = random.randint(8, 12)      # hold-hands parte subito
         self.driver_torque_counter = 0
@@ -769,7 +772,7 @@ class CarController(CarControllerBase):
         # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
         self.steering_hold_counter += 1
         if self.steering_hold_counter >= self.next_steering_hold:
-          can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+          can_sends.append(create_steering_hold(self.packer, lat_active, CS.is_dat_dira))
           self.steering_hold_counter = 0
           self.next_steering_hold = random.randint(8, 12)
         # --- DRIVER TORQUE (ogni 5–8 s) ---
@@ -781,18 +784,18 @@ class CarController(CarControllerBase):
         #   self.driver_torque_counter = 0
         #   self.next_driver_torque = random.randint(500, 800)
 
-    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-    #   if CC.enabled and CS.out.vEgo < self.params.RESUME_ACC_SPEED and CC.hudControl.leadVisible:
-    #     if self.creep_start_frame == 0:
-    #       self.creep_start_frame = self.frame     # primo frame dentro la finestra
-    #     phase = (self.frame - self.creep_start_frame) % 300
-    #     if phase in (0, 5):
-    #       pressed = 1 if phase == 5 else 0
-    #       msg = CS.hs2_dat_mdd_cmd_452
-    #       counter = (msg['COUNTER'] + 1) % 16
-    #       can_sends.append(create_resume_acc(self.packer, counter, pressed, msg))
-    #   else:
-    #     self.creep_start_frame = 0
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+      if CC.enabled and CS.out.vEgo < self.params.RESUME_ACC_SPEED and CC.hudControl.leadVisible:
+        if self.creep_start_frame == 0:
+          self.creep_start_frame = self.frame     # primo frame dentro la finestra
+        phase = (self.frame - self.creep_start_frame) % 300
+        if phase in (0, 5):
+          pressed = 1 if phase == 5 else 0
+          msg = CS.hs2_dat_mdd_cmd_452
+          counter = (msg['COUNTER'] + 1) % 16
+          can_sends.append(create_resume_acc(self.packer, counter, pressed, msg))
+      else:
+        self.creep_start_frame = 0
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       # The radar session owns 0x2F6 after its request; avoid separate takeover frames.
@@ -839,8 +842,7 @@ class CarController(CarControllerBase):
       # if self.frame % 100 == 0:
       #   carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_scaled_last}")
     if self.frame % self.params.STEER_STEP == 0:
-      self.latActiveLast = CC.latActive
-      self.eps_active_last = CS.eps_active
+      self.latActiveLast = lat_active
 
     self.frame += 1
     return new_actuators, can_sends
