@@ -6,6 +6,9 @@ import unittest
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
+# [long flow] - START
+from unittest.mock import patch
+# [long flow] - END
 
 from opendbc.can.packer import CANPacker
 from opendbc.can.parser import get_raw_value
@@ -487,6 +490,21 @@ class TestLongitudinalCommands(unittest.TestCase):
   # [brake limit] - END
 
   # [radar optin] - START
+  # [long flow] - START
+  def test_stock_longitudinal_skips_experimental_management(self):
+    h = LongitudinalHarness(experimental=False)
+    # The stock profile must never enter either experimental update, even with
+    # cruise enabled and a longitudinal actuator value present in CarControl.
+    with (
+      patch.object(h.controller, '_update_radar_session', side_effect=AssertionError('stock radar management')),
+      patch.object(h.controller, '_update_longitudinal', side_effect=AssertionError('stock longitudinal management')),
+    ):
+      for _ in range(4):
+        output, messages = h.step()
+        self.assertEqual(output.accel, h.cc.actuators.accel)
+        self.assertFalse(any(a in RADAR_IDS or a == 0x6B6 for a, _, _ in messages))
+  # [long flow] - END
+
   def test_disabled_longitudinal_never_programs_or_substitutes_stock_radar(self):
     for kwargs in ({'dashcam': True}, {'passive': True}, {'experimental': False}, {'safety_flag': False}):
       with self.subTest(profile=kwargs):

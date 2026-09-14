@@ -57,12 +57,18 @@ class CarInterface(CarInterfaceBase):
       CAR.PSA_PEUGEOT_3008,
       CAR.PSA_CITROEN_C4_SPACETOURER,
     )
+    # [long flow] - START
+    # Configure openpilot longitudinal only when this car supports it and the user opts in.
+    # This selects the controller; ACC engagement still comes from the BSI.
     ret.openpilotLongitudinalControl = ret.alphaLongitudinalAvailable and alpha_long
+    # [long flow] - END
     if ret.openpilotLongitudinalControl:
       # ret.dashcamOnly = False
       ret.safetyConfigs[0].safetyParam |= PSA_LONG_CONTROL
-      # ACC Waiting threshold in Dyn4_FRE CAN speed (~30 km/h on the cluster).
+      # [long flow] - START
+      # Announce ACC Waiting from 1 km/h raw Dyn4_FRE speed, with the brake released.
       ret.minEnableSpeed = 1.0 * CV.KPH_TO_MS
+      # [long flow] - END
     # [psa longitudinal] - END
 
     return ret

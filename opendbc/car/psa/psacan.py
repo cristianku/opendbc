@@ -45,7 +45,7 @@ def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_fa
     # 'LANE_DEPARTURE':0 if not lat_active else 1 if torque>0 else 2,
     # 'DRIVE': 1,
     'STATUS': status,
-    'LXA_ACTIVATION': 1,
+    # 'LXA_ACTIVATION': 1,
     'TORQUE_FACTOR': torque_factor, # * 100,
     # 'SET_ANGLE': set_angle,
   }

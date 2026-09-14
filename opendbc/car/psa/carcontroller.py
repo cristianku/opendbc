@@ -151,6 +151,13 @@ class CarController(CarControllerBase):
     # [light braking] - START
     self.longitudinal_braking = False
     # [light braking] - END
+    # [long flow] - START
+    # Inactive values also exist when openpilot longitudinal is disabled.
+    self.longitudinal_accel = 0.0
+    self.longitudinal_potential_torque = LongitudinalParams.INACTIVE_TORQUE
+    self.longitudinal_wheel_torque = LongitudinalParams.INACTIVE_TORQUE
+    self.longitudinal_min_time = 0.0
+    # [long flow] - END
     # [psa longitudinal] - END
     # [artiv probe] - START
     self.artiv_programming_requested = False
@@ -281,26 +288,34 @@ class CarController(CarControllerBase):
   # [psa longitudinal] - START
   def _update_longitudinal(self, CC, CS):
     """Prepare explicit CAN inputs. Experimental torque mapping; no emission or scheduling here."""
-    # [acc hold] - START
-    # Sunnypilot clears CC.enabled for DisengageOnAccelerator; temporary gas override
-    # keeps it enabled and clears longActive, including engagement with gas already pressed.
-    acc_enabled = (self.longitudinal_enabled and self.radar_active and CC.enabled
-                   and CS.out.canValid and CS.out.cruiseState.enabled and not CS.out.brakePressed)
-    self.acc_on_hold = bool(acc_enabled and CS.out.gasPressed)
-    # [acc hold] - END
-    # [light braking] - START
+    # [long flow] - START
+    # Preserve braking hysteresis, then clear the previous cycle's requests.
     was_braking = self.longitudinal_braking
-    # [light braking] - END
+    self.acc_on_hold = False
     self.longitudinal_active = False
     self.longitudinal_braking = False
     self.longitudinal_accel = 0.0
     self.longitudinal_potential_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_wheel_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_min_time = 0.0
-    # [acc hold] - START
-    if not (acc_enabled and CC.longActive and not CS.out.gasPressed and math.isfinite(CC.actuators.accel)):
+
+    # Configuration and radar session must permit experimental control.
+    if not self.longitudinal_enabled or not self.radar_active:
       return
-    # [acc hold] - END
+
+    # Require valid CAN, Sunnypilot enabled, BSI consent and no brake pedal.
+    if not CS.out.canValid or not CC.enabled or not CS.out.cruiseState.enabled or CS.out.brakePressed:
+      return
+
+    # Gas temporarily suspends ACC only while Sunnypilot and BSI remain enabled.
+    # DisengageOnAccelerator clears CC.enabled and returns above instead.
+    if CS.out.gasPressed:
+      self.acc_on_hold = True
+      return
+
+    if not CC.longActive or not math.isfinite(CC.actuators.accel):
+      return
+    # [long flow] - END
 
     # [torque calibration] - START
     accel = max(LongitudinalParams.ACCEL_LOOKUP[0], min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]))
@@ -623,102 +638,114 @@ class CarController(CarControllerBase):
 
     # #  ELKOLED LONGITUDINAL CONTROL
 
-    # [artiv probe] - START
-    # [radar optin] - START
-    # Only take over the stock radar when openpilot longitudinal is enabled.
-    # Cruise engagement gates actuation separately; disengagement keeps the session alive.
-    if self.longitudinal_enabled and not self.artiv_programming_requested:
-      if not CS.out.canValid:
-        # Restart the wait only when CAN data is unavailable.
-        self.artiv_probe_last_frame = self.frame
-      elif self.frame - self.artiv_probe_last_frame >= int(ARTIV_PROGRAMMING_WAIT / DT_CTRL):
-        can_sends.append(create_disable_radar())
-        self.artiv_programming_requested = True
-        self.radar_request_nanos = now_nanos
-        carlog.info('ARTIV session: programming requested; waiting for 50 02 and radar silence')
-    # [radar optin] - END
-    self._update_radar_session(now_nanos, CS.out.canValid)
-    # [psa longitudinal] - START
-    self._update_longitudinal(CC, CS)
-    # [psa longitudinal] - END
-    if self.radar_active:
-      radar_frame = self.frame - self.radar_started_frame
-      if radar_frame % 2 == 0:  # 50 Hz
-        counter = (radar_frame // 2) % 16
-        # [lead display] - START
-        # Temporarily restore route 45's no-target display for radar fault diagnosis.
-        # lead_detected = self._update_lead_display(CC, CS)
-        lead_detected = False
-        # [lead display] - END
-        # [psa longitudinal] - START
-        # Default profile retains the recorded neutral encodings. Only the experimental
-        # profile with a confirmed session and authorized longActive may request actuation.
-        acc_waiting = not CS.out.brakePressed and CS.out.vEgoRaw >= self.CP.minEnableSpeed
-        # [acc hold] - START
-        acc_status = 5 if self.acc_on_hold else (4 if self.longitudinal_active else (3 if acc_waiting else 2))
-        # [acc hold] - END
-        can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
-          self.packer, PSA_ADAS_BUS,
-          mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
-          potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
-          min_time_for_desired_gear=self.longitudinal_min_time,
-          gmp_potential_wheel_torque=self.longitudinal_potential_torque,
-          # Stock radar announces Waiting before the BSI requests ACC activation.
-          # Readiness does not authorize torque or braking requests.
-          # [acc hold] - START
-          acc_status=acc_status,
-          # [acc hold] - END
-          gmp_wheel_torque=self.longitudinal_wheel_torque,
-          wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
-          auto_braking_status=3,
-          mdd_decel_type=int(self.longitudinal_braking),
-          mdd_decel_control_req=int(self.longitudinal_braking),
-          gear_type=counter & 1,  # observed alternating bit; its DBC name is unverified
-          prefill_request=0,
-          counter=counter,
-        ))
-        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
-          self.packer, PSA_ADAS_BUS,
-          # target_detected=int(lead_detected),
-          target_detected=0,
-          request_takeover=self.takeover_req if self.longitudinal_enabled else 0,
-          blind_sensor=0,
-          req_visual_coll_alert_arc=0,
-          req_audio_coll_alert_arc=0,
-          req_haptic_coll_alert_arc=0,
-          inter_vehicle_distance=255.5,
-          arc_status=6,
-          auto_braking_in_progress=0,
-          aeb_enabled=0,
-          drive_away_request=0,
-          display_intervehicle_time=6.2,
-          mdd_decel_control_req=int(self.longitudinal_braking),
-          auto_braking_status=3,
-          counter=counter,
-          target_position=self.bars if lead_detected else 0,
-        ))
-        # The one periodic 0x2F6 also owns lateral takeover, including when longActive is false.
-        if self.longitudinal_enabled and self.takeover_req > 0:
-          self.start_takeover_repeats += 1
-          if self.start_takeover_repeats >= 2:
-            self.takeover_req = 0
-            self.start_takeover_repeats = 0
-        # [psa longitudinal] - END
-      if radar_frame % 10 == 0:  # 10 Hz
-        can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(
-          self.packer, PSA_ADAS_BUS,
-          time_gap=25.5, distance_gap=254, relative_speed=93.8,  # recorded no-target sentinels
-          artiv_sensor_state=2, target_detected=0, artiv_target_change_info=0, traffic_direction=0,
-        ))
-      if radar_frame % 100 == 0:  # 1 Hz
-        can_sends.append(create_HS2_SUPV_ARTIV_796(
-          self.packer, PSA_ADAS_BUS,
-          fault_code=0, status_no_config=0, status_partial_wakeup_gmp=0, uce_electr_state=0,
-        ))
-        if radar_frame > 0:
-          can_sends.append(CanData(0x6B6, b'\x02\x3e\x00', PSA_ADAS_BUS))
-          self.radar_last_tester_present_nanos = now_nanos
-    # [artiv probe] - END
+    # [long flow] - START
+    # Run experimental radar and longitudinal management only when configured.
+    # Keep running after ACC disengagement to clear requests and maintain the session.
+    if self.CP.openpilotLongitudinalControl:
+      # [artiv probe] - START
+      # [radar optin] - START
+      # Only take over the stock radar when openpilot longitudinal is enabled.
+      # Cruise engagement gates actuation separately; disengagement keeps the session alive.
+      if self.longitudinal_enabled and not self.artiv_programming_requested:
+        if not CS.out.canValid:
+          # Restart the wait only when CAN data is unavailable.
+          self.artiv_probe_last_frame = self.frame
+        elif self.frame - self.artiv_probe_last_frame >= int(ARTIV_PROGRAMMING_WAIT / DT_CTRL):
+          can_sends.append(create_disable_radar())
+          self.artiv_programming_requested = True
+          self.radar_request_nanos = now_nanos
+          carlog.info('ARTIV session: programming requested; waiting for 50 02 and radar silence')
+      # [radar optin] - END
+      self._update_radar_session(now_nanos, CS.out.canValid)
+      # [psa longitudinal] - START
+      self._update_longitudinal(CC, CS)
+      # [psa longitudinal] - END
+      if self.radar_active:
+        radar_frame = self.frame - self.radar_started_frame
+        if radar_frame % 2 == 0:  # 50 Hz
+          counter = (radar_frame // 2) % 16
+          # [lead display] - START
+          # Temporarily restore route 45's no-target display for radar fault diagnosis.
+          # lead_detected = self._update_lead_display(CC, CS)
+          lead_detected = False
+          # [lead display] - END
+          # [psa longitudinal] - START
+          # Default profile retains the recorded neutral encodings. Only the experimental
+          # profile with a confirmed session and authorized longActive may request actuation.
+          acc_waiting = not CS.out.brakePressed and CS.out.vEgoRaw >= self.CP.minEnableSpeed
+          # [long flow] - START
+          if self.acc_on_hold:
+            acc_status = 5  # Suspended by accelerator pedal
+          elif self.longitudinal_active:
+            acc_status = 4  # Active control
+          elif acc_waiting:
+            acc_status = 3  # Ready for BSI activation
+          else:
+            acc_status = 2  # Inhibited
+          # [long flow] - END
+          can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
+            self.packer, PSA_ADAS_BUS,
+            mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
+            potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
+            min_time_for_desired_gear=self.longitudinal_min_time,
+            gmp_potential_wheel_torque=self.longitudinal_potential_torque,
+            # Stock radar announces Waiting before the BSI requests ACC activation.
+            # Readiness does not authorize torque or braking requests.
+            # [acc hold] - START
+            acc_status=acc_status,
+            # [acc hold] - END
+            gmp_wheel_torque=self.longitudinal_wheel_torque,
+            wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
+            auto_braking_status=3,
+            mdd_decel_type=int(self.longitudinal_braking),
+            mdd_decel_control_req=int(self.longitudinal_braking),
+            gear_type=counter & 1,  # observed alternating bit; its DBC name is unverified
+            prefill_request=0,
+            counter=counter,
+          ))
+          can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
+            self.packer, PSA_ADAS_BUS,
+            # target_detected=int(lead_detected),
+            target_detected=0,
+            request_takeover=self.takeover_req if self.longitudinal_enabled else 0,
+            blind_sensor=0,
+            req_visual_coll_alert_arc=0,
+            req_audio_coll_alert_arc=0,
+            req_haptic_coll_alert_arc=0,
+            inter_vehicle_distance=255.5,
+            arc_status=6,
+            auto_braking_in_progress=0,
+            aeb_enabled=0,
+            drive_away_request=0,
+            display_intervehicle_time=6.2,
+            mdd_decel_control_req=int(self.longitudinal_braking),
+            auto_braking_status=3,
+            counter=counter,
+            target_position=self.bars if lead_detected else 0,
+          ))
+          # The one periodic 0x2F6 also owns lateral takeover, including when longActive is false.
+          if self.longitudinal_enabled and self.takeover_req > 0:
+            self.start_takeover_repeats += 1
+            if self.start_takeover_repeats >= 2:
+              self.takeover_req = 0
+              self.start_takeover_repeats = 0
+          # [psa longitudinal] - END
+        if radar_frame % 10 == 0:  # 10 Hz
+          can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(
+            self.packer, PSA_ADAS_BUS,
+            time_gap=25.5, distance_gap=254, relative_speed=93.8,  # recorded no-target sentinels
+            artiv_sensor_state=2, target_detected=0, artiv_target_change_info=0, traffic_direction=0,
+          ))
+        if radar_frame % 100 == 0:  # 1 Hz
+          can_sends.append(create_HS2_SUPV_ARTIV_796(
+            self.packer, PSA_ADAS_BUS,
+            fault_code=0, status_no_config=0, status_partial_wakeup_gmp=0, uce_electr_state=0,
+          ))
+          if radar_frame > 0:
+            can_sends.append(CanData(0x6B6, b'\x02\x3e\x00', PSA_ADAS_BUS))
+            self.radar_last_tester_present_nanos = now_nanos
+      # [artiv probe] - END
+    # [long flow] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       # # Keep requesting the ARTIV programming session. A single request can be
