@@ -125,9 +125,7 @@ class CarController(CarControllerBase):
     self.latActiveLast = False
     self.packer = CANPacker(dbc_names[Bus.main])
     self.apply_torque_scaled_last = 0
-    self.apply_can_torque_last = 0  # raw CAN torque logged to steeringAngleDeg (debug); init so it always exists
     self.apply_torque_factor = 0
-    self.apply_torque = 0
     self.status = 2
     self.takeover_req = 0
     self.start_takeover_repeats = 0
@@ -138,7 +136,6 @@ class CarController(CarControllerBase):
     # this is the frame when the latactive is being pressed
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
-    self.radar_disabled = False
     # [psa longitudinal] - START
     self.longitudinal_profile = self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and CP.openpilotLongitudinalControl
     self.longitudinal_enabled = (self.longitudinal_profile and not CP.dashcamOnly and not CP.passive
@@ -196,15 +193,11 @@ class CarController(CarControllerBase):
     # [lead display] - END
     self.steering_hold_counter = 0
     self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
-    self.driver_torque_counter = 0
-    self.next_driver_torque = random.randint(500, 800)  # 5–8 s @100 Hz
     self.last_activation_frame = 0
     self.eps_activation_frame = 0
     self.creep_start_frame = 0
-    self.last_status_change_frame = 0     # frame dell'ultimo cambio di gradino
     self.deactivation_in_progress = False
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)
-    self.eps_state_last = 0
     self.takeover_msg_duration = int(self.params.TAKEOVER_MSG_DURATION / DT_CTRL)   # 0.1 s = 10 frame
 
   def _stop_radar_session(self, reason):
@@ -291,10 +284,8 @@ class CarController(CarControllerBase):
     elif now_nanos - self.radar_last_diag_reply_nanos > 2_000_000_000:
       self._stop_radar_session('TesterPresent response timeout')
 
-  # [psa longitudinal] - START
   def _update_longitudinal(self, CC, CS):
     """Prepare explicit CAN inputs. Experimental torque mapping; no emission or scheduling here."""
-    # [long flow] - START
     # Preserve braking hysteresis, then clear the previous cycle's requests.
     was_braking = self.longitudinal_braking
     self.acc_on_hold = False
@@ -325,9 +316,6 @@ class CarController(CarControllerBase):
       self.longitudinal_accel_limited = 0.0
       return
 
-    # [long flow] - END
-
-    # [torque calibration] - START
     # accel = max(LongitudinalParams.ACCEL_LOOKUP[0], min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]))
 
     requested_accel = max(
@@ -350,13 +338,9 @@ class CarController(CarControllerBase):
       # Falling acceleration, including emergency braking, is unrestricted.
       accel = requested_accel
 
-    # self.longitudinal_accel_limited = accel
-
-    # [light braking] - START
     # Keep the service brake through light deceleration and speed holding. Reset
     # above on every update so pedals, disengagement and invalid accel/CAN clear it.
     braking = accel < LongitudinalParams.BRAKE_ENTER_ACCEL or (was_braking and accel <= 0.0)
-    # [light braking] - END
     pitch = 0.0  # No orientation supplied: use the level-road map.
     # if not braking and len(CC.orientationNED) == 3:
     #   pitch = CC.orientationNED[1]
@@ -368,13 +352,11 @@ class CarController(CarControllerBase):
         self.longitudinal_accel_limited = 0.0
         return
 
-    # [light braking] - START
     equivalent_accel = accel + ACCELERATION_DUE_TO_GRAVITY * math.sin(pitch)
     # Use the existing provisional GMP/brake crossover with grade compensation
     # for entry too: on a descent a light/zero target can require service braking.
     # A positive vehicle-acceleration request always leaves the brake path.
     braking |= accel <= 0.0 and equivalent_accel < LongitudinalParams.BRAKE_ENTER_ACCEL
-    # [light braking] - END
 
     if braking:
       accel = max(LongitudinalParams.BRAKE_MIN_ACCEL, min(CC.actuators.accel, 0.0))
@@ -393,10 +375,7 @@ class CarController(CarControllerBase):
       self.longitudinal_wheel_torque = float(interp(equivalent_accel, LongitudinalParams.ACCEL_LOOKUP,
                                                    LongitudinalParams.TORQUE_LOOKUP))
       self.longitudinal_min_time = LongitudinalParams.MIN_TIME_GMP_EXPERIMENTAL
-    # [torque calibration] - END
-  # [psa longitudinal] - END
 
-  # [lead display] - START
   def _update_lead_display(self, CC, CS):
     """Select the cluster target position using Elkoled's distance/speed heuristic."""
     previous_bars = self.bars
@@ -435,13 +414,11 @@ class CarController(CarControllerBase):
     # | `4` | **Nessun target o dati non validi** |
     self.bars = 2
     return True
-  # [lead display] - END
 
   def _reset_lat_state(self):
     self.status = 2
     self.apply_torque_factor = 0
     # self.takeover_req = 0
-    self.last_status_change_frame = 0
     self.deactivation_in_progress = False
     self.eps_activation_frame = 0
     self.takeover_req_already_sent = False
@@ -456,8 +433,6 @@ class CarController(CarControllerBase):
     self.status = 2
     self.apply_torque_factor = 0
     self.eps_activation_frame = 0
-    # self.takeover_req = 0
-    self.last_status_change_frame = self.frame
     self.deactivation_in_progress = True
 
   def _activate_eps(self, CARSTATE, curvature):
@@ -531,7 +506,6 @@ class CarController(CarControllerBase):
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
-    self.apply_new_torque = 0
     # apply_new_torque = 0
     temp_driverSteeringTorque = 0
     new_torque_scaled = 0
@@ -573,16 +547,13 @@ class CarController(CarControllerBase):
               self.status = 4 # 4: EPS ACTIVE
               self._maybe_request_eps_takeover(CS.out.vEgo, actuators.curvature)
 
-              # [torque override] - START
               # Match Panda before the filtered/debounced driver flag catches up.
               raw_driver_torque = getattr(CS, 'steering', {}).get('DRIVER_TORQUE', 0) * 3
               if CS.out.steeringPressed or abs(raw_driver_torque) > self.params.STEER_DRIVER_ALLOWANCE:
-                # [torque override] - END
                 #### DRIVER STEERING DETECTED
                 # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
                 self.apply_torque_factor = 0
                 apply_new_torque_scaled = 0
-                # apply_new_torque = 0
               else:
                 actuatorsRequestedTorque = CC.actuators.torque * self.params.STEER_MAX
                 ratio = min(1.0, (abs(actuatorsRequestedTorque) / float(self.params.STEER_MAX)) * 1.0) **1.2
@@ -593,97 +564,22 @@ class CarController(CarControllerBase):
                 apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
                                                                 temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
 
-        # if CC.latActive and CS.eps_active and self.frame % 500 in (0, 5, 10):
-        #   apply_new_torque_scaled = 0
-        #   self.apply_torque_factor = 0
-        #   carlog.error(f"PSA_DEBUG sending empty torque apply_new_torque_scaled={apply_new_torque_scaled} ")
-
-        # if CC.latActive and CS.eps_active and self.frame % 3000 in (0, 5, 10):
-        #   self.takeover_req = 1
-
         if self.apply_torque_factor > 0 and apply_new_torque_scaled != 0:
           can_torque = int(round(apply_new_torque_scaled / self.apply_torque_factor *100))
         else:
           can_torque = 0
-        # can_sends.append(create_lka_steering(self.packer, CC.latActive, can_torque, self.apply_torque_factor, self.status))
-        # [inactive lka] - START
         unknown2 = 24
         if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and not lat_active:
           unknown2 = getattr(CS, 'stock_lka_unknown2', 24)
         can_sends.append(create_lka_steering(
           self.packer, lat_active, can_torque, self.apply_torque_factor, self.status, unknown2=unknown2,
         ))
-        # [inactive lka] - END
         # Remember the effective (scaled) value for the next frame's rate limit.
         self.apply_torque_scaled_last = apply_new_torque_scaled
-        self.apply_can_torque_last = can_torque
-        ### END EPS ACTIVE
-        ##########
 
-    # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
-    #   if self.frame % 10 == 0:
-    #     # send steering wheel hold message
-    #     can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
-
-    #  ELKOLED LONGITUDINAL CONTROL
-
-    # TUNING
-    # >=-0.5: Engine brakes only
-    # <-0.5: Add friction brakes
-    # pitch = CC.orientationNED[1] if len(CC.orientationNED) == 3 else 0.0
-    # accel_slope = math.sin(pitch) * 9.81
-    # accel_cmd = actuators.accel + accel_slope
-
-    # brake_accel = -0.5
-
-    # # torque lookup
-    # ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
-    # TORQUE_LOOKUP = [-400, -300, 120, 350, 550, 800, 1000]
-
-    # # calculate Torque
-    # torque_nm = interp(accel_cmd, ACCEL_LOOKUP, TORQUE_LOOKUP)
-    # torque = max(-400, min(torque_nm, 1000))
-
-    # braking = accel_cmd < brake_accel and not CS.out.gasPressed
-    # if self.CP.openpilotLongitudinalControl:
-    #   # disable radar ECU by setting to programming mode
-    #   if self.radar_disabled == 0:
-    #     can_sends.append(create_disable_radar())
-    #     self.radar_disabled = 1
-
-    #   # keep radar ECU disabled by sending tester present
-    #   if self.frame % 100 == 0 and self.frame>0: # TODO check if disable_radar is sent 100 frames before
-    #     can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
-
-    #   # Highest torque seen without gas input: ~1000
-    #   # Lowest torque seen without break mode: -560 (but only when transitioning from brake to accel mode, else -248)
-    #   # Lowest brake mode accel seen: -4.85m/s²
-
-    #   if self.frame % 2 == 0:
-    #     can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
-    #       self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled,
-    #       CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque,
-    #     ))
-    #     can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking, CC.hudControl.leadVisible, self.bars))
-
-    # # stock long
-    # # emulate resume button every 3 seconds to prevent autohold timeout
-    # elif CC.latActive and CS.out.standstill and CC.hudControl.leadVisible:
-    #   # map: {frame:status} - 0, 1
-    #   status = {0: 0, 5: 1}.get(self.frame % 300)
-    #   if status is not None:
-    #     msg = CS.hs2_dat_mdd_cmd_452
-    #     counter = (msg['COUNTER'] + 1) % 16
-    #     can_sends.append(create_resume_acc(self.packer, counter, status, msg))
-
-    # #  ELKOLED LONGITUDINAL CONTROL
-
-    # [long flow] - START
     # Run experimental radar and longitudinal management only when configured.
     # Keep running after ACC disengagement to clear requests and maintain the session.
     if self.CP.openpilotLongitudinalControl:
-      # [artiv probe] - START
-      # [radar optin] - START
       # Only take over the stock radar when openpilot longitudinal is enabled.
       # Cruise engagement gates actuation separately; disengagement keeps the session alive.
       if self.longitudinal_enabled and not self.artiv_programming_requested:
@@ -695,25 +591,19 @@ class CarController(CarControllerBase):
           self.artiv_programming_requested = True
           self.radar_request_nanos = now_nanos
           carlog.info('ARTIV session: programming requested; waiting for 50 02 and radar silence')
-      # [radar optin] - END
+
       self._update_radar_session(now_nanos, CS.out.canValid)
-      # [psa longitudinal] - START
       self._update_longitudinal(CC, CS)
-      # [psa longitudinal] - END
       if self.radar_active:
         radar_frame = self.frame - self.radar_started_frame
         if radar_frame % 2 == 0:  # 50 Hz
           counter = (radar_frame // 2) % 16
-          # [lead display] - START
           # Temporarily restore route 45's no-target display for radar fault diagnosis.
-          # lead_detected = self._update_lead_display(CC, CS)
+          lead_detected = self._update_lead_display(CC, CS)
           lead_detected = False
-          # [lead display] - END
-          # [psa longitudinal] - START
           # Default profile retains the recorded neutral encodings. Only the experimental
           # profile with a confirmed session and authorized longActive may request actuation.
           acc_waiting = not CS.out.brakePressed and CS.out.vEgoRaw >= self.CP.minEnableSpeed
-          # [long flow] - START
           if self.acc_on_hold:
             acc_status = 5  # Suspended by accelerator pedal
           elif self.longitudinal_active:
@@ -731,9 +621,7 @@ class CarController(CarControllerBase):
             gmp_potential_wheel_torque=self.longitudinal_potential_torque,
             # Stock radar announces Waiting before the BSI requests ACC activation.
             # Readiness does not authorize torque or braking requests.
-            # [acc hold] - START
             acc_status=acc_status,
-            # [acc hold] - END
             gmp_wheel_torque=self.longitudinal_wheel_torque,
             wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
             auto_braking_status=3,
@@ -769,7 +657,6 @@ class CarController(CarControllerBase):
             if self.start_takeover_repeats >= 2:
               self.takeover_req = 0
               self.start_takeover_repeats = 0
-          # [psa longitudinal] - END
         if radar_frame % 10 == 0:  # 10 Hz
           can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(
             self.packer, PSA_ADAS_BUS,
@@ -788,23 +675,9 @@ class CarController(CarControllerBase):
     # [long flow] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
-      # # Keep requesting the ARTIV programming session. A single request can be
-      # # missed or rejected while the ECU/gateway is still initializing.
-      # if not self.radar_disabled and self.frame > 200:
-      #   can_sends.append(create_disable_radar())
-      #   self.radar_disabled = True
-
-      # # Keep the diagnostic session alive halfway between programming requests,
-      # # avoiding two UDS requests in the same control frame.
-      # if self.frame % 100 == 50 and self.radar_disabled:
-      #   can_sends.append(make_tester_present_msg(0x6b6, PSA_ADAS_BUS, suppress_response=False))
-
       if not lat_active:
         self.steering_hold_counter = 0                       # alla ripresa il primo
         self.next_steering_hold = random.randint(8, 12)      # hold-hands parte subito
-        self.driver_torque_counter = 0
-        self.next_driver_torque = random.randint(500, 800)
-      # [CLAUDE stop-finti-durante-riarmo] - END
       else:
         # --- HOLD HANDS (~10 Hz con jitter 8–12 frame) ---
         self.steering_hold_counter += 1
@@ -812,14 +685,6 @@ class CarController(CarControllerBase):
           can_sends.append(create_steering_hold(self.packer, lat_active, CS.is_dat_dira))
           self.steering_hold_counter = 0
           self.next_steering_hold = random.randint(8, 12)
-        # --- DRIVER TORQUE (ogni 5–8 s) ---
-        # self.driver_torque_counter += 1
-        # if self.driver_torque_counter >= self.next_driver_torque:
-        #   msg = CS.steering
-        #   counter = (msg['COUNTER'] + 1) % 16
-        #   # can_sends.append(create_driver_torque(self.packer, CS.steering, counter))
-        #   self.driver_torque_counter = 0
-        #   self.next_driver_torque = random.randint(500, 800)
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if CC.enabled and CS.out.vEgo < self.params.RESUME_ACC_SPEED and CC.hudControl.leadVisible:
@@ -839,45 +704,21 @@ class CarController(CarControllerBase):
       radar_session_requested = self.radar_request_nanos is not None
       if self.takeover_req > 0 and self.frame % 2 == 0 and not radar_session_requested: # 50 Hz
         self.start_takeover_repeats +=1
-        # if self.takeover_start_msg_frame == 0:
-        #   self.takeover_start_msg_frame = self.frame
         can_sends.append(create_request_takeover(self.packer, CS.HS2_DYN_MDD_ETAT_2F6,self.takeover_req))
-        # carlog.error("PSA_DEBUG sending to CAN create_request_takeover")
-        # if self.frame > self.takeover_start_msg_frame + self.takeover_msg_duration: # 1 s
-        # carlog.error("PSA_DEBUG takeover_req = False")
         if self.start_takeover_repeats > 1:
           self.takeover_req = 0
           self.start_takeover_repeats = 0
 
-        # self.takeover_start_msg_frame = 0
-
-    # if self.CP.openpilotLongitudinalControl and CC.enabled:
-    #   # Disable ARTIV only for full openpilot longitudinal. ICBM deliberately
-    #   # leaves ARTIV active: the stock controller executes our dynamic setpoint.
-    #   if self.radar_disabled == 0:
-    #     can_sends.append(create_disable_radar())
-    #     self.radar_disabled = 1
-
-    #   if self.frame % 100 == 0 and self.frame > 0:
-    #     can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
-
     # Actuators output
     new_actuators = actuators.as_builder()
-    # [psa longitudinal] - START
     if self.longitudinal_profile:
       new_actuators.accel = self.longitudinal_accel
-    # [psa longitudinal] - END
     if self.CP.steerControlType == SteerControlType.torque:
       # Keep last applied torque between 20 Hz LKA updates.
       # The EPS maintains assist longer than 50 ms, preventing gaps in actuator output.
       new_actuators.torque = self.apply_torque_scaled_last / self.params.STEER_MAX
       new_actuators.torqueOutputCan = self.apply_torque_scaled_last
-      # new_actuators.steeringAngleDeg = float(self.apply_can_torque_last)
-      # new_actuators.curvature = temp_driverSteeringTorque   # lo vedi in juggle come carControl.actuatorsOutput.curvature
-      # new_actuators.steeringAngleDeg = float(self.apply_torque_factor)
 
-      # if self.frame % 100 == 0:
-      #   carlog.error(f"PSA_DEBUG torque={new_actuators.torque:.3f} torque_can={self.apply_torque_scaled_last}")
     if self.frame % self.params.STEER_STEP == 0:
       self.latActiveLast = lat_active
 
