@@ -16,7 +16,6 @@ from opendbc.car.psa.psacan import (
   create_HS2_DYN_MDD_ETAT_2F6,
   create_HS2_DAT_ARTIV_V2_4F6,
   create_HS2_SUPV_ARTIV_796,
-  
 )
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
 # from opendbc.car.carlog import carlog
