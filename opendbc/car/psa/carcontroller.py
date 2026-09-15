@@ -154,7 +154,13 @@ class CarController(CarControllerBase):
     # [long flow] - START
     # Inactive values also exist when openpilot longitudinal is disabled.
     self.longitudinal_accel = 0.0
+
+    # Last acceleration actually allowed to reach the vehicle.
+    # Used to limit positive jerk without delaying braking.
+    self.longitudinal_accel_limited = 0.0
+
     self.longitudinal_potential_torque = LongitudinalParams.INACTIVE_TORQUE
+
     self.longitudinal_wheel_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_min_time = 0.0
     # [long flow] - END
@@ -301,33 +307,68 @@ class CarController(CarControllerBase):
 
     # Configuration and radar session must permit experimental control.
     if not self.longitudinal_enabled or not self.radar_active:
+      self.longitudinal_accel_limited = 0.0
       return
 
     # Require valid CAN, Sunnypilot enabled, BSI consent and no brake pedal.
     if not CS.out.canValid or not CC.enabled or not CS.out.cruiseState.enabled or CS.out.brakePressed:
+      self.longitudinal_accel_limited = 0.0
       return
 
     # Gas temporarily suspends ACC only while Sunnypilot and BSI remain enabled.
-    # DisengageOnAccelerator clears CC.enabled and returns above instead.
     if CS.out.gasPressed:
       self.acc_on_hold = True
+      self.longitudinal_accel_limited = 0.0
       return
 
     if not CC.longActive or not math.isfinite(CC.actuators.accel):
+      self.longitudinal_accel_limited = 0.0
       return
+
     # [long flow] - END
 
     # [torque calibration] - START
-    accel = max(LongitudinalParams.ACCEL_LOOKUP[0], min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]))
+    # accel = max(LongitudinalParams.ACCEL_LOOKUP[0], min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]))
+
+    requested_accel = max(
+      LongitudinalParams.ACCEL_LOOKUP[0],
+      min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]),
+    )
+
+    # Limit only increasing acceleration.
+    # Braking/deceleration must remain immediately available.
+    # POSITIVE_JERK_MAX = 1.6  # m/s^3
+
+    if requested_accel > self.longitudinal_accel_limited:
+      # Never slowly ramp through negative acceleration when transitioning
+      # from braking/coast to throttle: release braking immediately to zero.
+      accel_base = max(self.longitudinal_accel_limited, 0.0)
+
+      accel = min(
+        requested_accel,
+        accel_base + LongitudinalParams.POSITIVE_JERK_MAX * DT_CTRL
+
+      )
+    else:
+      # Falling acceleration, including emergency braking, is unrestricted.
+      accel = requested_accel
+
+    # self.longitudinal_accel_limited = accel
+
     # [light braking] - START
     # Keep the service brake through light deceleration and speed holding. Reset
     # above on every update so pedals, disengagement and invalid accel/CAN clear it.
     braking = accel < LongitudinalParams.BRAKE_ENTER_ACCEL or (was_braking and accel <= 0.0)
     # [light braking] - END
     pitch = 0.0  # No orientation supplied: use the level-road map.
+    # if not braking and len(CC.orientationNED) == 3:
+    #   pitch = CC.orientationNED[1]
+    #   if not math.isfinite(pitch):
+    #     return
     if not braking and len(CC.orientationNED) == 3:
       pitch = CC.orientationNED[1]
       if not math.isfinite(pitch):
+        self.longitudinal_accel_limited = 0.0
         return
 
     # [light braking] - START
@@ -338,12 +379,11 @@ class CarController(CarControllerBase):
     braking |= accel <= 0.0 and equivalent_accel < LongitudinalParams.BRAKE_ENTER_ACCEL
     # [light braking] - END
 
-    # [brake limit] - START
-    # The brake ECU takes vehicle deceleration directly, with its own limit.
-    # Preserve the requested value independently of the GMP map and pitch.
     if braking:
       accel = max(LongitudinalParams.BRAKE_MIN_ACCEL, min(CC.actuators.accel, 0.0))
-    # [brake limit] - END
+
+    # Remember the acceleration actually applied to the vehicle.
+    self.longitudinal_accel_limited = accel
 
     self.longitudinal_active = True
     self.longitudinal_accel = accel
