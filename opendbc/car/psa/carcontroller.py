@@ -19,11 +19,9 @@ from opendbc.car.psa.psacan import (
   
 )
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
-# from opendbc.car.carlog import carlog
-# [psa longitudinal] - START
 from numpy import interp
 from opendbc.car.psa.values import LongitudinalParams, PSA_LONG_CONTROL
-# [psa longitudinal] - END
+from opendbc.car.common.filter_simple import FirstOrderFilter
 
 try:
   import openpilot.cereal.messaging as messaging
@@ -41,9 +39,7 @@ import math
 SteerControlType = structs.CarParams.SteerControlType
 
 
-# [artiv probe] - START
-ARTIV_PROGRAMMING_WAIT = 2.0  # seconds of valid CAN before the one-shot request, including while moving
-# [artiv probe] - END
+ARTIV_PROGRAMMING_WAIT = 1.0  # seconds of valid CAN before the one-shot request, including while moving
 RADAR_IDS = (0x2B6, 0x2F6, 0x4F6, 0x796)
 RADAR_TX_TIMEOUTS = {0x2B6: 250_000_000, 0x2F6: 250_000_000, 0x4F6: 500_000_000, 0x796: 2_000_000_000}
 
@@ -67,7 +63,6 @@ def should_preempt_eps_rearm(elapsed, v_ego, current_curvature, model_t, model_y
         return True
 
   return False
-# [eps curve] - END
 
 
 def should_request_eps_takeover(elapsed, v_ego, current_curvature, takeover_req_already_sent,
@@ -136,19 +131,13 @@ class CarController(CarControllerBase):
     # this is the frame when the latactive is being pressed
     self.car_fingerprint = CP.carFingerprint
     self.params = CarControllerParams(CP)
-    # [psa longitudinal] - START
     self.longitudinal_profile = self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and CP.openpilotLongitudinalControl
     self.longitudinal_enabled = (self.longitudinal_profile and not CP.dashcamOnly and not CP.passive
                                  and any(c.safetyModel == structs.CarParams.SafetyModel.psa and c.safetyParam & PSA_LONG_CONTROL
                                          for c in CP.safetyConfigs))
-    # [acc hold] - START
     self.longitudinal_active = False
     self.acc_on_hold = False
-    # [acc hold] - END
-    # [light braking] - START
     self.longitudinal_braking = False
-    # [light braking] - END
-    # [long flow] - START
     # Inactive values also exist when openpilot longitudinal is disabled.
     self.longitudinal_accel = 0.0
 
@@ -160,12 +149,8 @@ class CarController(CarControllerBase):
 
     self.longitudinal_wheel_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_min_time = 0.0
-    # [long flow] - END
-    # [psa longitudinal] - END
-    # [artiv probe] - START
     self.artiv_programming_requested = False
     self.artiv_probe_last_frame = 0
-    # [neutral motion] - START
     # Allow session startup and continued substitutes/TesterPresent while moving, including in reverse.
     # Actuation remains gated separately by longitudinal_enabled in _update_longitudinal.
     self.radar_request_nanos = None
@@ -179,18 +164,7 @@ class CarController(CarControllerBase):
     self.radar_last_echo_nanos = {}
     self.radar_active = False
     self.radar_stop_reason = None
-    # [neutral motion] - END
-    # [artiv probe] - END
-    # [lead display] - START
-    # Fasce Elkoled: r = distanza [m] / (5 + velocita [m/s]); non sono metri fissi.
-    # Alla comparsa del target: 0 = r < 1, 1 = 1 <= r < 2, 2 = 2 <= r < 3, 3 = r >= 3.
-    # Esempio a 36 km/h (10 m/s): 0 = 0-15 m, 1 = 15-30 m, 2 = 30-45 m, 3 = >=45 m
-    # (estremo superiore escluso). Poi l'isteresi cambia fascia oltre bars+1.2 o sotto bars-0.2.
-    # 4 = nessun target/dato non valido: stato interno, NON una fascia "piu distante".
-    # Sul CAN: target presente -> TARGET_POSITION 0..3; assente -> TARGET_DETECTED=0, POSITION=0.
-    # La corrispondenza grafica delle posizioni sul quadro resta da verificare sulla vettura.
     self.bars = 4
-    # [lead display] - END
     self.steering_hold_counter = 0
     self.next_steering_hold = random.randint(8, 12)  # ~10Hz con jitter ±20%
     self.last_activation_frame = 0
@@ -199,6 +173,8 @@ class CarController(CarControllerBase):
     self.deactivation_in_progress = False
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)
     self.takeover_msg_duration = int(self.params.TAKEOVER_MSG_DURATION / DT_CTRL)   # 0.1 s = 10 frame
+    self.wheel_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
+    self.potential_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
 
   def _stop_radar_session(self, reason):
     self.radar_active = False
@@ -267,7 +243,6 @@ class CarController(CarControllerBase):
       self.radar_active = True
       self.radar_started_nanos = now_nanos
       self.radar_started_frame = self.frame
-      # carlog.info('ARTIV: emulation started (motion allowed)')
 
     if now_nanos - self.radar_last_bus_nanos > 250_000_000:
       self._stop_radar_session('ADAS bus RX timeout')
@@ -311,8 +286,6 @@ class CarController(CarControllerBase):
     if not CC.longActive or not math.isfinite(CC.actuators.accel):
       self.longitudinal_accel_limited = 0.0
       return
-
-    # accel = max(LongitudinalParams.ACCEL_LOOKUP[0], min(CC.actuators.accel, LongitudinalParams.ACCEL_LOOKUP[-1]))
 
     requested_accel = max(
       LongitudinalParams.ACCEL_LOOKUP[0],
