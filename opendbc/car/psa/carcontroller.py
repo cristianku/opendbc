@@ -128,7 +128,8 @@ class CarController(CarControllerBase):
     self.start_takeover_repeats = 0
     # Shared latch for both the pre-rearm warning and an immediate curve warning during EPS reactivation.
     self.takeover_req_already_sent = False
-    self.model_sm = messaging.SubMaster(['modelV2']) if messaging is not None else None
+    # modelV2 is used for curve prediction and as a lead fallback; radarState provides dRel/vRel directly.
+    self.model_sm = messaging.SubMaster(['modelV2', 'radarState']) if messaging is not None else None
 
     # this is the frame when the latactive is being pressed
     self.car_fingerprint = CP.carFingerprint
@@ -385,25 +386,58 @@ class CarController(CarControllerBase):
       self.longitudinal_min_time = LongitudinalParams.MIN_TIME_GMP_EXPERIMENTAL
 
   def _update_lead_display(self, CC, CS):
-    """Select the cluster target position using Elkoled's distance/speed heuristic."""
+    """Return one coherent lead for both 0x2F6 and 0x4F6 and update the cluster target bucket."""
     previous_bars = self.bars
     self.bars = 4  # internal no-target sentinel; restart the bucket when a lead returns
     if not CC.hudControl.leadVisible or self.model_sm is None:
-      return False
+      return None
 
     self.model_sm.update(0)
-    if not (self.model_sm.seen['modelV2'] and self.model_sm.valid['modelV2'] and self.model_sm.alive['modelV2']):
-      return False
-    leads = self.model_sm['modelV2'].leadsV3
-    if not leads or not leads[0].x:
-      return False
-    distance = leads[0].x[0]
+    distance = None
+    relative_speed = None
+
+    # Prefer radarState because it already exposes the exact dRel/vRel contract needed by ARTIV.
+    radar_valid = (self.model_sm.seen['radarState'] and self.model_sm.valid['radarState']
+                   and self.model_sm.alive['radarState'])
+    if radar_valid:
+      lead = self.model_sm['radarState'].leadOne
+      if lead.present and math.isfinite(lead.dRel) and math.isfinite(lead.vRel) and lead.dRel >= 0.0:
+        distance = float(lead.dRel)
+        relative_speed = float(lead.vRel)
+
+    # When the stock radar is silenced radard can still be vision-only, but keep a direct
+    # model fallback in case radarState is temporarily unavailable. Model v is absolute speed.
+    model_valid = (self.model_sm.seen['modelV2'] and self.model_sm.valid['modelV2']
+                   and self.model_sm.alive['modelV2'])
+    if distance is None and model_valid:
+      leads = self.model_sm['modelV2'].leadsV3
+      if leads and leads[0].x and leads[0].v:
+        model_distance = leads[0].x[0]
+        model_speed = leads[0].v[0]
+        if (math.isfinite(model_distance) and model_distance >= 0.0 and math.isfinite(model_speed)
+            and math.isfinite(CS.out.vEgo)):
+          distance = float(model_distance)
+          relative_speed = float(model_speed - CS.out.vEgo)
+
+    if distance is None or relative_speed is None or not math.isfinite(CS.out.vEgo):
+      return None
+
+    # Stock route 82 shows the same physical target feeding both frames. Keep target
+    # values inside the normal DBC ranges; the out-of-range encodings are reserved for no-target sentinels.
+    distance = max(0.0, min(distance, 253.0))
+    relative_speed = max(-70.0, min(relative_speed, 70.0))
+    if CS.out.vEgo > 0.1:
+      time_gap = max(0.0, min(distance / CS.out.vEgo, 25.4))
+    else:
+      time_gap = 25.4
+    display_time = min(time_gap, 6.1)
+
     denominator = 5 + CS.out.vEgo
-    if not (math.isfinite(distance) and distance >= 0 and math.isfinite(denominator) and denominator > 0):
-      return False
+    if not (math.isfinite(denominator) and denominator > 0):
+      return None
     ratio = distance / denominator
     if not math.isfinite(ratio):
-      return False
+      return None
 
     if previous_bars > 3:
       self.bars = min(3, int(ratio))
@@ -413,7 +447,13 @@ class CarController(CarControllerBase):
       self.bars = max(0, previous_bars - 1)
     else:
       self.bars = previous_bars
-    return True
+
+    return {
+      'distance': distance,
+      'time_gap': time_gap,
+      'display_time': display_time,
+      'relative_speed': relative_speed,
+    }
 
   def _reset_lat_state(self):
     self.status = 2
@@ -596,11 +636,11 @@ class CarController(CarControllerBase):
       self._update_longitudinal(CC, CS)
       if self.radar_active:
         radar_frame = self.frame - self.radar_started_frame
+        lead_data = None
         if radar_frame % 2 == 0:  # 50 Hz
           counter = (radar_frame // 2) % 16
-          # Temporarily restore route 45's no-target display for radar fault diagnosis.
-          lead_detected = self._update_lead_display(CC, CS)
-          lead_detected = False
+          lead_data = self._update_lead_display(CC, CS)
+          lead_detected = lead_data is not None
           # Default profile retains the recorded neutral encodings. Only the experimental
           # profile with a confirmed session and authorized longActive may request actuation.
           acc_waiting = not CS.out.brakePressed and CS.out.vEgoRaw >= self.CP.minEnableSpeed
@@ -633,18 +673,17 @@ class CarController(CarControllerBase):
           can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
             self.packer, PSA_ADAS_BUS,
             target_detected=int(lead_detected),
-            # target_detected=0,
             request_takeover=self.takeover_req if self.longitudinal_enabled else 0,
             blind_sensor=0,
             req_visual_coll_alert_arc=0,
             req_audio_coll_alert_arc=0,
             req_haptic_coll_alert_arc=0,
-            inter_vehicle_distance=255.5,
+            inter_vehicle_distance=lead_data['distance'] if lead_detected else 255.5,
             arc_status=6,
             auto_braking_in_progress=0,
             aeb_enabled=0,
             drive_away_request=0,
-            display_intervehicle_time=6.2,
+            display_intervehicle_time=lead_data['display_time'] if lead_detected else 6.2,
             mdd_decel_control_req=int(self.longitudinal_braking),
             auto_braking_status=3,
             counter=counter,
@@ -656,11 +695,19 @@ class CarController(CarControllerBase):
             if self.start_takeover_repeats >= 2:
               self.takeover_req = 0
               self.start_takeover_repeats = 0
-        if radar_frame % 10 == 0:  # 10 Hz
+        if radar_frame % 10 == 0:  # 10 Hz; also a 50 Hz frame, so lead_data is fresh above.
+          lead_detected = lead_data is not None
           can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(
             self.packer, PSA_ADAS_BUS,
-            time_gap=25.5, distance_gap=254, relative_speed=93.8,  # recorded no-target sentinels
-            artiv_sensor_state=2, target_detected=0, artiv_target_change_info=0, traffic_direction=0,
+            time_gap=lead_data['time_gap'] if lead_detected else 25.5,
+            distance_gap=lead_data['distance'] if lead_detected else 254,
+            relative_speed=lead_data['relative_speed'] if lead_detected else 93.8,
+            artiv_sensor_state=2,
+            target_detected=int(lead_detected),
+            # Route 82 shows both 0 and 1 for this bit even in stable target/no-target runs.
+            # Keep the known-safe value until its semantics are established.
+            artiv_target_change_info=0,
+            traffic_direction=0,
           ))
         if radar_frame % 100 == 0:  # 1 Hz
           can_sends.append(create_HS2_SUPV_ARTIV_796(
