@@ -19,7 +19,9 @@ class LongitudinalParams:
   # Punti 0..1: curva candidata dalla route 00000049--a95dde6809, confrontata con 3a.
   # Fonte: openpilot_scripts/plans/longitudinal/analysis-route49/candidate_torque_table.csv.
   # PROVVISORI (Elkoled): -1, -0.5, +1.5, +2 e interpolazione fuori da 0..1.
-  POSITIVE_JERK_MAX = 1.6
+  # [long response] - START
+  POSITIVE_JERK_MAX = 3.0
+  # [long response] - END
   ACCEL_LOOKUP = (-1.0, -0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
   TORQUE_LOOKUP = (-400, -300, 179, 301, 424, 547, 670, 800, 1000)
   POTENTIAL_TORQUE_LOOKUP = (-400, -300, 169, 279, 390, 501, 612, 800, 1000)
@@ -30,6 +32,9 @@ class LongitudinalParams:
   # [brake limit] - START
   BRAKE_MIN_ACCEL = -2.0  # Provisional service-brake limit, m/s^2; keep in sync with PSA safety.
   # [brake limit] - END
+  # [long response] - START
+  BRAKE_ACCEL_GAIN = 1.25  # Amplify service-brake requests before the existing -2.0 m/s^2 clamp.
+  # [long response] - END
   MIN_TIME_GMP_EXPERIMENTAL = 6.2  # Does not reproduce the observed even/odd sequence.
   INACTIVE_ACCEL = 2.05
   INACTIVE_TORQUE = -4000
@@ -58,7 +63,7 @@ class CarControllerParams:
     STEER_DELTA_DOWN = 38  # Maximum allowed torque decrease per control frame (can be faster for quick release)
 
     STEER_DRIVER_MULTIPLIER = 1  # Global weight of driver influence on torque limits (1 = standard sensitivity)
-    STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
+    STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to steering input)
     STEER_DRIVER_ALLOWANCE = 50  # Deadband (in Nm*10) where driver input does not affect steering assist (prevents interference)
 
     MAX_TORQUE_FACTOR = 100
