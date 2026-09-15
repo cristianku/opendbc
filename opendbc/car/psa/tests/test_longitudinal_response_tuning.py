@@ -20,12 +20,12 @@ class TestLongitudinalResponseTuning(unittest.TestCase):
     return self.h.controller.longitudinal_accel
 
   def test_positive_acceleration_uses_faster_jerk_limit(self):
-    self.assertEqual(LongitudinalParams.POSITIVE_JERK_MAX, 3.0)
-    self.assertAlmostEqual(self.update_longitudinal(2.0), 3.0 * DT_CTRL)
+    self.assertEqual(LongitudinalParams.POSITIVE_JERK_MAX, 3.5)
+    self.assertAlmostEqual(self.update_longitudinal(2.0), 3.5 * DT_CTRL)
 
   def test_braking_request_is_amplified_before_existing_limit(self):
-    self.assertEqual(LongitudinalParams.BRAKE_ACCEL_GAIN, 1.25)
-    self.assertAlmostEqual(self.update_longitudinal(-0.8), -1.0)
+    self.assertEqual(LongitudinalParams.BRAKE_ACCEL_GAIN, 1.55)
+    self.assertAlmostEqual(self.update_longitudinal(-0.8), -1.24)
 
   def test_braking_gain_keeps_existing_minus_two_limit(self):
     self.assertAlmostEqual(self.update_longitudinal(-1.8), LongitudinalParams.BRAKE_MIN_ACCEL)
