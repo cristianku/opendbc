@@ -44,6 +44,11 @@ SteerControlType = structs.CarParams.SteerControlType
 ARTIV_PROGRAMMING_WAIT = 1.0  # seconds of valid CAN before the one-shot request, including while moving
 RADAR_IDS = (0x2B6, 0x2F6, 0x4F6, 0x796)
 RADAR_TX_TIMEOUTS = {0x2B6: 250_000_000, 0x2F6: 250_000_000, 0x4F6: 500_000_000, 0x796: 2_000_000_000}
+# [radar handover timing] - START
+RADAR_PHASE_IDS = (0x2B6, 0x2F6, 0x4F6)
+RADAR_TX_PERIODS_NS = {0x2B6: 20_000_000, 0x2F6: 20_000_000, 0x4F6: 100_000_000, 0x796: 1_000_000_000}
+RADAR_COUNTER_BYTES = {0x2B6: 7, 0x2F6: 6}
+# [radar handover timing] - END
 
 
 # [eps curve] - START
@@ -165,6 +170,12 @@ class CarController(CarControllerBase):
     self.radar_last_diag_reply_nanos = 0
     self.radar_last_tester_present_nanos = None
     self.radar_last_echo_nanos = {}
+    # [radar handover timing] - START
+    self.radar_last_stock_nanos = {}
+    self.radar_last_tx_nanos = {}
+    self.radar_counters = {}
+    self.radar_phase_handover = False
+    # [radar handover timing] - END
     self.radar_active = False
     self.radar_stop_reason = None
     self.bars = 4
@@ -177,8 +188,8 @@ class CarController(CarControllerBase):
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)
     self.takeover_msg_duration = int(self.params.TAKEOVER_MSG_DURATION / DT_CTRL)   # 0.1 s = 10 frame
     # [torque filter] - START
-    self.wheel_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
-    self.potential_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
+    self.wheel_torque_filter = FirstOrderFilter(0., LongitudinalParams.TORQUE_FILTER_RC, DT_CTRL)
+    self.potential_torque_filter = FirstOrderFilter(0., LongitudinalParams.TORQUE_FILTER_RC, DT_CTRL)
     # [torque filter] - END
 
   # [torque filter] - START
@@ -202,6 +213,27 @@ class CarController(CarControllerBase):
     return wheel_torque, potential_torque
   # [torque filter] - END
 
+  # [radar handover timing] - START
+  def _radar_message_due(self, address, now_nanos):
+    if (not self.radar_phase_handover or self.radar_request_nanos is None
+        or now_nanos <= self.radar_request_nanos or self.radar_stop_reason is not None):
+      return False
+
+    last_nanos = self.radar_last_stock_nanos.get(address, self.radar_request_nanos)
+    last_tx = self.radar_last_tx_nanos.get(address)
+    if last_tx is not None and last_tx > last_nanos:
+      last_nanos = last_tx
+    return now_nanos - last_nanos >= RADAR_TX_PERIODS_NS[address]
+
+  def _next_radar_counter(self, address):
+    counter = (self.radar_counters.get(address, 15) + 1) % 16
+    self.radar_counters[address] = counter
+    return counter
+
+  def _mark_radar_tx(self, address, now_nanos):
+    self.radar_last_tx_nanos[address] = now_nanos
+  # [radar handover timing] - END
+
   def _stop_radar_session(self, reason):
     self.radar_active = False
     if self.radar_stop_reason is None:
@@ -220,6 +252,12 @@ class CarController(CarControllerBase):
         self.radar_last_bus_nanos = max(self.radar_last_bus_nanos, nanos)
         if address in RADAR_IDS:
           self.radar_last_rx_nanos = nanos
+          # [radar handover timing] - START
+          self.radar_last_stock_nanos[address] = nanos
+          counter_byte = RADAR_COUNTER_BYTES.get(address)
+          if counter_byte is not None and len(data) > counter_byte:
+            self.radar_counters[address] = data[counter_byte] >> 4
+          # [radar handover timing] - END
           if self.radar_active and nanos >= self.radar_started_nanos:
             self._stop_radar_session('stock radar resumed')
         if (address != 0x696 or self.radar_request_nanos is None or nanos <= self.radar_request_nanos
@@ -237,13 +275,19 @@ class CarController(CarControllerBase):
         elif size == 3 and data[1] == 0x7F and data[2] in (0x10, 0x3E) and data[3] != 0x78:
           self._stop_radar_session(f'diagnostic refusal {data[2]:02x}/{data[3]:02x}')
 
-    if not self.radar_active:
+    # [radar handover timing] - START
+    remap_substitute_echoes = self.radar_active or (self.radar_phase_handover and bool(self.radar_last_tx_nanos))
+    # [radar handover timing] - END
+    if not remap_substitute_echoes or self.radar_stop_reason is not None:
       return can_packets
     result = []
     for nanos, messages in can_packets:
       received = []
       for address, data, src in messages:
-        if src == PSA_ADAS_BUS + 128 and address in RADAR_IDS and nanos >= self.radar_started_nanos:
+        # [radar handover timing] - START
+        if (src == PSA_ADAS_BUS + 128 and address in RADAR_IDS and address in self.radar_last_tx_nanos
+            and nanos >= self.radar_last_tx_nanos[address]):
+        # [radar handover timing] - END
           self.radar_last_echo_nanos[address] = nanos
           src = PSA_ADAS_BUS
         received.append(CanData(address, data, src))
@@ -630,11 +674,103 @@ class CarController(CarControllerBase):
           can_sends.append(create_disable_radar())
           self.artiv_programming_requested = True
           self.radar_request_nanos = now_nanos
+          # [radar handover timing] - START
+          self.radar_phase_handover = all(address in self.radar_last_stock_nanos for address in RADAR_PHASE_IDS)
+          # [radar handover timing] - END
           # carlog.info('ARTIV session: programming requested; waiting for 50 02 and radar silence')
 
       self._update_radar_session(now_nanos, CS.out.canValid)
       self._update_longitudinal(CC, CS)
-      if self.radar_active:
+      # [radar handover timing] - START
+      if self.radar_phase_handover and self.radar_request_nanos is not None and self.radar_stop_reason is None:
+        due_2b6 = self._radar_message_due(0x2B6, now_nanos)
+        due_2f6 = self._radar_message_due(0x2F6, now_nanos)
+        due_4f6 = self._radar_message_due(0x4F6, now_nanos)
+        due_796 = self._radar_message_due(0x796, now_nanos)
+        lead_data = self._update_lead_display(CC, CS) if self.radar_active and (due_2f6 or due_4f6) else None
+        lead_detected = lead_data is not None
+        acc_waiting = not CS.out.brakePressed and CS.out.vEgoRaw >= self.CP.minEnableSpeed
+        if self.acc_on_hold:
+          acc_status = 5
+        elif self.longitudinal_active:
+          acc_status = 4
+        elif acc_waiting:
+          acc_status = 3
+        else:
+          acc_status = 2
+
+        if due_2b6:
+          counter_2b6 = self._next_radar_counter(0x2B6)
+          can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
+            self.packer, PSA_ADAS_BUS,
+            mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
+            potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
+            min_time_for_desired_gear=self.longitudinal_min_time,
+            gmp_potential_wheel_torque=self.longitudinal_potential_torque,
+            acc_status=acc_status,
+            gmp_wheel_torque=self.longitudinal_wheel_torque,
+            wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
+            auto_braking_status=3,
+            mdd_decel_type=int(self.longitudinal_braking),
+            mdd_decel_control_req=int(self.longitudinal_braking),
+            gear_type=counter_2b6 & 1,
+            prefill_request=0,
+            counter=counter_2b6,
+          ))
+          self._mark_radar_tx(0x2B6, now_nanos)
+
+        if due_2f6:
+          counter_2f6 = self._next_radar_counter(0x2F6)
+          can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
+            self.packer, PSA_ADAS_BUS,
+            target_detected=int(lead_detected),
+            request_takeover=self.takeover_req if self.radar_active and self.longitudinal_enabled else 0,
+            blind_sensor=0,
+            req_visual_coll_alert_arc=0,
+            req_audio_coll_alert_arc=0,
+            req_haptic_coll_alert_arc=0,
+            inter_vehicle_distance=lead_data['distance'] if lead_detected else 255.5,
+            arc_status=6,
+            auto_braking_in_progress=0,
+            aeb_enabled=0,
+            drive_away_request=0,
+            display_intervehicle_time=lead_data['display_time'] if lead_detected else 6.2,
+            mdd_decel_control_req=int(self.longitudinal_braking),
+            auto_braking_status=3,
+            counter=counter_2f6,
+            target_position=self.bars if lead_detected else 0,
+          ))
+          self._mark_radar_tx(0x2F6, now_nanos)
+          if self.radar_active and self.longitudinal_enabled and self.takeover_req > 0:
+            self.start_takeover_repeats += 1
+            if self.start_takeover_repeats >= 2:
+              self.takeover_req = 0
+              self.start_takeover_repeats = 0
+
+        if due_4f6:
+          can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(
+            self.packer, PSA_ADAS_BUS,
+            time_gap=lead_data['time_gap'] if lead_detected else 25.5,
+            distance_gap=lead_data['distance'] if lead_detected else 254,
+            relative_speed=lead_data['relative_speed'] if lead_detected else 93.8,
+            artiv_sensor_state=2,
+            target_detected=int(lead_detected),
+            artiv_target_change_info=0,
+            traffic_direction=0,
+          ))
+          self._mark_radar_tx(0x4F6, now_nanos)
+
+        if due_796:
+          can_sends.append(create_HS2_SUPV_ARTIV_796(
+            self.packer, PSA_ADAS_BUS,
+            fault_code=0, status_no_config=0, status_partial_wakeup_gmp=0, uce_electr_state=0,
+          ))
+          self._mark_radar_tx(0x796, now_nanos)
+          if self.radar_active:
+            can_sends.append(CanData(0x6B6, b'\x02\x3e\x00', PSA_ADAS_BUS))
+            self.radar_last_tester_present_nanos = now_nanos
+      # [radar handover timing] - END
+      elif self.radar_active:
         radar_frame = self.frame - self.radar_started_frame
         lead_data = None
         if radar_frame % 2 == 0:  # 50 Hz
