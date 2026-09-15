@@ -19,7 +19,7 @@ from opendbc.car.psa.psacan import (
   
 )
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
-from opendbc.car.carlog import carlog
+# from opendbc.car.carlog import carlog
 # [psa longitudinal] - START
 from numpy import interp
 from opendbc.car.psa.values import LongitudinalParams, PSA_LONG_CONTROL
@@ -204,7 +204,7 @@ class CarController(CarControllerBase):
     self.radar_active = False
     if self.radar_stop_reason is None:
       self.radar_stop_reason = reason
-      carlog.warning('ARTIV session: stopped (%s); no automatic retry', reason)
+      # carlog.warning('ARTIV session: stopped (%s); no automatic retry', reason)
 
   def process_radar_can(self, can_packets):
     if self.car_fingerprint not in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
@@ -255,23 +255,19 @@ class CarController(CarControllerBase):
       if now_nanos - self.radar_request_nanos > 1_000_000_000:
         self._stop_radar_session('no confirmed silent radar within 1 s')
         return
-      # [radar handover] - START
       # process_can inspects all genuine RX before update. Start on confirmation without
       # an extra silence timer, unless stock frames were received at or after that reply.
       # Equal timestamps cannot establish ordering within a CAN packet, so also block.
       if (self.radar_accepted_nanos is None or self.radar_last_rx_nanos is None
           or self.radar_last_rx_nanos >= self.radar_accepted_nanos):
         return
-      # [radar handover] - END
       if not can_valid:
         self._stop_radar_session('vehicle CAN invalid before emulation')
         return
       self.radar_active = True
       self.radar_started_nanos = now_nanos
       self.radar_started_frame = self.frame
-      # [neutral motion] - START
-      carlog.info('ARTIV: emulation started (motion allowed)')
-      # [neutral motion] - END
+      # carlog.info('ARTIV: emulation started (motion allowed)')
 
     if now_nanos - self.radar_last_bus_nanos > 250_000_000:
       self._stop_radar_session('ADAS bus RX timeout')
@@ -582,7 +578,7 @@ class CarController(CarControllerBase):
           can_sends.append(create_disable_radar())
           self.artiv_programming_requested = True
           self.radar_request_nanos = now_nanos
-          carlog.info('ARTIV session: programming requested; waiting for 50 02 and radar silence')
+          # carlog.info('ARTIV session: programming requested; waiting for 50 02 and radar silence')
 
       self._update_radar_session(now_nanos, CS.out.canValid)
       self._update_longitudinal(CC, CS)
