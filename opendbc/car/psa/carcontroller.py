@@ -405,14 +405,6 @@ class CarController(CarControllerBase):
       self.bars = max(0, previous_bars - 1)
     else:
       self.bars = previous_bars
-    # | `self.bars` | Distanza |
-    # |---|---|
-    # | `0` | Meno di 15 m |
-    # | `1` | Da 15 a meno di 30 m |
-    # | `2` | Da 30 a meno di 45 m |
-    # | `3` | 45 m o più |
-    # | `4` | **Nessun target o dati non validi** |
-    # self.bars = 2
     return True
 
   def _reset_lat_state(self):
