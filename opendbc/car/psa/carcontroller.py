@@ -588,7 +588,6 @@ class CarController(CarControllerBase):
           counter = (radar_frame // 2) % 16
           # Temporarily restore route 45's no-target display for radar fault diagnosis.
           lead_detected = self._update_lead_display(CC, CS)
-          lead_detected = False
           # Default profile retains the recorded neutral encodings. Only the experimental
           # profile with a confirmed session and authorized longActive may request actuation.
           acc_waiting = not CS.out.brakePressed and CS.out.vEgoRaw >= self.CP.minEnableSpeed
