@@ -337,8 +337,6 @@ class CarController(CarControllerBase):
 
     # Limit only increasing acceleration.
     # Braking/deceleration must remain immediately available.
-    # POSITIVE_JERK_MAX = 1.6  # m/s^3
-
     if requested_accel > self.longitudinal_accel_limited:
       # Never slowly ramp through negative acceleration when transitioning
       # from braking/coast to throttle: release braking immediately to zero.
@@ -347,7 +345,6 @@ class CarController(CarControllerBase):
       accel = min(
         requested_accel,
         accel_base + LongitudinalParams.POSITIVE_JERK_MAX * DT_CTRL
-
       )
     else:
       # Falling acceleration, including emergency braking, is unrestricted.
