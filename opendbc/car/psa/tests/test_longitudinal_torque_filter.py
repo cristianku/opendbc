@@ -3,19 +3,21 @@ import unittest
 from opendbc.car import DT_CTRL
 from opendbc.car.common.filter_simple import FirstOrderFilter
 from opendbc.car.psa.carcontroller import CarController
+from opendbc.car.psa.values import LongitudinalParams
 
 
 # [torque filter] - START
 class TestLongitudinalTorqueFilter(unittest.TestCase):
   def setUp(self):
+    self.assertEqual(LongitudinalParams.TORQUE_FILTER_RC, 0.20)
     self.controller = object.__new__(CarController)
-    self.controller.wheel_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
-    self.controller.potential_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
+    self.controller.wheel_torque_filter = FirstOrderFilter(0., LongitudinalParams.TORQUE_FILTER_RC, DT_CTRL)
+    self.controller.potential_torque_filter = FirstOrderFilter(0., LongitudinalParams.TORQUE_FILTER_RC, DT_CTRL)
 
   def test_positive_step_is_low_pass_filtered(self):
     wheel, potential = self.controller._filter_longitudinal_torque(300., 280.)
-    self.assertAlmostEqual(wheel, 50.0)
-    self.assertAlmostEqual(potential, 46.6666666667)
+    self.assertAlmostEqual(wheel, 14.2857142857)
+    self.assertAlmostEqual(potential, 13.3333333333)
 
     next_wheel, next_potential = self.controller._filter_longitudinal_torque(300., 280.)
     self.assertGreater(next_wheel, wheel)
@@ -43,8 +45,8 @@ class TestLongitudinalTorqueFilter(unittest.TestCase):
     self.assertEqual(self.controller.wheel_torque_filter.x, 0.)
     self.assertEqual(self.controller.potential_torque_filter.x, 0.)
     wheel, potential = self.controller._filter_longitudinal_torque(300., 280.)
-    self.assertAlmostEqual(wheel, 50.0)
-    self.assertAlmostEqual(potential, 46.6666666667)
+    self.assertAlmostEqual(wheel, 14.2857142857)
+    self.assertAlmostEqual(potential, 13.3333333333)
 # [torque filter] - END
 
 
