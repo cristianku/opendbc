@@ -412,7 +412,7 @@ class CarController(CarControllerBase):
     # | `2` | Da 30 a meno di 45 m |
     # | `3` | 45 m o più |
     # | `4` | **Nessun target o dati non validi** |
-    self.bars = 2
+    # self.bars = 2
     return True
 
   def _reset_lat_state(self):
