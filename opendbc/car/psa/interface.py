@@ -4,9 +4,7 @@ from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.carstate import CarState
 from opendbc.car.psa.values import CAR, LKAS_LIMITS
-# [psa longitudinal] - START
 from opendbc.car.psa.values import PSA_LONG_CONTROL
-# [psa longitudinal] - END
 
 class CarInterface(CarInterfaceBase):
   CarState = CarState
@@ -14,7 +12,6 @@ class CarInterface(CarInterfaceBase):
 
   def update(self, can_packets):
     can_packets = self.CC.process_radar_can(can_packets)
-    # [psa longitudinal] - START
     ret, ret_sp = super().update(can_packets)
     if self.CC.longitudinal_profile:
       if not self.CC.longitudinal_enabled or not self.CC.radar_active:
@@ -23,7 +20,6 @@ class CarInterface(CarInterfaceBase):
         ret.cruiseState.enabled = False
       ret.accFaulted = ret.accFaulted or self.CC.radar_stop_reason is not None
     return ret, ret_sp
-    # [psa longitudinal] - END
 
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
@@ -52,12 +48,10 @@ class CarInterface(CarInterfaceBase):
 
     ret.radarUnavailable = True
 
-    # [psa longitudinal] - START
     ret.alphaLongitudinalAvailable = candidate in (
       CAR.PSA_PEUGEOT_3008,
       CAR.PSA_CITROEN_C4_SPACETOURER,
     )
-    # [long flow] - START
     # Configure openpilot longitudinal only when this car supports it and the user opts in.
     # This selects the controller; ACC engagement still comes from the BSI.
     ret.openpilotLongitudinalControl = ret.alphaLongitudinalAvailable and alpha_long
@@ -65,11 +59,8 @@ class CarInterface(CarInterfaceBase):
     if ret.openpilotLongitudinalControl:
       # ret.dashcamOnly = False
       ret.safetyConfigs[0].safetyParam |= PSA_LONG_CONTROL
-      # [long flow] - START
       # Announce ACC Waiting from 1 km/h raw Dyn4_FRE speed, with the brake released.
       ret.minEnableSpeed = 1.0 * CV.KPH_TO_MS
-      # [long flow] - END
-    # [psa longitudinal] - END
 
     return ret
 
