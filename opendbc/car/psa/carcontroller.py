@@ -600,7 +600,6 @@ class CarController(CarControllerBase):
             acc_status = 3  # Ready for BSI activation
           else:
             acc_status = 2  # Inhibited
-          # [long flow] - END
           can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
             self.packer, PSA_ADAS_BUS,
             mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
@@ -659,8 +658,6 @@ class CarController(CarControllerBase):
           if radar_frame > 0:
             can_sends.append(CanData(0x6B6, b'\x02\x3e\x00', PSA_ADAS_BUS))
             self.radar_last_tester_present_nanos = now_nanos
-      # [artiv probe] - END
-    # [long flow] - END
 
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       if not lat_active:
