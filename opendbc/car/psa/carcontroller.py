@@ -358,7 +358,10 @@ class CarController(CarControllerBase):
     braking |= accel <= 0.0 and equivalent_accel < LongitudinalParams.BRAKE_ENTER_ACCEL
 
     if braking:
-      accel = max(LongitudinalParams.BRAKE_MIN_ACCEL, min(CC.actuators.accel, 0.0))
+      # [long response] - START
+      requested_brake_accel = CC.actuators.accel * LongitudinalParams.BRAKE_ACCEL_GAIN
+      accel = max(LongitudinalParams.BRAKE_MIN_ACCEL, min(requested_brake_accel, 0.0))
+      # [long response] - END
       self._reset_longitudinal_torque_filters()
 
     # Remember the acceleration actually applied to the vehicle.
