@@ -20,8 +20,11 @@ class LongitudinalParams:
   # Fonte: openpilot_scripts/plans/longitudinal/analysis-route49/candidate_torque_table.csv.
   # PROVVISORI (Elkoled): -1, -0.5, +1.5, +2 e interpolazione fuori da 0..1.
   # [long response] - START
-  POSITIVE_JERK_MAX = 3.0
+  POSITIVE_JERK_MAX = 3.5
   # [long response] - END
+  # [torque filter] - START
+  TORQUE_FILTER_RC = 0.20  # ~0.47 s to reach 90% of a positive torque step at 100 Hz.
+  # [torque filter] - END
   ACCEL_LOOKUP = (-1.0, -0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
   TORQUE_LOOKUP = (-400, -300, 179, 301, 424, 547, 670, 800, 1000)
   POTENTIAL_TORQUE_LOOKUP = (-400, -300, 169, 279, 390, 501, 612, 800, 1000)
@@ -33,7 +36,7 @@ class LongitudinalParams:
   BRAKE_MIN_ACCEL = -2.0  # Provisional service-brake limit, m/s^2; keep in sync with PSA safety.
   # [brake limit] - END
   # [long response] - START
-  BRAKE_ACCEL_GAIN = 1.25  # Amplify service-brake requests before the existing -2.0 m/s^2 clamp.
+  BRAKE_ACCEL_GAIN = 1.55  # Amplify service-brake requests before the existing -2.0 m/s^2 clamp.
   # [long response] - END
   MIN_TIME_GMP_EXPERIMENTAL = 6.2  # Does not reproduce the observed even/odd sequence.
   INACTIVE_ACCEL = 2.05
