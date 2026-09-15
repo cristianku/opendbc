@@ -633,8 +633,8 @@ class CarController(CarControllerBase):
           ))
           can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(
             self.packer, PSA_ADAS_BUS,
-            # target_detected=int(lead_detected),
-            target_detected=0,
+            target_detected=int(lead_detected),
+            # target_detected=0,
             request_takeover=self.takeover_req if self.longitudinal_enabled else 0,
             blind_sensor=0,
             req_visual_coll_alert_arc=0,
