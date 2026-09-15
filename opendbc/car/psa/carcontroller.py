@@ -21,7 +21,9 @@ from opendbc.car.psa.psacan import (
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
 from numpy import interp
 from opendbc.car.psa.values import LongitudinalParams, PSA_LONG_CONTROL
+# [torque filter] - START
 from opendbc.car.common.filter_simple import FirstOrderFilter
+# [torque filter] - END
 
 try:
   import openpilot.cereal.messaging as messaging
@@ -173,8 +175,31 @@ class CarController(CarControllerBase):
     self.deactivation_in_progress = False
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)
     self.takeover_msg_duration = int(self.params.TAKEOVER_MSG_DURATION / DT_CTRL)   # 0.1 s = 10 frame
+    # [torque filter] - START
     self.wheel_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
     self.potential_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
+    # [torque filter] - END
+
+  # [torque filter] - START
+  def _reset_longitudinal_torque_filters(self):
+    self.wheel_torque_filter.x = 0.0
+    self.potential_torque_filter.x = 0.0
+
+  def _filter_longitudinal_torque(self, wheel_torque, potential_torque):
+    # Smooth positive torque steps; torque reductions remain immediate so the
+    # filter cannot hold propulsion torque when longitudinal asks for less.
+    if wheel_torque > self.wheel_torque_filter.x:
+      wheel_torque = self.wheel_torque_filter.update(wheel_torque)
+    else:
+      self.wheel_torque_filter.x = wheel_torque
+
+    if potential_torque > self.potential_torque_filter.x:
+      potential_torque = self.potential_torque_filter.update(potential_torque)
+    else:
+      self.potential_torque_filter.x = potential_torque
+
+    return wheel_torque, potential_torque
+  # [torque filter] - END
 
   def _stop_radar_session(self, reason):
     self.radar_active = False
@@ -270,21 +295,25 @@ class CarController(CarControllerBase):
     # Configuration and radar session must permit experimental control.
     if not self.longitudinal_enabled or not self.radar_active:
       self.longitudinal_accel_limited = 0.0
+      self._reset_longitudinal_torque_filters()
       return
 
     # Require valid CAN, Sunnypilot enabled, BSI consent and no brake pedal.
     if not CS.out.canValid or not CC.enabled or not CS.out.cruiseState.enabled or CS.out.brakePressed:
       self.longitudinal_accel_limited = 0.0
+      self._reset_longitudinal_torque_filters()
       return
 
     # Gas temporarily suspends ACC only while Sunnypilot and BSI remain enabled.
     if CS.out.gasPressed:
       self.acc_on_hold = True
       self.longitudinal_accel_limited = 0.0
+      self._reset_longitudinal_torque_filters()
       return
 
     if not CC.longActive or not math.isfinite(CC.actuators.accel):
       self.longitudinal_accel_limited = 0.0
+      self._reset_longitudinal_torque_filters()
       return
 
     requested_accel = max(
@@ -319,6 +348,7 @@ class CarController(CarControllerBase):
       pitch = CC.orientationNED[1]
       if not math.isfinite(pitch):
         self.longitudinal_accel_limited = 0.0
+        self._reset_longitudinal_torque_filters()
         return
 
     equivalent_accel = accel + ACCELERATION_DUE_TO_GRAVITY * math.sin(pitch)
@@ -329,6 +359,7 @@ class CarController(CarControllerBase):
 
     if braking:
       accel = max(LongitudinalParams.BRAKE_MIN_ACCEL, min(CC.actuators.accel, 0.0))
+      self._reset_longitudinal_torque_filters()
 
     # Remember the acceleration actually applied to the vehicle.
     self.longitudinal_accel_limited = accel
@@ -339,10 +370,15 @@ class CarController(CarControllerBase):
     if not self.longitudinal_braking:
       # Compensate the GMP map only: the brake ECU already takes a deceleration request.
       # interp saturates to the existing provisional endpoints (-400..1000 Nm).
-      self.longitudinal_potential_torque = float(interp(equivalent_accel, LongitudinalParams.ACCEL_LOOKUP,
-                                                       LongitudinalParams.POTENTIAL_TORQUE_LOOKUP))
-      self.longitudinal_wheel_torque = float(interp(equivalent_accel, LongitudinalParams.ACCEL_LOOKUP,
-                                                   LongitudinalParams.TORQUE_LOOKUP))
+      requested_potential_torque = float(interp(equivalent_accel, LongitudinalParams.ACCEL_LOOKUP,
+                                                LongitudinalParams.POTENTIAL_TORQUE_LOOKUP))
+      requested_wheel_torque = float(interp(equivalent_accel, LongitudinalParams.ACCEL_LOOKUP,
+                                            LongitudinalParams.TORQUE_LOOKUP))
+      # [torque filter] - START
+      self.longitudinal_wheel_torque, self.longitudinal_potential_torque = self._filter_longitudinal_torque(
+        requested_wheel_torque, requested_potential_torque,
+      )
+      # [torque filter] - END
       self.longitudinal_min_time = LongitudinalParams.MIN_TIME_GMP_EXPERIMENTAL
 
   def _update_lead_display(self, CC, CS):
