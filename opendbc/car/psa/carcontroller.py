@@ -16,6 +16,7 @@ from opendbc.car.psa.psacan import (
   create_HS2_DYN_MDD_ETAT_2F6,
   create_HS2_DAT_ARTIV_V2_4F6,
   create_HS2_SUPV_ARTIV_796,
+  
 )
 from opendbc.car.psa.values import CarControllerParams, CAR, LKAS_LIMITS, PSA_ADAS_BUS
 # from opendbc.car.carlog import carlog
@@ -587,6 +588,7 @@ class CarController(CarControllerBase):
           counter = (radar_frame // 2) % 16
           # Temporarily restore route 45's no-target display for radar fault diagnosis.
           lead_detected = self._update_lead_display(CC, CS)
+          lead_detected = False
           # Default profile retains the recorded neutral encodings. Only the experimental
           # profile with a confirmed session and authorized longActive may request actuation.
           acc_waiting = not CS.out.brakePressed and CS.out.vEgoRaw >= self.CP.minEnableSpeed
