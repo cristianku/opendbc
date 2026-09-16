@@ -26,9 +26,8 @@ class CarInterface(CarInterfaceBase):
     ret.brand = 'psa'
 
     ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.psa)]
-
     #
-    ret.dashcamOnly = True
+    ret.dashcamOnly = False
 
     if candidate in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
