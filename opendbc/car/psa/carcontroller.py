@@ -633,6 +633,11 @@ class CarController(CarControllerBase):
     # lateral control
     lat_active = CC.latActive
     if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
+      # [eps fault] - START
+      # A defect must use the inactive path, never the activation ladder or
+      # hold-wheel messages, even while the upstream request is still active.
+      lat_active = lat_active and getattr(CS, 'eps_state_lka', 0) != 4
+      # [eps fault] - END
       # Gate locally too: latActive can lag the raw wheel-speed threshold.
       # Drop float32 conversion noise at exactly 51 km/h (wheel resolution: 0.0025).
       lat_active = lat_active and round(CS.speed_kph, 4) > LKAS_LIMITS.ENABLE_SPEED

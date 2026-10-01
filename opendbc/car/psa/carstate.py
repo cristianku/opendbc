@@ -168,12 +168,12 @@ class CarState(CarStateBase):
       ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
 
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
-    # [CLAUDE eps-closed-loop] - START
-    # Valore grezzo, non solo "e' Active": la scaletta di riattivazione sale di
-    # gradino solo quando l'EPS ha confermato quello precedente (vedi EPS_STATUS_ACK
-    # in carcontroller.py).
+    # [eps fault] - START
+    # Preserve the raw state so the controller can distinguish a defect from
+    # normal activation/rearm, even before latActive reacts to the fault.
     self.eps_state_lka = int(cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'])
-    # [CLAUDE eps-closed-loop] - END
+    ret.steerFaultTemporary = self.eps_state_lka == 4
+    # [eps fault] - END
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
     # [inactive lka] - START
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
