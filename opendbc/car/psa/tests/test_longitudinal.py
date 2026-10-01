@@ -464,6 +464,12 @@ class TestLongitudinalCommands(unittest.TestCase):
         self.h.activate()
         # [light braking] - END
         self.h.cc.actuators.accel = accel
+        # [brake filter] - START
+        if braking:
+          self.h.step()  # Confirm the radar session before settling its brake request.
+          for _ in range(400):
+            self.h.controller._update_longitudinal(self.h.cc.as_reader(), self.h.cs)
+        # [brake filter] - END
         output, values = self.h.emission()
         self.assertAlmostEqual(output.accel, expected_accel)
         self.assertEqual(values[0x2B6]['GMP_WHEEL_TORQUE'], wheel)
@@ -471,11 +477,20 @@ class TestLongitudinalCommands(unittest.TestCase):
         self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], braking)
 
   def test_direct_braking_has_its_own_limit_independent_of_torque_and_grade(self):
-    for requested, applied, encoded in ((-1.84, -1.84, -1.85), (-2, -2, -2), (-2.05, -2, -2), (-10, -2, -2)):
+    # [brake filter] - START
+    # The existing 1.55 gain clamps these requests to -2; verify the settled limit.
+    for requested, applied, encoded in ((-1.84, -2, -2), (-2, -2, -2), (-2.05, -2, -2), (-10, -2, -2)):
+    # [brake filter] - END
       for pitch in (-0.1, 0, 0.1):
         with self.subTest(requested=requested, pitch=pitch):
           self.h.cc.actuators.accel = requested
           self.h.cc.orientationNED = [0, pitch, 0]
+          # [brake filter] - START
+          if not self.h.controller.radar_active:
+            self.h.step()
+          for _ in range(400):
+            self.h.controller._update_longitudinal(self.h.cc.as_reader(), self.h.cs)
+          # [brake filter] - END
           output, values = self.h.emission()
           b6, f6 = values[0x2B6], values[0x2F6]
           self.assertAlmostEqual(output.accel, applied)

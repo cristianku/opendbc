@@ -25,6 +25,9 @@ class LongitudinalParams:
   # [torque filter] - START
   TORQUE_FILTER_RC = 0.20  # ~0.47 s to reach 90% of a positive torque step at 100 Hz.
   # [torque filter] - END
+  # [brake filter] - START
+  BRAKE_FILTER_RC = 0.20  # ~0.47 s to reach 90% of a stronger brake request at 100 Hz.
+  # [brake filter] - END
   ACCEL_LOOKUP = (-1.0, -0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
   TORQUE_LOOKUP = (-400, -300, 179, 301, 424, 547, 670, 800, 1000)
   POTENTIAL_TORQUE_LOOKUP = (-400, -300, 169, 279, 390, 501, 612, 800, 1000)

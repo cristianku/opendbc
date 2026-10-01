@@ -25,10 +25,18 @@ class TestLongitudinalResponseTuning(unittest.TestCase):
 
   def test_braking_request_is_amplified_before_existing_limit(self):
     self.assertEqual(LongitudinalParams.BRAKE_ACCEL_GAIN, 1.55)
-    self.assertAlmostEqual(self.update_longitudinal(-0.8), -1.24)
+    # [brake filter] - START
+    for _ in range(300):
+      applied = self.update_longitudinal(-0.8)
+    self.assertAlmostEqual(applied, -1.24, delta=0.0001)
+    # [brake filter] - END
 
   def test_braking_gain_keeps_existing_minus_two_limit(self):
-    self.assertAlmostEqual(self.update_longitudinal(-1.8), LongitudinalParams.BRAKE_MIN_ACCEL)
+    # [brake filter] - START
+    for _ in range(300):
+      applied = self.update_longitudinal(-1.8)
+    self.assertAlmostEqual(applied, LongitudinalParams.BRAKE_MIN_ACCEL, delta=0.0001)
+    # [brake filter] - END
     self.assertEqual(LongitudinalParams.BRAKE_MIN_ACCEL, -2.0)
 # [long response] - END
 

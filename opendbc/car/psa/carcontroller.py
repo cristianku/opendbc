@@ -191,6 +191,9 @@ class CarController(CarControllerBase):
     self.wheel_torque_filter = FirstOrderFilter(0., LongitudinalParams.TORQUE_FILTER_RC, DT_CTRL)
     self.potential_torque_filter = FirstOrderFilter(0., LongitudinalParams.TORQUE_FILTER_RC, DT_CTRL)
     # [torque filter] - END
+    # [brake filter] - START
+    self.brake_accel_filter = FirstOrderFilter(0., LongitudinalParams.BRAKE_FILTER_RC, DT_CTRL)
+    # [brake filter] - END
 
   # [torque filter] - START
   def _reset_longitudinal_torque_filters(self):
@@ -212,6 +215,12 @@ class CarController(CarControllerBase):
 
     return wheel_torque, potential_torque
   # [torque filter] - END
+
+  # [brake filter] - START
+  def _reset_longitudinal_filters(self):
+    self._reset_longitudinal_torque_filters()
+    self.brake_accel_filter.x = 0.0
+  # [brake filter] - END
 
   # [radar handover timing] - START
   def _radar_message_due(self, address, now_nanos):
@@ -340,25 +349,33 @@ class CarController(CarControllerBase):
     # Configuration and radar session must permit experimental control.
     if not self.longitudinal_enabled or not self.radar_active:
       self.longitudinal_accel_limited = 0.0
-      self._reset_longitudinal_torque_filters()
+      # [brake filter] - START
+      self._reset_longitudinal_filters()
+      # [brake filter] - END
       return
 
     # Require valid CAN, Sunnypilot enabled, BSI consent and no brake pedal.
     if not CS.out.canValid or not CC.enabled or not CS.out.cruiseState.enabled or CS.out.brakePressed:
       self.longitudinal_accel_limited = 0.0
-      self._reset_longitudinal_torque_filters()
+      # [brake filter] - START
+      self._reset_longitudinal_filters()
+      # [brake filter] - END
       return
 
     # Gas temporarily suspends ACC only while Sunnypilot and BSI remain enabled.
     if CS.out.gasPressed:
       self.acc_on_hold = True
       self.longitudinal_accel_limited = 0.0
-      self._reset_longitudinal_torque_filters()
+      # [brake filter] - START
+      self._reset_longitudinal_filters()
+      # [brake filter] - END
       return
 
     if not CC.longActive or not math.isfinite(CC.actuators.accel):
       self.longitudinal_accel_limited = 0.0
-      self._reset_longitudinal_torque_filters()
+      # [brake filter] - START
+      self._reset_longitudinal_filters()
+      # [brake filter] - END
       return
 
     requested_accel = max(
@@ -367,7 +384,9 @@ class CarController(CarControllerBase):
     )
 
     # Limit only increasing acceleration.
-    # Braking/deceleration must remain immediately available.
+    # [brake filter] - START
+    # Direct brake requests are smoothed separately after gain and clamping below.
+    # [brake filter] - END
     if requested_accel > self.longitudinal_accel_limited:
       # Never slowly ramp through negative acceleration when transitioning
       # from braking/coast to throttle: release braking immediately to zero.
@@ -378,7 +397,9 @@ class CarController(CarControllerBase):
         accel_base + LongitudinalParams.POSITIVE_JERK_MAX * DT_CTRL
       )
     else:
-      # Falling acceleration, including emergency braking, is unrestricted.
+      # [brake filter] - START
+      # Torque reductions remain immediate; direct braking is filtered below.
+      # [brake filter] - END
       accel = requested_accel
 
     # Keep the service brake through light deceleration and speed holding. Reset
@@ -393,7 +414,9 @@ class CarController(CarControllerBase):
       pitch = CC.orientationNED[1]
       if not math.isfinite(pitch):
         self.longitudinal_accel_limited = 0.0
-        self._reset_longitudinal_torque_filters()
+        # [brake filter] - START
+        self._reset_longitudinal_filters()
+        # [brake filter] - END
         return
 
     equivalent_accel = accel + ACCELERATION_DUE_TO_GRAVITY * math.sin(pitch)
@@ -407,7 +430,18 @@ class CarController(CarControllerBase):
       requested_brake_accel = CC.actuators.accel * LongitudinalParams.BRAKE_ACCEL_GAIN
       accel = max(LongitudinalParams.BRAKE_MIN_ACCEL, min(requested_brake_accel, 0.0))
       # [long response] - END
+      # [brake filter] - START
+      if accel < self.brake_accel_filter.x:
+        accel = self.brake_accel_filter.update(accel)
+      else:
+        # Do not carry braking when the current request calls for less.
+        self.brake_accel_filter.x = accel
+      # [brake filter] - END
       self._reset_longitudinal_torque_filters()
+    # [brake filter] - START
+    else:
+      self.brake_accel_filter.x = 0.0
+    # [brake filter] - END
 
     # Remember the acceleration actually applied to the vehicle.
     self.longitudinal_accel_limited = accel
