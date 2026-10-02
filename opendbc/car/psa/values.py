@@ -9,6 +9,43 @@ Ecu = CarParams.Ecu
 
 PSA_ADAS_BUS = 1
 
+# [psa longitudinal] - START
+PSA_LONG_CONTROL = 1  # safetyParam bit selected by alpha_long on Peugeot 3008.
+
+
+class LongitudinalParams:
+  # [torque calibration] - START
+  # Ingresso: accelerazione richiesta + 9.81*sin(pitch), m/s^2. Coppie: Nm secondo DBC.
+  # Punti 0..1: curva candidata dalla route 00000049--a95dde6809, confrontata con 3a.
+  # Fonte: openpilot_scripts/plans/longitudinal/analysis-route49/candidate_torque_table.csv.
+  # PROVVISORI (Elkoled): -1, -0.5, +1.5, +2 e interpolazione fuori da 0..1.
+  # [long response] - START
+  POSITIVE_JERK_MAX = 3.5
+  # [long response] - END
+  # [torque filter] - START
+  TORQUE_FILTER_RC = 0.20  # ~0.47 s to reach 90% of a positive torque step at 100 Hz.
+  # [torque filter] - END
+  # [brake filter] - START
+  BRAKE_FILTER_RC = 0.20  # ~0.47 s to reach 90% of a stronger brake request at 100 Hz.
+  # [brake filter] - END
+  ACCEL_LOOKUP = (-1.0, -0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
+  TORQUE_LOOKUP = (-400, -300, 179, 301, 424, 547, 670, 800, 1000)
+  POTENTIAL_TORQUE_LOOKUP = (-400, -300, 169, 279, 390, 501, 612, 800, 1000)
+  # [torque calibration] - END
+  # [light braking] - START
+  BRAKE_ENTER_ACCEL = -0.5  # Provisional entry crossover; not a lower limit on light braking.
+  # [light braking] - END
+  # [brake limit] - START
+  BRAKE_MIN_ACCEL = -2.0  # Provisional service-brake limit, m/s^2; keep in sync with PSA safety.
+  # [brake limit] - END
+  # [long response] - START
+  BRAKE_ACCEL_GAIN = 1.55  # Amplify service-brake requests before the existing -2.0 m/s^2 clamp.
+  # [long response] - END
+  MIN_TIME_GMP_EXPERIMENTAL = 6.2  # Does not reproduce the observed even/odd sequence.
+  INACTIVE_ACCEL = 2.05
+  INACTIVE_TORQUE = -4000
+# [psa longitudinal] - END
+
 
 class CarControllerParams:
   # STEER_MAX = 250  # Maximum steering torque command that can be applied (unitless scaling factor)
@@ -40,20 +77,18 @@ class CarControllerParams:
 
     # [eps curve] - START
     EPS_REARM_PERIOD = 12.0  # s
+    EPS_REARM_PERIOD_C4_SPACETOURER = 12.0  # s
     EPS_REARM_EARLIEST_PERIOD = 3.0  # s
-    # Keep curve prediction independent from the 12 s hard deadline: after the
+    # Keep curve prediction independent from the platform-specific hard deadline: after the
     # 3 s cooldown, use the remaining part of the original 8 s EPS window.
     EPS_REARM_CURVE_LOOKAHEAD = 8.0 - EPS_REARM_EARLIEST_PERIOD  # 5 s
     EPS_REARM_STRAIGHT_LAT_ACCEL = 0.3  # m/s^2
     EPS_REARM_CURVE_LAT_ACCEL = 0.5  # m/s^2
+    EPS_TAKEOVER_WARNING_PERIOD = 2.0  # s before the forced EPS rearm
+    EPS_TAKEOVER_MODEL_MAX_TIME_GAP = 0.5  # s around the rearm deadline
     # [eps curve] - END
 
-    # Maximum and minimum time allowed for the EPS to reactivate before asking
-    # the driver to take over. Lateral acceleration moves the timeout between
-    # these bounds, so speed and curvature increase urgency without ever making
-    # the takeover request immediate.
-    EPS_ACTIVATE_TAKEOVER_MAX_PERIOD = 0.7  # s
-    EPS_ACTIVATE_TAKEOVER_MIN_PERIOD = 0.2  # s
+    # During EPS reactivation, request immediate driver takeover only on a sufficiently large curve.
     EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL = 1.0  # m/s^2
     TAKEOVER_MSG_DURATION = 2
 
@@ -61,7 +96,8 @@ class CarControllerParams:
     RESUME_ACC_SPEED = 0.56  # m/s
 
     def __init__(self, CP):
-      pass
+      if CP.carFingerprint == CAR.PSA_CITROEN_C4_SPACETOURER:
+        self.EPS_REARM_PERIOD = self.EPS_REARM_PERIOD_C4_SPACETOURER
 
 
 @dataclass
@@ -113,7 +149,7 @@ class LKAS_LIMITS:
   # Peugeot 3008
   # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
   # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
-  DISABLE_SPEED = 52    # kph
+  DISABLE_SPEED = 51    # kph
   ENABLE_SPEED = 51     # kph
 
 

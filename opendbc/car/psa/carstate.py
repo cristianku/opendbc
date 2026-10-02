@@ -26,6 +26,9 @@ class CarState(CarStateBase):
     super().__init__(CP, CP_SP)
     self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
     self.eps_state_lka = 0
+    # [inactive lka] - START
+    self.stock_lka_unknown2 = 24  # Preserve the existing payload until the first camera sample.
+    # [inactive lka] - END
     self.speed_kph = 0.0
     self.actual_gear = 0
     self.synthetic_cruise_kph = None
@@ -165,13 +168,19 @@ class CarState(CarStateBase):
       ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
 
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
-    # [CLAUDE eps-closed-loop] - START
-    # Valore grezzo, non solo "e' Active": la scaletta di riattivazione sale di
-    # gradino solo quando l'EPS ha confermato quello precedente (vedi EPS_STATUS_ACK
-    # in carcontroller.py).
+    # [eps fault] - START
+    # Preserve the raw state so the controller can distinguish a defect from
+    # normal activation/rearm, even before latActive reacts to the fault.
     self.eps_state_lka = int(cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'])
-    # [CLAUDE eps-closed-loop] - END
+    ret.steerFaultTemporary = self.eps_state_lka == 4
+    # [eps fault] - END
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
+    # [inactive lka] - START
+    if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+      stock_unknown2 = cp_cam.vl_all['LANE_KEEP_ASSIST']['unknown2']
+      if stock_unknown2:
+        self.stock_lka_unknown2 = int(stock_unknown2[-1])
+    # [inactive lka] - END
     self.steering = copy.copy(cp.vl['STEERING'])
     self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
 
@@ -195,10 +204,14 @@ class CarState(CarStateBase):
     #   # events. Keep all control/planner values in the real 0x452 domain and
     #   # synthesize +/- edges whenever that stock setpoint changes.
     #   ret.buttonEvents = self._update_cruise_button_events(cruise_speed_kph, ret.cruiseState.enabled)
-    # PSA's dashboard adds its own display offset. Sunny must compare and
-    # command the real CAN setpoint, so do not reproduce that offset here.
+    # Match the Peugeot cluster only in the display field; control keeps the
+    # original 0x452 SPEED_SETPOINT. Preserve zero/unset (255) sentinels.
     ret.cruiseState.speedCluster = ret.cruiseState.speed
-    ret.cruiseState.available = True # not available for CC-only
+    if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and 0 < cruise_speed_kph < 255:
+      ret.cruiseState.speedCluster += 3.0 * CV.KPH_TO_MS
+    # Cruise main: RVV or ACC selected, excluding off and the speed limiter.
+    # Keep this identical to acc_main_on in the PSA safety hook.
+    ret.cruiseState.available = cp_adas.vl['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'] in (1, 3)
     ret.cruiseState.nonAdaptive = False # not available for CC-only
 
     ret.cruiseState.standstill = False # not available for CC-only
@@ -239,10 +252,20 @@ class CarState(CarStateBase):
 
   @staticmethod
   def get_can_parsers(CP, CP_SP):
+    # [inactive lka] - START
+    # Observe the camera byte without adding a new CAN-validity requirement.
+    cam_messages = (
+      [('LANE_KEEP_ASSIST', math.nan)]
+      if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER)
+      else []
+    )
+    # [inactive lka] - END
     return {
       Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
       # Evento diagnostico: math.nan lo registra nel parser senza renderlo
       # obbligatorio per canValid quando non stiamo eseguendo il test ARTIV.
       Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [("Rep_Diag_ARTIV", math.nan)], 1),
-      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
+      # [inactive lka] - START
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, 2),
+      # [inactive lka] - END
     }
