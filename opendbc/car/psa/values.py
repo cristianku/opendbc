@@ -92,7 +92,7 @@ class CarControllerParams:
     # One smooth burst per EPS cycle: sin^2 envelope * sine, sign alternated.
     EPS_DITHER_AMPLITUDE = 0  # peak, effective torque units; 0 = off (6 when enabled)
     EPS_DITHER_FREQUENCY = 2.5  # Hz
-    EPS_DITHER_WAVES = 3  # whole waves -> 1.2 s, zero mean
+    EPS_DITHER_WAVES = 3  # whole waves -> 1.2 s, zero mean for the complete nominal burst
     EPS_DITHER_START_MARGIN = 2.0  # s after EPS activation
     EPS_DITHER_END_MARGIN = 3.0  # s before the rearm
     # [CLAUDE eps-dither] - END

@@ -748,6 +748,11 @@ class CarController(CarControllerBase):
       lat_active = lat_active and round(CS.speed_kph, 4) > LKAS_LIMITS.ENABLE_SPEED
     if self.CP.steerControlType == SteerControlType.torque:
       if self.frame % self.params.STEER_STEP == 0:
+        # [CLAUDE lka-100hz] - START
+        if self.lka_reset_pending:
+          self.lka_reset_pending = False
+          self._reset_lat_state()
+        # [CLAUDE lka-100hz] - END
         if not lat_active:
           if self.latActiveLast:
              self.takeover_req = 1
@@ -777,7 +782,12 @@ class CarController(CarControllerBase):
 
               # Match Panda before the filtered/debounced driver flag catches up.
               raw_driver_torque = getattr(CS, 'steering', {}).get('DRIVER_TORQUE', 0) * 3
-              if CS.out.steeringPressed or abs(raw_driver_torque) > self.params.STEER_DRIVER_ALLOWANCE:
+              # [CLAUDE lka-100hz] - START
+              # if CS.out.steeringPressed or abs(raw_driver_torque) > self.params.STEER_DRIVER_ALLOWANCE:
+              # brake: the panda safety refuses non-zero torque, release like an override
+              driver_override = CS.out.steeringPressed or abs(raw_driver_torque) > self.params.STEER_DRIVER_ALLOWANCE
+              if driver_override or CS.out.brakePressed:
+              # [CLAUDE lka-100hz] - END
                 #### DRIVER STEERING DETECTED
                 # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
                 self.apply_torque_factor = 0
@@ -797,7 +807,7 @@ class CarController(CarControllerBase):
                 apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled + dither, self.apply_torque_scaled_last,
                                                                 temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
                 if dither != 0 and apply_new_torque_scaled != new_torque_scaled + dither:
-                  # Clipped by the limits: drop the burst, no asymmetric pull.
+                  # clipped by the limits: stop the burst here
                   self._cancel_eps_dither()
                   apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
                                                                   temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
@@ -825,7 +835,7 @@ class CarController(CarControllerBase):
       else:
         self._lka_release_between_steps(CS, lat_active)
 
-      # LANE_KEEP_ASSIST every cycle (100 Hz): irregular 20 Hz cadence -> EPS Defect.
+      # LANE_KEEP_ASSIST every cycle (100 Hz): mitigation, EPS Defects correlated with irregular 20 Hz echoes
       if self.lka_msg_last is not None:
         can_sends.append(self.lka_msg_last)
       # [CLAUDE lka-100hz] - END
