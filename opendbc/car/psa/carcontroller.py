@@ -186,6 +186,9 @@ class CarController(CarControllerBase):
     self.creep_start_frame = 0
     self.deactivation_in_progress = False
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)
+    # [CLAUDE eps-dither] - START
+    self.eps_dither_step = 0
+    # [CLAUDE eps-dither] - END
     self.takeover_msg_duration = int(self.params.TAKEOVER_MSG_DURATION / DT_CTRL)   # 0.1 s = 10 frame
     # [torque filter] - START
     self.wheel_torque_filter = FirstOrderFilter(0., LongitudinalParams.TORQUE_FILTER_RC, DT_CTRL)
@@ -541,6 +544,32 @@ class CarController(CarControllerBase):
     self.eps_activation_frame = 0
     self.takeover_req_already_sent = False
 
+  # [CLAUDE eps-dither] - START
+  def _eps_dither(self):
+    # Called once per steer frame while the EPS is active and the driver is not steering.
+    if self.params.EPS_DITHER_AMPLITUDE == 0:
+      return 0
+
+    steer_frame_time = DT_CTRL * self.params.STEER_STEP
+    interval_frames = int(round(self.params.EPS_DITHER_INTERVAL / steer_frame_time))
+    burst_frames = int(round(self.params.EPS_DITHER_BURST / steer_frame_time))
+
+    # Short burst at the start of every interval, silent for the rest of it.
+    position = self.eps_dither_step
+    self.eps_dither_step += 1
+    if self.eps_dither_step >= interval_frames:
+      self.eps_dither_step = 0
+
+    if position >= burst_frames:
+      return 0
+
+    half_wave_index = position // self.params.EPS_DITHER_HALF_PERIOD
+    if half_wave_index % 2 == 0:
+      return self.params.EPS_DITHER_AMPLITUDE
+    else:
+      return -self.params.EPS_DITHER_AMPLITUDE
+  # [CLAUDE eps-dither] - END
+
   def _start_eps_active_cycle(self):
     self.eps_activation_frame = self.frame
     self.takeover_req_already_sent = False
@@ -683,6 +712,9 @@ class CarController(CarControllerBase):
                 self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
                 self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
                 new_torque_scaled = int(round(actuatorsRequestedTorque * self.apply_torque_factor / 100))
+                # [CLAUDE eps-dither] - START
+                new_torque_scaled = new_torque_scaled + self._eps_dither()
+                # [CLAUDE eps-dither] - END
                 temp_driverSteeringTorque = CS.out.steeringTorque
                 apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
                                                                 temp_driverSteeringTorque, self.params, self.params.STEER_MAX)

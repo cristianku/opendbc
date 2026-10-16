@@ -88,6 +88,17 @@ class CarControllerParams:
     EPS_TAKEOVER_MODEL_MAX_TIME_GAP = 0.5  # s around the rearm deadline
     # [eps curve] - END
 
+    # [CLAUDE eps-dither] - START
+    # Square wave added to the effective torque while the EPS is active, so the hands resting
+    # on the wheel react against it and show up on the torsion-bar DRIVER_TORQUE.
+    # Phase 1 = measure only: the rearm period stays unchanged. 0 = off.
+    # It goes through apply_driver_steer_torque_limits, so the 8/38 panda envelope still holds.
+    EPS_DITHER_AMPLITUDE = 6  # effective torque units (STEER_MAX = 150)
+    EPS_DITHER_HALF_PERIOD = 2  # steer frames per half wave (20 Hz): 2 -> 5 Hz, 1 -> 10 Hz
+    EPS_DITHER_INTERVAL = 3.0  # s from one burst to the next
+    EPS_DITHER_BURST = 0.4  # s of vibration per burst (2 waves at 5 Hz), silent the rest
+    # [CLAUDE eps-dither] - END
+
     # During EPS reactivation, request immediate driver takeover only on a sufficiently large curve.
     EPS_ACTIVATE_TAKEOVER_FULL_LAT_ACCEL = 1.0  # m/s^2
     TAKEOVER_MSG_DURATION = 2
