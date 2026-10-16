@@ -129,6 +129,13 @@ class CarController(CarControllerBase):
     self.apply_torque_scaled_last = 0
     self.apply_torque_factor = 0
     self.status = 2
+    # [CLAUDE lka-100hz] - START
+    self.lka_msg_last = None
+    self.lka_last_status = 2
+    self.lka_last_factor = 0
+    self.lka_last_torque = 0
+    self.lka_last_eps_active = False
+    # [CLAUDE lka-100hz] - END
     self.takeover_req = 0
     self.start_takeover_repeats = 0
     # Shared latch for both the pre-rearm warning and an immediate curve warning during EPS reactivation.
@@ -187,7 +194,9 @@ class CarController(CarControllerBase):
     self.deactivation_in_progress = False
     self.eps_rearm_frames = int(self.params.EPS_REARM_PERIOD / DT_CTRL)
     # [CLAUDE eps-dither] - START
-    self.eps_dither_step = 0
+    self.eps_dither_start_frame = -1  # -1 = no burst pending
+    self.eps_dither_sign = 1
+    self.eps_dither_rng = random.Random()
     # [CLAUDE eps-dither] - END
     self.takeover_msg_duration = int(self.params.TAKEOVER_MSG_DURATION / DT_CTRL)   # 0.1 s = 10 frame
     # [torque filter] - START
@@ -543,36 +552,95 @@ class CarController(CarControllerBase):
     self.deactivation_in_progress = False
     self.eps_activation_frame = 0
     self.takeover_req_already_sent = False
+    # [CLAUDE eps-dither] - START
+    self._cancel_eps_dither()
+    # [CLAUDE eps-dither] - END
 
   # [CLAUDE eps-dither] - START
+  def _eps_dither_burst_time(self):
+    return self.params.EPS_DITHER_WAVES / self.params.EPS_DITHER_FREQUENCY
+
+  def _schedule_eps_dither(self):
+    # One burst per EPS cycle, random start inside the margins, on a steer frame.
+    self.eps_dither_start_frame = -1
+    if self.params.EPS_DITHER_AMPLITUDE == 0:
+      return
+
+    burst_time = self._eps_dither_burst_time()
+    rearm_time = self.eps_rearm_frames * DT_CTRL
+    earliest = self.params.EPS_DITHER_START_MARGIN
+    latest = rearm_time - self.params.EPS_DITHER_END_MARGIN - burst_time
+    if latest < earliest:
+      return
+
+    start_time = self.eps_dither_rng.uniform(earliest, latest)
+    start_steps = int(round(start_time / (DT_CTRL * self.params.STEER_STEP)))
+    self.eps_dither_start_frame = self.frame + start_steps * self.params.STEER_STEP
+    self.eps_dither_sign = -self.eps_dither_sign
+
+  def _cancel_eps_dither(self):
+    self.eps_dither_start_frame = -1
+
   def _eps_dither(self):
-    # Called once per steer frame while the EPS is active and the driver is not steering.
     if self.params.EPS_DITHER_AMPLITUDE == 0:
       return 0
-
-    steer_frame_time = DT_CTRL * self.params.STEER_STEP
-    interval_frames = int(round(self.params.EPS_DITHER_INTERVAL / steer_frame_time))
-    burst_frames = int(round(self.params.EPS_DITHER_BURST / steer_frame_time))
-
-    # Short burst at the start of every interval, silent for the rest of it.
-    position = self.eps_dither_step
-    self.eps_dither_step += 1
-    if self.eps_dither_step >= interval_frames:
-      self.eps_dither_step = 0
-
-    if position >= burst_frames:
+    if self.eps_dither_start_frame < 0:
+      return 0
+    if self.frame < self.eps_dither_start_frame:
       return 0
 
-    half_wave_index = position // self.params.EPS_DITHER_HALF_PERIOD
-    if half_wave_index % 2 == 0:
-      return self.params.EPS_DITHER_AMPLITUDE
-    else:
-      return -self.params.EPS_DITHER_AMPLITUDE
+    burst_time = self._eps_dither_burst_time()
+    t = (self.frame - self.eps_dither_start_frame) * DT_CTRL
+    if t >= burst_time:
+      self.eps_dither_start_frame = -1
+      return 0
+
+    envelope = math.sin(math.pi * t / burst_time) ** 2
+    wave = math.sin(2.0 * math.pi * self.params.EPS_DITHER_FREQUENCY * t)
+    value = self.eps_dither_sign * self.params.EPS_DITHER_AMPLITUDE * envelope * wave
+    return int(round(value))
   # [CLAUDE eps-dither] - END
+
+  # [CLAUDE lka-100hz] - START
+  def _lka_release_between_steps(self, CS, lat_active):
+    # Between two 20 Hz updates: on an urgent change, release the cached frame now.
+    if self.lka_msg_last is None:
+      return
+
+    already_released = (self.lka_last_torque == 0) and (self.lka_last_factor == 0)
+    release_status = -1
+
+    if not lat_active:
+      # disengage, Defect, low speed
+      if (not already_released) or (self.lka_last_status != 2):
+        release_status = 2
+    elif self.lka_last_eps_active and not already_released:
+      raw_driver_torque = getattr(CS, 'steering', {}).get('DRIVER_TORQUE', 0) * 3
+      if not CS.eps_active:
+        release_status = self.lka_last_status
+      elif CS.out.steeringPressed or abs(raw_driver_torque) > self.params.STEER_DRIVER_ALLOWANCE:
+        release_status = self.lka_last_status
+
+    if release_status == -1:
+      return
+
+    unknown2 = 24
+    if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER) and not lat_active:
+      unknown2 = getattr(CS, 'stock_lka_unknown2', 24)
+    self.lka_msg_last = create_lka_steering(self.packer, lat_active, 0, 0, release_status, unknown2=unknown2)
+    self.lka_last_status = release_status
+    self.lka_last_factor = 0
+    self.lka_last_torque = 0
+    self.apply_torque_scaled_last = 0
+    self._cancel_eps_dither()
+  # [CLAUDE lka-100hz] - END
 
   def _start_eps_active_cycle(self):
     self.eps_activation_frame = self.frame
     self.takeover_req_already_sent = False
+    # [CLAUDE eps-dither] - START
+    self._schedule_eps_dither()
+    # [CLAUDE eps-dither] - END
 
   def _deactivate_eps(self):
     # Primo gradino della scaletta forzata. I due invii successivi salgono a 3 e 4
@@ -581,6 +649,9 @@ class CarController(CarControllerBase):
     self.apply_torque_factor = 0
     self.eps_activation_frame = 0
     self.deactivation_in_progress = True
+    # [CLAUDE eps-dither] - START
+    self._cancel_eps_dither()
+    # [CLAUDE eps-dither] - END
 
   def _activate_eps(self, CARSTATE, curvature):
     eps_active = CARSTATE.eps_active
@@ -706,18 +777,26 @@ class CarController(CarControllerBase):
                 # If the driver is applying torque, give up the assist torque to avoid fighting the driver.
                 self.apply_torque_factor = 0
                 apply_new_torque_scaled = 0
+                # [CLAUDE eps-dither] - START
+                self._cancel_eps_dither()
+                # [CLAUDE eps-dither] - END
               else:
                 actuatorsRequestedTorque = CC.actuators.torque * self.params.STEER_MAX
                 ratio = min(1.0, (abs(actuatorsRequestedTorque) / float(self.params.STEER_MAX)) * 1.0) **1.2
                 self.apply_torque_factor = int(self.params.MIN_TORQUE_FACTOR + ratio * (self.params.MAX_TORQUE_FACTOR - self.params.MIN_TORQUE_FACTOR))
                 self.apply_torque_factor = max(self.params.MIN_TORQUE_FACTOR, min(self.apply_torque_factor, self.params.MAX_TORQUE_FACTOR))
                 new_torque_scaled = int(round(actuatorsRequestedTorque * self.apply_torque_factor / 100))
-                # [CLAUDE eps-dither] - START
-                new_torque_scaled = new_torque_scaled + self._eps_dither()
-                # [CLAUDE eps-dither] - END
                 temp_driverSteeringTorque = CS.out.steeringTorque
-                apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
+                # [CLAUDE eps-dither] - START
+                dither = self._eps_dither()
+                apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled + dither, self.apply_torque_scaled_last,
                                                                 temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
+                if dither != 0 and apply_new_torque_scaled != new_torque_scaled + dither:
+                  # Clipped by the limits: drop the burst, no asymmetric pull.
+                  self._cancel_eps_dither()
+                  apply_new_torque_scaled = apply_driver_steer_torque_limits(new_torque_scaled, self.apply_torque_scaled_last,
+                                                                  temp_driverSteeringTorque, self.params, self.params.STEER_MAX)
+                # [CLAUDE eps-dither] - END
 
         if self.apply_torque_factor > 0 and apply_new_torque_scaled != 0:
           can_torque = int(round(apply_new_torque_scaled / self.apply_torque_factor *100))
@@ -726,11 +805,25 @@ class CarController(CarControllerBase):
         unknown2 = 24
         if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and not lat_active:
           unknown2 = getattr(CS, 'stock_lka_unknown2', 24)
-        can_sends.append(create_lka_steering(
+        # [CLAUDE lka-100hz] - START
+        self.lka_msg_last = create_lka_steering(
           self.packer, lat_active, can_torque, self.apply_torque_factor, self.status, unknown2=unknown2,
-        ))
+        )
+        self.lka_last_status = self.status
+        self.lka_last_factor = self.apply_torque_factor
+        self.lka_last_torque = can_torque
+        self.lka_last_eps_active = lat_active and CS.eps_active
+        # [CLAUDE lka-100hz] - END
         # Remember the effective (scaled) value for the next frame's rate limit.
         self.apply_torque_scaled_last = apply_new_torque_scaled
+      # [CLAUDE lka-100hz] - START
+      else:
+        self._lka_release_between_steps(CS, lat_active)
+
+      # LANE_KEEP_ASSIST every cycle (100 Hz): irregular 20 Hz cadence -> EPS Defect.
+      if self.lka_msg_last is not None:
+        can_sends.append(self.lka_msg_last)
+      # [CLAUDE lka-100hz] - END
 
     # Run experimental radar and longitudinal management only when configured.
     # Keep running after ACC disengagement to clear requests and maintain the session.

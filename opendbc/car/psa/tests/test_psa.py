@@ -322,6 +322,9 @@ def test_new_eps_active_cycle_clears_shared_takeover_latch():
   controller.frame = 1300
   controller.eps_activation_frame = 0
   controller.takeover_req_already_sent = True
+  # [CLAUDE eps-dither] - START
+  controller.params = SimpleNamespace(EPS_DITHER_AMPLITUDE=0)
+  # [CLAUDE eps-dither] - END
 
   controller._start_eps_active_cycle()
 
