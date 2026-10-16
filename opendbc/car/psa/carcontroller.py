@@ -135,6 +135,7 @@ class CarController(CarControllerBase):
     self.lka_last_factor = 0
     self.lka_last_torque = 0
     self.lka_last_eps_active = False
+    self.lka_reset_pending = False
     # [CLAUDE lka-100hz] - END
     self.takeover_req = 0
     self.start_takeover_repeats = 0
@@ -614,11 +615,15 @@ class CarController(CarControllerBase):
       # disengage, Defect, low speed
       if (not already_released) or (self.lka_last_status != 2):
         release_status = 2
+        # the state machine resets at the next 20 Hz update (ladder restarts from 3)
+        self.lka_reset_pending = True
     elif self.lka_last_eps_active and not already_released:
       raw_driver_torque = getattr(CS, 'steering', {}).get('DRIVER_TORQUE', 0) * 3
       if not CS.eps_active:
         release_status = self.lka_last_status
       elif CS.out.steeringPressed or abs(raw_driver_torque) > self.params.STEER_DRIVER_ALLOWANCE:
+        release_status = self.lka_last_status
+      elif CS.out.brakePressed:
         release_status = self.lka_last_status
 
     if release_status == -1:
