@@ -43,7 +43,7 @@ class ReleaseHarness:
 
   def set_driver_torque(self, raw):
     self.cs.steering['DRIVER_TORQUE'] = raw
-    self.cs.out.steeringTorque = raw
+    self.cs.out.steeringTorque = raw * 3
 
   def step(self):
     # Returns (frame, torque, factor, status) of the LANE_KEEP_ASSIST sent this cycle.
@@ -232,8 +232,8 @@ class TestDriverTorqueStandard(unittest.TestCase):
         h.set_driver_torque(-sign * 60)
         for _ in range(100):
           f, t, fa, st = h.step()
-        # STEER_MAX + (ALLOWANCE - 60) * MULTIPLIER = 150 - 129 = 21
-        self.assertLessEqual(abs(t * fa / 100), 21.5)
+        # STEER_MAX + (ALLOWANCE - 60 * 3) * MULTIPLIER = 150 - 130 = 20
+        self.assertLessEqual(abs(t * fa / 100), 20.5)
 
 
 if __name__ == "__main__":

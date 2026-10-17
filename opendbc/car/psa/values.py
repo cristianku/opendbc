@@ -50,9 +50,9 @@ class CarControllerParams:
     STEER_DELTA_DOWN = 8  # per 10 ms frame: 800/s (was 38 per 50 ms = 760/s)
     EPS_LADDER_STEP = 5  # activation ladder and rearm checks stay at 20 Hz
 
-    # Raw STEERING.DRIVER_TORQUE units, same as the panda safety.
-    STEER_DRIVER_MULTIPLIER = 3
-    STEER_DRIVER_ALLOWANCE = 17
+    # CarState.steeringTorque units (3008: raw DRIVER_TORQUE * 3).
+    STEER_DRIVER_MULTIPLIER = 1
+    STEER_DRIVER_ALLOWANCE = 50
     STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)
 
     MAX_TORQUE_FACTOR = 100
