@@ -16,7 +16,7 @@ class LongitudinalParams:
   # In: accel + 9.81*sin(pitch) [m/s^2]. Out: Nm. 0..1 from route 49; -1, -0.5, +1.5, +2 provisional.
   POSITIVE_JERK_MAX = 3.5
   TORQUE_FILTER_RC = 0.20  # ~0.47 s to reach 90% of a positive torque step at 100 Hz.
-  BRAKE_FILTER_RC = 0.20  # ~0.47 s to reach 90% of a stronger brake request at 100 Hz.
+  BRAKE_FILTER_RC = 0.10  # ~0.23 s to reach 90% of a stronger brake request at 100 Hz.
   ACCEL_LOOKUP = (-1.0, -0.5, 0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
   TORQUE_LOOKUP = (-400, -300, 179, 301, 424, 547, 670, 800, 1000)
   POTENTIAL_TORQUE_LOOKUP = (-400, -300, 169, 279, 390, 501, 612, 800, 1000)
@@ -25,14 +25,14 @@ class LongitudinalParams:
   BRAKE_EXIT_ACCEL = 0.0  # leave the brakes when the engine alone is enough
   BRAKE_EXIT_POSITIVE_ACCEL = 0.2  # or when a real positive request is reachable by torque
   PITCH_FILTER_RC = 0.5  # s, as Toyota
-  # accel -> MDD_DESIRED_DECELERATION, identity, not calibrated.
+  # accel -> MDD_DESIRED_DECELERATION, +10%: routes 118/119 settle ~10% short of the request.
   BRAKE_ACCEL_BP = (
     -2.0, -1.5, -1.0, -0.75,
     -0.5, -0.25, 0.0
   )
   BRAKE_ACCEL_V = (
-    -2.0, -1.5, -1.0, -0.75,
-    -0.5, -0.25, 0.0
+    -2.0, -1.65, -1.1, -0.825,
+    -0.55, -0.275, 0.0
   )
   BRAKE_MIN_ACCEL = -2.0  # Provisional service-brake limit, m/s^2; keep in sync with PSA safety.
   MIN_TIME_GMP_EXPERIMENTAL = 6.2  # Does not reproduce the observed even/odd sequence.

@@ -20,7 +20,7 @@ class TestLongitudinalBrakeFilter(unittest.TestCase):
       samples.append(self.h.controller.longitudinal_accel)
     return samples
 
-  def test_brake_step_builds_monotonically_to_ninety_percent_in_half_second(self):
+  def test_brake_step_builds_monotonically_to_ninety_percent_in_quarter_second(self):
     # Immediate braking would fail the first-cycle and half-second bounds.
     samples = self.update(-0.8, 200)
     # self.assertGreater(samples[0], -0.07)
@@ -28,25 +28,26 @@ class TestLongitudinalBrakeFilter(unittest.TestCase):
     # self.assertTrue(all(-1.24 <= following <= previous for previous, following in zip(samples, samples[1:])))
     # self.assertAlmostEqual(samples[46] / -1.24, 0.90, delta=0.005)
     # self.assertAlmostEqual(samples[-1], -1.24, delta=0.0001)
-    self.assertGreater(samples[0], -0.045)
-    self.assertLess(samples[0], -0.03)
-    self.assertTrue(all(-0.8 <= following <= previous for previous, following in zip(samples, samples[1:])))
-    self.assertAlmostEqual(samples[46] / -0.8, 0.90, delta=0.005)
-    self.assertAlmostEqual(samples[-1], -0.8, delta=0.0001)
+    # -0.8 maps to -0.88 through the +10% brake lookup.
+    self.assertGreater(samples[0], -0.09)
+    self.assertLess(samples[0], -0.07)
+    self.assertTrue(all(-0.88 - 1e-6 <= following <= previous for previous, following in zip(samples, samples[1:])))
+    self.assertAlmostEqual(samples[23] / -0.88, 0.90, delta=0.005)
+    self.assertAlmostEqual(samples[-1], -0.88, delta=0.0001)
 
   def test_stronger_brake_demand_is_smoothed_after_clamping(self):
     self.update(-0.6, 300)
     previous = self.h.controller.longitudinal_accel
     samples = self.update(-10.0, 200)
     self.assertLess(samples[0], previous)
-    self.assertGreater(samples[0], previous - 0.1)
+    self.assertGreater(samples[0], previous - 0.15)
     self.assertTrue(all(-2.0 <= value <= 0.0 for value in samples))
     self.assertAlmostEqual(samples[-1], -2.0, delta=0.0001)
 
   def test_weaker_braking_and_zero_release_without_filter_tail(self):
     self.update(-0.8, 200)
     # self.assertAlmostEqual(self.update(-0.1)[0], -0.155)
-    self.assertAlmostEqual(self.update(-0.1)[0], -0.1)
+    self.assertAlmostEqual(self.update(-0.1)[0], -0.11)
     self.assertEqual(self.update(0.0)[0], 0.0)
     self.assertTrue(self.h.controller.longitudinal_braking)
 

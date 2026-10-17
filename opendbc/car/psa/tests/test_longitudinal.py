@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 # [long flow] - END
 
+from numpy import interp
+
 from opendbc.can.packer import CANPacker
 from opendbc.can.parser import get_raw_value
 from opendbc.car import Bus, structs
@@ -17,7 +19,7 @@ from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa import psacan
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.interface import CarInterface
-from opendbc.car.psa.values import CAR, PSA_LONG_CONTROL
+from opendbc.car.psa.values import CAR, LongitudinalParams, PSA_LONG_CONTROL
 
 RADAR_IDS = {0x2B6, 0x2F6, 0x4F6, 0x796}
 
@@ -374,12 +376,13 @@ class TestLongitudinalCommands(unittest.TestCase):
         self.h.cc.actuators.accel = accel
         output, values = self.h.emission()
         b6, f6 = values[0x2B6], values[0x2F6]
+        brake_accel = float(interp(accel, LongitudinalParams.BRAKE_ACCEL_BP, LongitudinalParams.BRAKE_ACCEL_V))
         self.assertEqual(b6['MDD_DECEL_CONTROL_REQ'], 1)
         self.assertEqual(f6['MDD_DECEL_CONTROL_REQ'], 1)
-        self.assertAlmostEqual(b6['MDD_DESIRED_DECELERATION'], round(accel / 0.05) * 0.05)
+        self.assertAlmostEqual(b6['MDD_DESIRED_DECELERATION'], round(brake_accel / 0.05) * 0.05)
         self.assertEqual(b6['WHEEL_TORQUE_REQUEST'], 0)
         self.assertEqual(b6['GMP_WHEEL_TORQUE'], -4000)
-        self.assertAlmostEqual(output.accel, accel)
+        self.assertAlmostEqual(output.accel, brake_accel)
 
   def test_downhill_enters_light_braking_without_previous_strong_request(self):
     for accel in (-0.4, -0.15, 0):
@@ -480,8 +483,8 @@ class TestLongitudinalCommands(unittest.TestCase):
     # [brake filter] - START
     # # The existing 1.55 gain clamps these requests to -2; verify the settled limit.
     # for requested, applied, encoded in ((-1.84, -2, -2), (-2, -2, -2), (-2.05, -2, -2), (-10, -2, -2)):
-    # Identity lookup below -2, then the -2 limit; -1.84 is encoded on the 0.05 DBC grid.
-    for requested, applied, encoded in ((-1.84, -1.84, -1.85), (-2, -2, -2), (-2.05, -2, -2), (-10, -2, -2)):
+    # +10% lookup, then the -2 limit; -1.84 -> -1.888, encoded on the 0.05 DBC grid.
+    for requested, applied, encoded in ((-1.84, -1.888, -1.9), (-2, -2, -2), (-2.05, -2, -2), (-10, -2, -2)):
     # [brake filter] - END
       for pitch in (-0.1, 0, 0.1):
         with self.subTest(requested=requested, pitch=pitch):

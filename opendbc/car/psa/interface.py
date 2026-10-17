@@ -51,6 +51,8 @@ class CarInterface(CarInterfaceBase):
     ret.openpilotLongitudinalControl = ret.alphaLongitudinalAvailable and alpha_long
     if ret.openpilotLongitudinalControl:
       ret.safetyConfigs[0].safetyParam |= PSA_LONG_CONTROL
+      # ~0.65 s command-to-aEgo brake lag measured on routes 118/119.
+      ret.longitudinalActuatorDelay = 0.45
       # Announce ACC Waiting from 1 km/h raw Dyn4_FRE speed, with the brake released.
       ret.minEnableSpeed = 1.0 * CV.KPH_TO_MS
 

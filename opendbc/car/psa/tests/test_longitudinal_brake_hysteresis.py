@@ -2,6 +2,8 @@ import math
 import random
 import unittest
 
+from numpy import interp
+
 from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, DT_CTRL
 from opendbc.car.psa.tests.test_longitudinal import LongitudinalHarness
 from opendbc.car.psa.values import LongitudinalParams
@@ -12,6 +14,12 @@ DESCENTS_DEG = (3.0, 5.0, 8.0)
 def descent_pitch(degrees):
   # NED pitch: nose down on a descent is negative.
   return -math.radians(degrees)
+
+
+def expected_brake(accel):
+  # Settled brake command: brake lookup, then the service-brake limit.
+  brake_accel = float(interp(accel, LongitudinalParams.BRAKE_ACCEL_BP, LongitudinalParams.BRAKE_ACCEL_V))
+  return max(LongitudinalParams.BRAKE_MIN_ACCEL, min(brake_accel, 0.0))
 
 
 class TestLongitudinalBrakeHysteresis(unittest.TestCase):
@@ -128,7 +136,7 @@ class TestLongitudinalBrakeHysteresis(unittest.TestCase):
         self.assertTrue(all(braking_states))
         for i in range(1, len(commands)):
           self.assertLessEqual(commands[i], commands[i - 1] + 1e-9)
-        self.assertAlmostEqual(commands[-1], -1.5, delta=0.01)
+        self.assertAlmostEqual(commands[-1], expected_brake(-1.5), delta=0.01)
 
   def test_descent_positive_request_leaves_brakes_when_torque_can_follow(self):
     # 5 deg: +0.4 -> equivalent -0.455 > enter threshold -> torque path.
@@ -172,7 +180,7 @@ class TestLongitudinalBrakeHysteresis(unittest.TestCase):
     self.assertGreater(self.h.controller.longitudinal_wheel_torque, LongitudinalParams.INACTIVE_TORQUE)
     braking_states, commands = self.run_sequence([-1.2] * 300)
     self.assertTrue(braking_states[-1])
-    self.assertAlmostEqual(commands[-1], -1.2, delta=0.001)
+    self.assertAlmostEqual(commands[-1], expected_brake(-1.2), delta=0.001)
 
   def test_brake_command_has_no_grade_term(self):
     for degrees in (8.0, 5.0, 3.0, 0.0, -3.0):  # descent degrees; -3 = 3 deg uphill
@@ -181,7 +189,7 @@ class TestLongitudinalBrakeHysteresis(unittest.TestCase):
         self.set_pitch(descent_pitch(degrees))
         braking_states, commands = self.run_sequence([-1.6] * 300)
         self.assertTrue(braking_states[-1])
-        self.assertAlmostEqual(commands[-1], -1.6, delta=0.001)
+        self.assertAlmostEqual(commands[-1], expected_brake(-1.6), delta=0.001)
 
   def test_single_cycle_pitch_spike_does_not_change_mode(self):
     # Spikes of ~0.04 rad in one 10 ms step are present in recorded livePose pitch.
@@ -204,7 +212,7 @@ class TestLongitudinalBrakeHysteresis(unittest.TestCase):
     braking, command = self.update(-0.4)
     self.assertTrue(braking)
     self.assertTrue(self.h.controller.longitudinal_active)
-    self.assertAlmostEqual(command, -0.4, delta=0.01)
+    self.assertAlmostEqual(command, expected_brake(-0.4), delta=0.01)
     # Leaving the brakes would need the torque map, which needs a valid grade.
     braking, command = self.update(1.0)
     self.assertFalse(self.h.controller.longitudinal_active)
@@ -224,7 +232,7 @@ class TestLongitudinalBrakeHysteresis(unittest.TestCase):
     self.run_sequence([-1.0] * 200)
     braking, command = self.update(-0.2)
     self.assertTrue(braking)
-    self.assertAlmostEqual(command, -0.2)
+    self.assertAlmostEqual(command, expected_brake(-0.2))
 
   def test_driver_and_disengagement_clear_brake_mode_on_descent(self):
     gates = (
@@ -250,7 +258,7 @@ class TestLongitudinalBrakeHysteresis(unittest.TestCase):
         # Re-entry starts from a reset filter: no stale -1.0 jump.
         braking, command = self.update(-1.0)
         self.assertTrue(braking)
-        self.assertGreater(command, -0.1)
+        self.assertGreater(command, 0.5 * expected_brake(-1.0))
 
   # --- limits and CAN encoding ----------------------------------------------
 
@@ -279,7 +287,7 @@ class TestLongitudinalBrakeHysteresis(unittest.TestCase):
         raw = round((b6['MDD_DESIRED_DECELERATION'] + 10.65) / 0.05)
         self.assertGreaterEqual(raw, 173)  # psa.h braking window: -2.0 .. 0.0 m/s^2
         self.assertLessEqual(raw, 213)
-        expected = max(-2.0, min(accel, 0.0))
+        expected = expected_brake(accel)
         self.assertLessEqual(abs(b6['MDD_DESIRED_DECELERATION'] - expected), 0.025 + 1e-6)
 
 
