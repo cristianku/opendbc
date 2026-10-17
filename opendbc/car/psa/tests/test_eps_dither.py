@@ -1,4 +1,3 @@
-# [CLAUDE eps-dither] - START
 import random
 import unittest
 
@@ -38,7 +37,7 @@ class TestEpsDither(unittest.TestCase):
     c.eps_dither_start_frame = 0
     values = []
     for k in range(30):
-      c.frame = k * c.params.STEER_STEP
+      c.frame = k * 5  # sampled every 50 ms
       values.append(c._eps_dither())
     self.assertEqual(values[:24], EXPECTED_BURST)
     self.assertEqual(values[24:], [0] * 6)
@@ -113,10 +112,10 @@ class TestEpsDither(unittest.TestCase):
     start = h.controller.eps_dither_start_frame
     while h.controller.frame < start + 30:
       h.step()
-    h.cs.steering['DRIVER_TORQUE'] = 18
+    h.cs.out.steeringPressed = True
     for _ in range(10):
       h.step()
-    h.cs.steering['DRIVER_TORQUE'] = 0
+    h.cs.out.steeringPressed = False
     self.assertEqual(h.controller.eps_dither_start_frame, -1)
     count = len(self.values)
     for _ in range(200):
@@ -127,4 +126,3 @@ class TestEpsDither(unittest.TestCase):
 
 if __name__ == "__main__":
   unittest.main()
-# [CLAUDE eps-dither] - END

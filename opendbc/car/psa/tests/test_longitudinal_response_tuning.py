@@ -23,21 +23,40 @@ class TestLongitudinalResponseTuning(unittest.TestCase):
     self.assertEqual(LongitudinalParams.POSITIVE_JERK_MAX, 3.5)
     self.assertAlmostEqual(self.update_longitudinal(2.0), 3.5 * DT_CTRL)
 
-  def test_braking_request_is_amplified_before_existing_limit(self):
-    self.assertEqual(LongitudinalParams.BRAKE_ACCEL_GAIN, 1.55)
-    # [brake filter] - START
-    for _ in range(300):
-      applied = self.update_longitudinal(-0.8)
-    self.assertAlmostEqual(applied, -1.24, delta=0.0001)
-    # [brake filter] - END
+  # def test_braking_request_is_amplified_before_existing_limit(self):
+  #   self.assertEqual(LongitudinalParams.BRAKE_ACCEL_GAIN, 1.55)
+  #   for _ in range(300):
+  #     applied = self.update_longitudinal(-0.8)
+  #   self.assertAlmostEqual(applied, -1.24, delta=0.0001)
+  #
+  # def test_braking_gain_keeps_existing_minus_two_limit(self):
+  #   for _ in range(300):
+  #     applied = self.update_longitudinal(-1.8)
+  #   self.assertAlmostEqual(applied, LongitudinalParams.BRAKE_MIN_ACCEL, delta=0.0001)
+  #   self.assertEqual(LongitudinalParams.BRAKE_MIN_ACCEL, -2.0)
+  def test_brake_gain_is_removed(self):
+    self.assertFalse(hasattr(LongitudinalParams, 'BRAKE_ACCEL_GAIN'))
 
-  def test_braking_gain_keeps_existing_minus_two_limit(self):
-    # [brake filter] - START
-    for _ in range(300):
-      applied = self.update_longitudinal(-1.8)
-    self.assertAlmostEqual(applied, LongitudinalParams.BRAKE_MIN_ACCEL, delta=0.0001)
-    # [brake filter] - END
+  def test_brake_lookup_is_explicit_theoretical_identity(self):
+    bp = LongitudinalParams.BRAKE_ACCEL_BP
+    v = LongitudinalParams.BRAKE_ACCEL_V
+    self.assertEqual(len(bp), len(v))
+    self.assertEqual(tuple(bp), tuple(v))
+    for i in range(len(bp) - 1):
+      self.assertLess(bp[i], bp[i + 1])
+    self.assertEqual(bp[0], LongitudinalParams.BRAKE_MIN_ACCEL)
+    self.assertEqual(bp[-1], 0.0)
     self.assertEqual(LongitudinalParams.BRAKE_MIN_ACCEL, -2.0)
+
+  def test_settled_brake_command_follows_lookup_and_limit(self):
+    for requested, expected in ((-0.1, -0.1), (-0.8, -0.8), (-1.8, -1.8), (-2.5, -2.0), (-10.0, -2.0)):
+      with self.subTest(requested=requested):
+        self.setUp()
+        self.update_longitudinal(-0.8)  # level road: enter below -0.5, then hold light braking
+        for _ in range(300):
+          applied = self.update_longitudinal(requested)
+        self.assertTrue(self.h.controller.longitudinal_braking)
+        self.assertAlmostEqual(applied, expected, delta=0.0001)
 # [long response] - END
 
 

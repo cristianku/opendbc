@@ -5,9 +5,7 @@
 #define PSA_STEERING              757U  // RX from XXX, driver torque
 #define PSA_STEERING_ALT          773U  // RX from EPS, steering angle
 #define PSA_DRIVER                1390U // RX from XXX, gas pedal
-// [acc hold] - START
 #define PSA_DYN5_CMM               552U  // RX from engine, physical accelerator on 3008
-// [acc hold] - END
 #define PSA_DYN4_FRE              781U  // RX from CDS, wheel speeds
 #define PSA_HS2_DYN_UCF_MDD_32D   813U  // RX from UC_FREIN, standstill
 #define PSA_HS2_DYN_ABR_38D       909U  // RX from UC_FREIN, speed
@@ -27,16 +25,8 @@
 #define PSA_ADAS_BUS 1U
 #define PSA_CAM_BUS  2U
 
-// [psa longitudinal] - START
 #define PSA_LONG_CONTROL 1U  // safetyParam; matches opendbc/car/psa/values.py
 static bool psa_long_control = false;
-// [psa longitudinal] - END
-
-// [torque override] - START
-static bool psa_driver_pressed = false;
-// [torque override] - END
-
-// [acc hold] - START
 // Shared checks; the gas source is selected separately for each profile.
 #define PSA_COMMON_RX_CHECKS \
   {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, {0}, {0}}}, \
@@ -103,8 +93,6 @@ static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, in
     uint8_t b = msg->data[i];
 
     if (i == chk_pos) {
-      // zero the checksum nibble before summing
-      // b &= 0xF0U;
       b &= chk_high_nibble ? 0x0FU : 0xF0U;
     }
     sum += (b >> 4) + (b & 0xFU);
@@ -146,20 +134,11 @@ static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
 }
 
 static void psa_rx_hook(const CANPacket_t *msg) {
-  // if (msg->bus == PSA_MAIN_BUS) {
-  //   if (msg->addr == PSA_HS2_DYN_ABR_38D) {
-  //     int speed = (msg->data[0] << 8) | msg->data[1];
-  //     vehicle_moving = speed > 0;
-  //     // UPDATE_VEHICLE_SPEED(speed * 0.01 * KPH_TO_MS); // VITESSE_VEHICULE_ROUES
-  //   }
-  // }
 
   if (msg->bus == PSA_MAIN_BUS) {
-    // [acc hold] - START
     if (psa_long_control && (msg->addr == PSA_DYN5_CMM)) {
       gas_pressed = msg->data[2] > 0U; // P334_ACCPed_Position, same source as carstate.py
     }
-    // [acc hold] - END
     // Wheel speeds from Dyn4_FRE - calculate average like carstate.py parse_wheel_speeds
     if (msg->addr == PSA_DYN4_FRE) {
       int fl = (msg->data[0] << 8) | msg->data[1];  // P263_VehV_VPsvValWhlFrtL
@@ -169,7 +148,6 @@ static void psa_rx_hook(const CANPacket_t *msg) {
       // Average of 4 wheel speeds, scale 0.01 km/h, convert to m/s (use float division)
       float speed_ms = (fl + fr + rl + rr) * 0.0025 * KPH_TO_MS;
       vehicle_moving = speed_ms > 0.1 * KPH_TO_MS;
-      // [CLAUDE standstill-threshold] - END
       UPDATE_VEHICLE_SPEED(speed_ms);
 
     }
@@ -201,28 +179,22 @@ static void psa_rx_hook(const CANPacket_t *msg) {
     int angle_meas_new = to_signed((msg->data[0] << 8) | msg->data[1], 16); // ANGLE
     update_sample(&angle_meas, angle_meas_new);
   }
-  // [torque override] - START
+
   if ((msg->bus == PSA_MAIN_BUS) && (msg->addr == PSA_STEERING)) {
-    // CarState's 3008 driver torque uses raw * 3 with a threshold of 50.
-    int driver_torque = to_signed(msg->data[1], 8) * 3;
-    psa_driver_pressed = (driver_torque > 50) || (driver_torque < -50);
+    int driver_torque = to_signed(msg->data[1], 8);
     update_sample(&torque_driver, driver_torque);
   }
-  // [torque override] - END
 }
 
 static bool psa_tx_hook(const CANPacket_t *msg) {
   // SAFETY_UNUSED(msg);
   bool tx = true;
   static const TorqueSteeringLimits PSA_STEERING_LIMITS = {
-    // [torque limits] - START
-    // Effective torque, matching CarControllerParams after TORQUE_FACTOR.
     .max_torque = 150,
     .max_rate_up = 8,
-    // [torque limits] - END
     .max_rate_down = 38,
-    .driver_torque_allowance = 50,
-    .driver_torque_multiplier = 1,
+    .driver_torque_allowance = 17,  // raw STEERING.DRIVER_TORQUE, as CarControllerParams
+    .driver_torque_multiplier = 3,
     .max_rt_delta = 150,
     .type = TorqueDriverLimited,
   };
@@ -245,21 +217,17 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
 
     const bool no_torque = (potential == 0U) && (wheel == 0U) && (wheel_req == 0U);
     const bool no_decel = (accel == 254U) && (decel_type == 0U) && !decel_req;
-    // [acc hold] - START
     // Suspended carries no actuation, including across pedal release/disengagement.
     const bool inactive = no_torque && no_decel && (potential_req == 0U) &&
                           (min_time == 0U) && ((status == 2U) || (status == 3U) || (psa_long_control && (status == 5U)));
-    // [acc hold] - END
     // Bounds of the offline Elkoled-derived prototype, not calibrated vehicle limits.
     const bool gmp = (potential_req == 1U) && (wheel_req == 1U) && no_decel &&
                      (potential >= 900U) && (potential <= 1250U) &&
                      (wheel >= 3600U) && (wheel <= 5000U) && (min_time == 62U);
-    // [brake limit] - START
     // -2 .. 0 m/s^2, including light braking/speed holding. Provisional service-brake
     // limit, matching LongitudinalParams.BRAKE_MIN_ACCEL; all actuation gates apply.
     const bool braking = (potential_req == 2U) && no_torque && (min_time == 0U) &&
                          (decel_type == 1U) && decel_req && (accel >= 173U) && (accel <= 213U);
-    // [brake limit] - END
     tx = !prefill && (auto_braking_status == 3U) && (gear_type == (psa_get_counter(msg) & 1U)) &&
          (psa_get_checksum(msg) == psa_compute_checksum(msg)) &&
          (inactive || (longitudinal_allowed && (status == 4U) && (gmp || braking)));
@@ -273,7 +241,6 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     tx = (takeover <= 2U) && !aeb_or_auto_braking && !drive_away &&
          (!decel_req || longitudinal_allowed) && (psa_get_checksum(msg) == psa_compute_checksum(msg));
   }
-  // [psa longitudinal] - END
 
   // // Safety check for LKA
   if (msg->addr == PSA_LANE_KEEP_ASSIST) {
@@ -285,7 +252,6 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     uint8_t torque_factor = (msg->data[5] & 0xFEU) >> 1;
     bool lka_active = torque_factor != 0U;
 
-    // [torque limits] - START
     // The legacy controller limits effective torque, then divides by factor.
     // E.g. raw 448 at factor 25 is effective 112, a valid release from 150.
     int product = desired_torque * torque_factor;
@@ -311,24 +277,19 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
                  desired_torque_last - PSA_STEERING_LIMITS.max_rate_up;
     bool violation = safety_max_limit_check(effective_torque, highest, lowest);
     violation |= steer_torque_cmd_checks(effective_torque, lka_active, PSA_STEERING_LIMITS);
+
     tx = shape_valid && !violation &&
-         ((desired_torque == 0) || ((controls_allowed || controls_allowed_lateral) &&
-                                  !brake_pressed_prev && !psa_driver_pressed));
+         ((desired_torque == 0) || ((controls_allowed || controls_allowed_lateral) && !brake_pressed_prev));
     if (!tx) {
       desired_torque_last = 0;
       rt_torque_last = 0;
       ts_torque_check_last = microsecond_timer_get();
     }
-    // [torque limits] - END
   }
 
-  // [torque override] - START
   if (msg->addr == PSA_STEERING) {
     tx = false;  // Keep physical driver feedback.
   }
-  // [torque override] - END
-
-  // [artiv probe] - START
   // ARTIV diagnostics: allow exact unpadded TesterPresent and programming requests.
   if (msg->addr == PSA_REQ_DIAG_ARTIV) {
     if (GET_LEN(msg) == 3) {
@@ -351,27 +312,19 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
       tx = false;
     }
   }
-  // [artiv probe] - END
 
   return tx;
 }
 
 static safety_config psa_init(uint16_t param) {
-  // [torque override] - START
-  psa_driver_pressed = false;
-  // [torque override] - END
-  // [psa longitudinal] - START
   psa_long_control = GET_FLAG(param, PSA_LONG_CONTROL);
-  // [psa longitudinal] - END
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
     {PSA_IS_DAT_DIRA, PSA_CAM_BUS, 4, .check_relay = false}, // hold steering wheel
     {PSA_STEERING, PSA_MAIN_BUS, 7, .check_relay = false}, // driver torque
     {PSA_HS2_DYN_MDD_ETAT_2F6, PSA_ADAS_BUS, 8, .check_relay = false}, // request takeover
     {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 8, .check_relay = false},        // radar diagnostics TODO: check if reduce to 3 is ok
-    // [artiv probe] - START
     {PSA_REQ_DIAG_ARTIV, PSA_ADAS_BUS, 3, .check_relay = false},        // exact unpadded TesterPresent probe
-    // [artiv probe] - END
     {PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .check_relay = false}, // resume acc
     {PSA_HS2_SUPV_ARTIV_796, PSA_ADAS_BUS, 8, .check_relay = false},    // radar emulation
     {PSA_HS2_DAT_ARTIV_V2_4F6, PSA_ADAS_BUS, 5, .check_relay = false},  // radar emulation
@@ -379,7 +332,6 @@ static safety_config psa_init(uint16_t param) {
     {PSA_HS2_DYN_MDD_ETAT_2F6, PSA_ADAS_BUS, 8, .check_relay = false},  // radar emulation
   };
 
-  // [acc hold] - START
   // Require the physical 100 Hz pedal for the 3008 longitudinal profile; do not
   // allow the constant-zero DRIVER message to satisfy this receive check instead.
   static RxCheck psa_long_rx_checks[] = {
@@ -396,7 +348,6 @@ static safety_config psa_init(uint16_t param) {
   };
 
   return psa_long_control ? BUILD_SAFETY_CFG(psa_long_rx_checks, PSA_TX_MSGS) : BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
-  // [acc hold] - END
 }
 
 const safety_hooks psa_hooks = {

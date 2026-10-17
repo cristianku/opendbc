@@ -478,8 +478,10 @@ class TestLongitudinalCommands(unittest.TestCase):
 
   def test_direct_braking_has_its_own_limit_independent_of_torque_and_grade(self):
     # [brake filter] - START
-    # The existing 1.55 gain clamps these requests to -2; verify the settled limit.
-    for requested, applied, encoded in ((-1.84, -2, -2), (-2, -2, -2), (-2.05, -2, -2), (-10, -2, -2)):
+    # # The existing 1.55 gain clamps these requests to -2; verify the settled limit.
+    # for requested, applied, encoded in ((-1.84, -2, -2), (-2, -2, -2), (-2.05, -2, -2), (-10, -2, -2)):
+    # Identity lookup below -2, then the -2 limit; -1.84 is encoded on the 0.05 DBC grid.
+    for requested, applied, encoded in ((-1.84, -1.84, -1.85), (-2, -2, -2), (-2.05, -2, -2), (-10, -2, -2)):
     # [brake filter] - END
       for pitch in (-0.1, 0, 0.1):
         with self.subTest(requested=requested, pitch=pitch):

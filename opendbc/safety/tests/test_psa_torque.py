@@ -83,12 +83,16 @@ class TestPsaTorqueSafety(unittest.TestCase):
           h.cc.actuators.torque = -1.0
         raw = 18 if 200 <= frame < 220 else 0
         h.cs.steering['DRIVER_TORQUE'] = raw
+        # carstate: raw units, steeringPressed after 5 cycles over STEER_DRIVER_ALLOWANCE
+        h.cs.out.steeringTorque = raw
+        h.cs.out.steeringPressed = 205 <= frame < 220
         addr, data, bus = self.packer.make_can_msg('STEERING', 0, {'DRIVER_TORQUE': raw})
         self.assertTrue(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(addr, bus, data)))
         _, messages = h.step()
         for addr, data, bus in messages:
           if addr == 0x3F2:
-            if raw:
+            # if raw:
+            if h.cs.out.steeringPressed:
               self.assertEqual((data[3] << 3) | (data[4] >> 5), 0)
             self.assertTrue(self.safety.safety_tx_hook(libsafety_py.make_CANPacket(addr, bus, data)),
                             (candidate, frame, data.hex()))

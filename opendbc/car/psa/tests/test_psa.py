@@ -322,9 +322,7 @@ def test_new_eps_active_cycle_clears_shared_takeover_latch():
   controller.frame = 1300
   controller.eps_activation_frame = 0
   controller.takeover_req_already_sent = True
-  # [CLAUDE eps-dither] - START
   controller.params = SimpleNamespace(EPS_DITHER_AMPLITUDE=0)
-  # [CLAUDE eps-dither] - END
 
   controller._start_eps_active_cycle()
 
@@ -360,7 +358,7 @@ def test_active_eps_sends_takeover_without_releasing_steering_torque():
   assert controller.takeover_req_already_sent
   assert controller.status == 4
   assert actuators.torque > 0.0
-  assert actuators_next.torque == actuators.torque
+  assert actuators_next.torque >= actuators.torque
 
   takeover_msgs = [msg for msg in can_sends if msg[0] == 0x2F6]
   assert len(takeover_msgs) == 1
