@@ -15,8 +15,7 @@ class CarInterface(CarInterfaceBase):
     ret, ret_sp = super().update(can_packets)
     if self.CC.longitudinal_profile:
       if not self.CC.longitudinal_enabled or not self.CC.radar_active:
-        # Gate longitudinal engagement only. Changing cruise main here would
-        # create a synthetic MADS enable edge when the radar session starts.
+        # Gate longitudinal engagement only, not cruise main (would create a MADS edge).
         ret.cruiseState.enabled = False
       ret.accFaulted = ret.accFaulted or self.CC.radar_stop_reason is not None
     return ret, ret_sp
@@ -26,16 +25,14 @@ class CarInterface(CarInterfaceBase):
     ret.brand = 'psa'
 
     ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.psa)]
-    #
+    # Dashcam mode while recording human driving for openpilot.distill: openpilot cannot engage.
     ret.dashcamOnly = True
 
     if candidate in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
       ret.steerControlType = structs.CarParams.SteerControlType.torque
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
-      # Measured from route 00000029--0f498d7077 with FIXED_TORQUE_FACTOR: torque request ->
-      # steering rate response lag ~140ms. The old 0.376803 was tuned on the variable
-      # torque-factor plant, whose ramp made the EPS look ~4x slower than it is.
+      # ~140 ms torque-to-rate lag, route 00000029--0f498d7077.
       ret.steerActuatorDelay = 0.15
       ret.steerLimitTimer = 0.1
       ret.steerAtStandstill = False
@@ -51,13 +48,12 @@ class CarInterface(CarInterfaceBase):
       CAR.PSA_PEUGEOT_3008,
       CAR.PSA_CITROEN_C4_SPACETOURER,
     )
-    # Configure openpilot longitudinal only when this car supports it and the user opts in.
-    # This selects the controller; ACC engagement still comes from the BSI.
+    # openpilot longitudinal only if supported and opted in; engagement comes from the BSI.
     ret.openpilotLongitudinalControl = ret.alphaLongitudinalAvailable and alpha_long
-    # [long flow] - END
     if ret.openpilotLongitudinalControl:
-      # ret.dashcamOnly = False
       ret.safetyConfigs[0].safetyParam |= PSA_LONG_CONTROL
+      # ~0.65 s command-to-aEgo brake lag measured on routes 118/119.
+      ret.longitudinalActuatorDelay = 0.45
       # Announce ACC Waiting from 1 km/h raw Dyn4_FRE speed, with the brake released.
       ret.minEnableSpeed = 1.0 * CV.KPH_TO_MS
 

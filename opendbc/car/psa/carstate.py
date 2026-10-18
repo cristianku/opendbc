@@ -2,13 +2,11 @@ from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams
-# , LKAS_LIMITS
 from opendbc.car.interfaces import CarStateBase
 import copy
 import math
 from opendbc.car.common.filter_simple import FirstOrderFilter  # NB: version inside opendbc (like Toyota), NOT openpilot.common
 from opendbc.car import DT_CTRL
-# from collections import deque
 
 
 GearShifter = structs.CarState.GearShifter
@@ -17,76 +15,23 @@ ButtonType = structs.CarState.ButtonEvent.Type
 
 
 class CarState(CarStateBase):
-  # Low-pass filter for the raw (noisy) DRIVER_TORQUE signal.
-  # The filter must live in __init__ (self.) so its state survives between update() calls.
-  # rc = tau [s]: reaches 63% of a step after tau, ~95% after 3*tau.
-  #   rc=0.05 -> kills most frame-to-frame noise, adds ~150 ms to full response. Tune in car.
-  # Activate together with the import at the top, AFTER the comparable unit scale (*3?) is confirmed.
+  # Low-pass of the noisy DRIVER_TORQUE, feeds steeringPressed only.
   def __init__(self, CP, CP_SP):
     super().__init__(CP, CP_SP)
     self.driver_torque_filter = FirstOrderFilter(0., 0.05, DT_CTRL)
     self.eps_state_lka = 0
-    # [inactive lka] - START
     self.stock_lka_unknown2 = 24  # Preserve the existing payload until the first camera sample.
-    # [inactive lka] - END
     self.speed_kph = 0.0
     self.actual_gear = 0
     self.synthetic_cruise_kph = None
     self.synthetic_cruise_button_pressed = False
     self.synthetic_cruise_button_type = ButtonType.unknown
     self.cruise_enabled_prev = False
-    # self.artiv_diag_response_updated = False
-    # self.artiv_diag_response = {
-    #   "ISO_TP_LENGTH": 0,
-    #   "UDS_SERVICE": 0,
-    #   "UDS_SUBFUNCTION": 0,
-    #   "UDS_NRC": 0,
-    # }
 
-  # def _update_cruise_button_events(self, stock_speed_kph: int, cruise_enabled: bool) -> list[structs.CarState.ButtonEvent]:
-  #   events = []
-  #   valid_setpoint = cruise_enabled and 0 < stock_speed_kph < 255
 
-  #   if not valid_setpoint:
-  #     self.synthetic_cruise_kph = None
-  #     self.synthetic_cruise_button_pressed = False
-  #     self.synthetic_cruise_button_type = ButtonType.unknown
-  #   elif not self.cruise_enabled_prev or self.synthetic_cruise_kph is None:
-  #     # On engagement Sunny captures the real CAN setpoint from
-  #     # cruiseState.speed. Synthesize only later stock changes.
-  #     self.synthetic_cruise_kph = stock_speed_kph
-  #     self.synthetic_cruise_button_pressed = False
-  #     self.synthetic_cruise_button_type = ButtonType.unknown
-  #   elif self.synthetic_cruise_button_pressed:
-  #     events.append(structs.CarState.ButtonEvent(
-  #       pressed=False,
-  #       type=self.synthetic_cruise_button_type,
-  #     ))
-  #     self.synthetic_cruise_kph += 1 if self.synthetic_cruise_button_type == ButtonType.accelCruise else -1
-  #     self.synthetic_cruise_button_pressed = False
-  #   elif self.synthetic_cruise_kph != stock_speed_kph:
-  #     self.synthetic_cruise_button_type = (
-  #       ButtonType.accelCruise
-  #       if self.synthetic_cruise_kph < stock_speed_kph
-  #       else ButtonType.decelCruise
-  #     )
-  #     events.append(structs.CarState.ButtonEvent(
-  #       pressed=True,
-  #       type=self.synthetic_cruise_button_type,
-  #     ))
-  #     self.synthetic_cruise_button_pressed = True
 
-  #   self.cruise_enabled_prev = cruise_enabled
-  #   return events
 
-  # #HANDS-FREE - START: state for the EPS silent-dropout safety net
-  # def __init__(self, CP, CP_SP):
-  #   super().__init__(CP, CP_SP)
-  #   self.eps_state_last = 0
-  #   self.eps_fault_frames = 0
-  # #HANDS-FREE - END
 
-  # def update(self, can_parsers) -> structs.CarState:
   def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
     cp = can_parsers[Bus.main]
     cp_adas = can_parsers[Bus.adas]
@@ -103,13 +48,11 @@ class CarState(CarStateBase):
     )
     ret.yawRate = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VITESSE_LACET_BRUTE'] * CV.DEG_TO_RAD
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
-      # ret.standstill = ret.vEgoRaw <= 0
       ret.standstill = ret.vEgoRaw <= 0.1 * CV.KPH_TO_MS
       self.speed_kph = ret.vEgoRaw * CV.MS_TO_KPH
     else:
       # versione elkoled
       ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
-    # [CLAUDE standstill-threshold] - END
 
     # gas
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
@@ -135,82 +78,47 @@ class CarState(CarStateBase):
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
     ret.steeringAngleDeg = bus['STEERING_ALT']['ANGLE'] # EPS
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
-      # PSA EPS encodes the steering rotation direction bit inverted from the driver's perspective:
-      #   RATE_SIGN = 0 → clockwise (right turn)
-      #   RATE_SIGN = 1 → anticlockwise (left turn)
-      # Invert the sign to match OpenPilot's convention: right = positive, left = negative.
+      # RATE_SIGN inverted on 3008: 0 = right, 1 = left.
       ret.steeringRateDeg = bus['STEERING_ALT']['RATE'] * (1 - 2 * bus['STEERING_ALT']['RATE_SIGN'])
     else:
-      # Convert EPS direction bit [0,1] to signed multiplier [-1,+1]
-      # Standard convention: 0 → left (negative), 1 → right (positive)
+      # RATE_SIGN: 0 = left, 1 = right.
       ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (2 * bus['STEERING_ALT']['RATE_SIGN'] - 1)
 
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
       ret.genericToggle = (int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"]) == 1) # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
 
-      # ret.steeringTorque  = cp.vl['STEERING']['DRIVER_TORQUE'] * 3   # raw (noisy) - sostituita dalla versione filtrata sotto
-      # ret.steeringTorqueEps = 0.0
-      # Low-pass sul DRIVER_TORQUE rumoroso (FirstOrderFilter, rc=0.05s ~150ms):
-      ret.steeringTorque = self.driver_torque_filter.update(cp.vl['STEERING']['DRIVER_TORQUE']) * 3
+      ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE'] * 3
       ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10 * 3
-
     else:
-      ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
       ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
+      ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
 
-    if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
-      # Peugeot 3008: EPS_TORQUE represents only driver-applied torque (no motor assist).
-      # The signal is already smoothed by the EPS ECU, so update_steering_pressed is unnecessary.
-      # ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
-      # ret.steeringPressed = abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE
-      ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
-    else:
-      ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
+    driver_torque_filtered = self.driver_torque_filter.update(ret.steeringTorque)
+    ret.steeringPressed = self.update_steering_pressed(abs(driver_torque_filtered) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
 
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
-    # [eps fault] - START
-    # Preserve the raw state so the controller can distinguish a defect from
-    # normal activation/rearm, even before latActive reacts to the fault.
+    # Raw state, so the controller tells a defect from activation/rearm.
     self.eps_state_lka = int(cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'])
     ret.steerFaultTemporary = self.eps_state_lka == 4
-    # [eps fault] - END
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
-    # [inactive lka] - START
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
       stock_unknown2 = cp_cam.vl_all['LANE_KEEP_ASSIST']['unknown2']
       if stock_unknown2:
         self.stock_lka_unknown2 = int(stock_unknown2[-1])
-    # [inactive lka] - END
     self.steering = copy.copy(cp.vl['STEERING'])
     self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
 
-    # Risposta diagnostica ARTIV su 0x696. I quattro segnali bastano sia per
-    # una risposta positiva 50 xx sia per quella negativa 7F 10 <NRC>.
-    # Profilo ECU: https://github.com/Barracuda09/PyPSADiag/blob/main/json/ARTIV/ARTIV_UDS.json
-    # artiv_services = cp_adas.vl_all["Rep_Diag_ARTIV"]["UDS_SERVICE"]
-    # self.artiv_diag_response_updated = len(artiv_services) > 0
-    # if self.artiv_diag_response_updated:
-    #   self.artiv_diag_response = {
-    #     signal: int(cp_adas.vl_all["Rep_Diag_ARTIV"][signal][-1])
-    #     for signal in self.artiv_diag_response
-    #   }
+    # ARTIV diagnostic reply on 0x696 (50 xx or 7F 10 <NRC>).
 
     # cruise
     cruise_speed_kph = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT']
     ret.cruiseState.enabled = cp_adas.vl['HS2_DAT_MDD_CMD_452']['RVV_ACC_ACTIVATION_REQ'] == 1
     ret.cruiseState.speed = cruise_speed_kph * CV.KPH_TO_MS  # real CAN/controller setpoint
-    # if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
-    #   # pcmCruiseSpeed=False makes Sunny manage the set speed through button
-    #   # events. Keep all control/planner values in the real 0x452 domain and
-    #   # synthesize +/- edges whenever that stock setpoint changes.
-    #   ret.buttonEvents = self._update_cruise_button_events(cruise_speed_kph, ret.cruiseState.enabled)
-    # Match the Peugeot cluster only in the display field; control keeps the
-    # original 0x452 SPEED_SETPOINT. Preserve zero/unset (255) sentinels.
+    # Display matches the cluster; control keeps the raw 0x452 setpoint.
     ret.cruiseState.speedCluster = ret.cruiseState.speed
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and 0 < cruise_speed_kph < 255:
       ret.cruiseState.speedCluster += 3.0 * CV.KPH_TO_MS
-    # Cruise main: RVV or ACC selected, excluding off and the speed limiter.
-    # Keep this identical to acc_main_on in the PSA safety hook.
+    # Cruise main: RVV or ACC selected; same as acc_main_on in the safety.
     ret.cruiseState.available = cp_adas.vl['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'] in (1, 3)
     ret.cruiseState.nonAdaptive = False # not available for CC-only
 
@@ -252,20 +160,15 @@ class CarState(CarStateBase):
 
   @staticmethod
   def get_can_parsers(CP, CP_SP):
-    # [inactive lka] - START
     # Observe the camera byte without adding a new CAN-validity requirement.
     cam_messages = (
       [('LANE_KEEP_ASSIST', math.nan)]
       if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER)
       else []
     )
-    # [inactive lka] - END
     return {
       Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
-      # Evento diagnostico: math.nan lo registra nel parser senza renderlo
-      # obbligatorio per canValid quando non stiamo eseguendo il test ARTIV.
+      # math.nan: parsed but not required for canValid.
       Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [("Rep_Diag_ARTIV", math.nan)], 1),
-      # [inactive lka] - START
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, 2),
-      # [inactive lka] - END
     }

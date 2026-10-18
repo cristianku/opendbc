@@ -74,25 +74,39 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.TorqueSteeringSafetyTestBas
   def _user_gas_msg(self, gas):
     return self.packer.make_can_msg_safety("DRIVER", self.CAM_BUS, {"GAS_PEDAL": gas})
 
-  def test_driver_override_threshold_and_zero_release(self):
-    # The 3008 treats raw driver torque * 3 above 50 as an immediate override.
+  def test_raw_driver_torque_and_zero_release(self):
+    # Safety samples raw torque; mild driver input does not immediately cut assist.
     for raw in (-18, -17, -16, 0, 16, 17, 18):
       for torque in (-8, 8):
         with self.subTest(raw=raw, torque=torque):
           self.setUp()
           for _ in range(common.MAX_SAMPLE_VALS):
             self.assertTrue(self._rx(self._driver_torque_msg(raw)))
-          self.assertEqual(self.safety.get_torque_driver_min(), raw * 3)
-          self.assertEqual(self.safety.get_torque_driver_max(), raw * 3)
+          self.assertEqual(self.safety.get_torque_driver_min(), raw)
+          self.assertEqual(self.safety.get_torque_driver_max(), raw)
           self.safety.set_controls_allowed(True)
-          self.assertEqual(self._tx(self._torque_cmd_msg(torque)), abs(raw) <= 16)
+          self.assertTrue(self._tx(self._torque_cmd_msg(torque)))
           self.assertTrue(self._tx(self._torque_cmd_msg(0)))
+
+  def test_opposing_driver_torque_limits_assist(self):
+    # Up to 17 raw units allow 150; each additional unit removes 3 assist units.
+    for sign in (-1, 1):
+      for raw, limit in ((0, 150), (16, 150), (17, 150), (18, 147), (30, 111), (66, 3), (67, 0), (68, 0), (127, 0)):
+        for offset, allowed in ((0, True), (1, False)):
+          with self.subTest(sign=sign, raw=raw, limit=limit, offset=offset):
+            self.setUp()
+            for _ in range(common.MAX_SAMPLE_VALS):
+              self.assertTrue(self._rx(self._driver_torque_msg(-sign * raw)))
+            self.safety.set_controls_allowed(True)
+            self._set_prev_torque(sign * limit)
+            self.assertEqual(self._tx(self._torque_cmd_msg(sign * (limit + offset))), allowed)
+            self.assertTrue(self._tx(self._torque_cmd_msg(0)))
 
   def test_driver_torque_measurements_reset_on_safety_init(self):
     for _ in range(common.MAX_SAMPLE_VALS):
       self.assertTrue(self._rx(self._driver_torque_msg(16)))
-    self.assertEqual(self.safety.get_torque_driver_min(), 48)
-    self.assertEqual(self.safety.get_torque_driver_max(), 48)
+    self.assertEqual(self.safety.get_torque_driver_min(), 16)
+    self.assertEqual(self.safety.get_torque_driver_max(), 16)
     self._reset_safety_hooks()
     self.assertEqual(self.safety.get_torque_driver_min(), 0)
     self.assertEqual(self.safety.get_torque_driver_max(), 0)

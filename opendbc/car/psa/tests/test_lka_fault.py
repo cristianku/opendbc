@@ -25,7 +25,7 @@ def lka(request):
 
 def update_lka(lka, eps_state, *, stale_fault_flag=False, stale_eps_active=False):
   interface, controller, cc = lka
-  controller.frame += (-controller.frame) % controller.params.STEER_STEP
+  controller.frame += (-controller.frame) % controller.params.EPS_LADDER_STEP
   now_nanos = (controller.frame + 1) * 10_000_000
   frames = [
     controller.packer.make_can_msg('IS_DAT_DIRA', 0, {'EPS_STATE_LKA': eps_state}),
@@ -111,7 +111,7 @@ def test_recovery_starts_fresh_cycle_after_fault(lka):
   activation = next(m for m in messages if m[0] == 0x3F2)
   assert activation[1] == bytes.fromhex('000018000c140000')
 
-  expected_start = controller.frame + (-controller.frame) % controller.params.STEER_STEP
+  expected_start = controller.frame + (-controller.frame) % controller.params.EPS_LADDER_STEP
   actuators, _ = update_lka(lka, 3)
   assert controller.eps_activation_frame == expected_start
   assert controller.status == 4
