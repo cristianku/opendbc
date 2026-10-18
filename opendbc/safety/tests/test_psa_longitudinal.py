@@ -24,7 +24,7 @@ class TestPsaLongitudinalSafety(unittest.TestCase):
                         GEAR_TYPE=0, PREFILL_REQUEST=0, COUNTER=0)
     self.gmp = dict(self.neutral, POTENTIAL_WHEEL_TORQUE_REQUEST=1, WHEEL_TORQUE_REQUEST=1,
                     GMP_POTENTIAL_WHEEL_TORQUE=352, GMP_WHEEL_TORQUE=350,
-                    MIN_TIME_FOR_DESIRED_GEAR=6.2, ACC_STATUS=4)
+                    MIN_TIME_FOR_DESIRED_GEAR=1.5, ACC_STATUS=4)
     self.braking = dict(self.neutral, POTENTIAL_WHEEL_TORQUE_REQUEST=2, MDD_DECEL_TYPE=1,
                         MDD_DECEL_CONTROL_REQ=1, MDD_DESIRED_DECELERATION=-0.75, ACC_STATUS=4)
     self.display = dict(AUTO_BRAKING_STATUS=3, ARC_STATUS=6, INTER_VEHICLE_DISTANCE=255.5,
@@ -264,6 +264,17 @@ class TestPsaLongitudinalSafety(unittest.TestCase):
         self.assertFalse(self.tx(self.message(0x2B6, dict(values, **changes))))
     for field in ('DRIVE_AWAY_REQUEST', 'AEB_ENABLED', 'AUTO_BRAKING_IN_PROGRESS'):
       self.assertFalse(self.tx(self.message(0x2F6, dict(self.display, **{field: 1}))))
+
+  def test_gmp_min_time_follows_gear_type_parity(self):
+    # Odd frames (GEAR_TYPE=1): only 6.2. Even frames: only 1.5 (3008) or 3.6 (C4 SpaceTourer).
+    odd_frame = dict(self.gmp, COUNTER=1, GEAR_TYPE=1)
+    even_frame = dict(self.gmp, COUNTER=2, GEAR_TYPE=0)
+    for min_time in (0, 1.2, 1.5, 2.4, 3.6, 6.1, 6.2):
+      with self.subTest(frame='odd', min_time=min_time):
+        self.assertEqual(self.tx(self.message(0x2B6, dict(odd_frame, MIN_TIME_FOR_DESIRED_GEAR=min_time))), min_time == 6.2)
+      with self.subTest(frame='even', min_time=min_time):
+        self.assertEqual(self.tx(self.message(0x2B6, dict(even_frame, MIN_TIME_FOR_DESIRED_GEAR=min_time))),
+                         min_time in (1.5, 3.6))
 
   def test_takeover_is_independent_of_longitudinal_authorization(self):
     for controls in (False, True):

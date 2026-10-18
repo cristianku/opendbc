@@ -35,7 +35,10 @@ class LongitudinalParams:
     -0.55, -0.275, 0.0
   )
   BRAKE_MIN_ACCEL = -2.0  # Provisional service-brake limit, m/s^2; keep in sync with PSA safety.
-  MIN_TIME_GMP_EXPERIMENTAL = 6.2  # Does not reproduce the observed even/odd sequence.
+  # MIN_TIME_FOR_DESIRED_GEAR alternates with COUNTER parity (GEAR_TYPE) in stock GMP frames.
+  MIN_TIME_GMP_ODD = 6.2  # odd frames: 6.2 on both 3008 and C4 stock
+  MIN_TIME_GMP_EVEN_3008 = 1.5  # even frames: stock 3008 varies 1.2-2.5, 1.5 most common
+  MIN_TIME_GMP_EVEN_C4_SPACETOURER = 3.6  # even frames: stock C4 always 3.6
   INACTIVE_ACCEL = 2.05
   INACTIVE_TORQUE = -4000
 

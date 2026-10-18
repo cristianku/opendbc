@@ -1,2 +1,3 @@
 - [Longitudinal findings 2026-10-17](project_longitudinal_findings_2026-10-17.md) — gain regimes 1.0/1.55 by route, vehicle tracks 0x2B6, DEC active, ki=0, no local video
 - [Log parsing reference](reference_log_parsing.md) — cereal staging, log trees, bus numbers, segment t0 trap, video sync key
+- [C4 stock ACC semantics](c4-stock-acc-semantics.md) — 2B6 GEAR_TYPE mux of MIN_TIME, drag-floor handover GMP<->brake, MDD=total decel, C4 torque/accel fit

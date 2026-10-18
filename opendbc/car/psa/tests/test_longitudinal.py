@@ -25,8 +25,8 @@ RADAR_IDS = {0x2B6, 0x2F6, 0x4F6, 0x796}
 
 
 class LongitudinalHarness:
-  def __init__(self, *, dashcam=False, passive=False, experimental=True, safety_flag=True):
-    cp = CarInterface.get_params(CAR.PSA_PEUGEOT_3008, {0: {}, 1: {}, 2: {}}, [], experimental, False, False)
+  def __init__(self, *, dashcam=False, passive=False, experimental=True, safety_flag=True, car=CAR.PSA_PEUGEOT_3008):
+    cp = CarInterface.get_params(car, {0: {}, 1: {}, 2: {}}, [], experimental, False, False)
     cp.openpilotLongitudinalControl = experimental
     cp.dashcamOnly = dashcam
     cp.passive = passive
@@ -119,10 +119,33 @@ class TestLongitudinalCommands(unittest.TestCase):
     self.assertEqual(values[0x2B6]['POTENTIAL_WHEEL_TORQUE_REQUEST'], 1)
     self.assertEqual(values[0x2B6]['GMP_WHEEL_TORQUE'], 424)
     self.assertEqual(values[0x2B6]['GMP_POTENTIAL_WHEEL_TORQUE'], 392)
-    self.assertEqual(values[0x2B6]['MIN_TIME_FOR_DESIRED_GEAR'], 6.2)
+    if values[0x2B6]['COUNTER'] % 2 == 1:
+      self.assertEqual(values[0x2B6]['MIN_TIME_FOR_DESIRED_GEAR'], 6.2)
+    else:
+      self.assertEqual(values[0x2B6]['MIN_TIME_FOR_DESIRED_GEAR'], 1.5)
     self.assertEqual(values[0x2B6]['ACC_STATUS'], 4)
     self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], 0)
     self.assertAlmostEqual(output.accel, 0.5)
+
+  def test_gmp_min_time_alternates_by_counter_parity_per_car(self):
+    # Stock pair: odd frames 6.2 on both cars; even frames 1.5 on 3008, 3.6 on C4 SpaceTourer.
+    for car, even_min_time in ((CAR.PSA_PEUGEOT_3008, 1.5), (CAR.PSA_CITROEN_C4_SPACETOURER, 3.6)):
+      with self.subTest(car=car):
+        h = LongitudinalHarness(car=car)
+        h.activate()
+        seen = set()
+        for _ in range(20):
+          _, values = h.emission()
+          if 0x2B6 not in values:
+            continue
+          b6 = values[0x2B6]
+          self.assertEqual(b6['GEAR_TYPE'], b6['COUNTER'] % 2)
+          if b6['COUNTER'] % 2 == 1:
+            self.assertEqual(b6['MIN_TIME_FOR_DESIRED_GEAR'], 6.2)
+          else:
+            self.assertEqual(b6['MIN_TIME_FOR_DESIRED_GEAR'], even_min_time)
+          seen.add(b6['COUNTER'] % 2)
+        self.assertEqual(seen, {0, 1})
 
   # [acc hold] - START
   def test_accelerator_hold_releases_actuation_and_resumes_current_target(self):
