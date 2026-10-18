@@ -1,18 +1,138 @@
+import random
+
+from opendbc.car.can_definitions import CanData
+from opendbc.car.psa.values import PSA_ADAS_BUS
+
+
 def psa_checksum(address: int, sig, d: bytearray) -> int:
-  chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x42D: 0xC}.get(address, 0xB)
+  chk_ini = {0x452: 0x4, 0x38D: 0x7, 0x2f6: 0x8, 0x2b6: 0xC, 0x42D: 0xC}.get(address, 0xB)
   byte = sig.start_bit // 8
   d[byte] &= 0x0F if sig.start_bit % 8 >= 4 else 0xF0
+  if address == 0x305:
+    # STEERING_ALT: XOR of nibbles in bytes 0..4 (checksum nibble cleared).
+    checksum = 0
+    for b in d[:5]:
+      checksum ^= (b >> 4) ^ (b & 0xF)
+    return checksum
   checksum = sum((b >> 4) + (b & 0xF) for b in d)
   return (chk_ini - checksum) & 0xF
 
 
-def create_lka_steering(packer, lat_active: bool, apply_angle: float, status: int):
+
+
+
+def create_lka_steering(packer, lat_active: bool, apply_torque: float, torque_factor: int, status: int, *, unknown2: int):
   values = {
-    'DRIVE': 1,
+    'unknown2': unknown2,
+    'TORQUE': apply_torque,
     'STATUS': status,
-    'LXA_ACTIVATION': 1,
-    'TORQUE_FACTOR': lat_active * 100,
-    'SET_ANGLE': apply_angle,
+    'TORQUE_FACTOR': torque_factor, # * 100,
   }
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
+
+
+
+
+def create_resume_acc(packer, counter, status, hs2_dat_mdd_cmd_452):
+  hs2_dat_mdd_cmd_452['COUNTER'] = counter
+  hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST'] = status
+  return packer.make_can_msg('HS2_DAT_MDD_CMD_452', 1, hs2_dat_mdd_cmd_452)
+
+
+def create_drive_away_request(packer, hs2_dyn_mdd_etat_2f6):
+  hs2_dyn_mdd_etat_2f6['DRIVE_AWAY_REQUEST'] = 0
+  return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, hs2_dyn_mdd_etat_2f6)
+
+
+def create_HS2_DYN1_MDD_ETAT_2B6(packer, bus: int, *, mdd_desired_deceleration: float,
+                               potential_wheel_torque_request: int, min_time_for_desired_gear: float,
+                               gmp_potential_wheel_torque: float, acc_status: int, gmp_wheel_torque: float,
+                               wheel_torque_request: int, auto_braking_status: int, mdd_decel_type: int,
+                               mdd_decel_control_req: int, gear_type: int, prefill_request: int, counter: int):
+  values = {
+    'MDD_DESIRED_DECELERATION': mdd_desired_deceleration,
+    'POTENTIAL_WHEEL_TORQUE_REQUEST': potential_wheel_torque_request,
+    'MIN_TIME_FOR_DESIRED_GEAR': min_time_for_desired_gear,
+    'GMP_POTENTIAL_WHEEL_TORQUE': gmp_potential_wheel_torque,
+    'ACC_STATUS': acc_status,
+    'GMP_WHEEL_TORQUE': gmp_wheel_torque,
+    'WHEEL_TORQUE_REQUEST': wheel_torque_request,
+    'AUTO_BRAKING_STATUS': auto_braking_status,
+    'MDD_DECEL_TYPE': mdd_decel_type,
+    'MDD_DECEL_CONTROL_REQ': mdd_decel_control_req,
+    'GEAR_TYPE': gear_type,
+    'PREFILL_REQUEST': prefill_request,
+    'COUNTER': counter,
+  }
+  return packer.make_can_msg('HS2_DYN1_MDD_ETAT_2B6', bus, values)
+
+
+def create_HS2_DYN_MDD_ETAT_2F6(packer, bus: int, *, target_detected: int, request_takeover: int, blind_sensor: int,
+                              req_visual_coll_alert_arc: int, req_audio_coll_alert_arc: int, req_haptic_coll_alert_arc: int,
+                              inter_vehicle_distance: float, arc_status: int, auto_braking_in_progress: int, aeb_enabled: int,
+                              drive_away_request: int, display_intervehicle_time: float, mdd_decel_control_req: int,
+                              auto_braking_status: int, counter: int, target_position: int):
+  values = {
+    'TARGET_DETECTED': target_detected,
+    'REQUEST_TAKEOVER': request_takeover,
+    'BLIND_SENSOR': blind_sensor,
+    'REQ_VISUAL_COLL_ALERT_ARC': req_visual_coll_alert_arc,
+    'REQ_AUDIO_COLL_ALERT_ARC': req_audio_coll_alert_arc,
+    'REQ_HAPTIC_COLL_ALERT_ARC': req_haptic_coll_alert_arc,
+    'INTER_VEHICLE_DISTANCE': inter_vehicle_distance,
+    'ARC_STATUS': arc_status,
+    'AUTO_BRAKING_IN_PROGRESS': auto_braking_in_progress,
+    'AEB_ENABLED': aeb_enabled,
+    'DRIVE_AWAY_REQUEST': drive_away_request,
+    'DISPLAY_INTERVEHICLE_TIME': display_intervehicle_time,
+    'MDD_DECEL_CONTROL_REQ': mdd_decel_control_req,
+    'AUTO_BRAKING_STATUS': auto_braking_status,
+    'COUNTER': counter,
+    'TARGET_POSITION': target_position,
+  }
+  return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', bus, values)
+
+
+def create_HS2_DAT_ARTIV_V2_4F6(packer, bus: int, *, time_gap: float, distance_gap: float, relative_speed: float,
+                              artiv_sensor_state: int, target_detected: int, artiv_target_change_info: int, traffic_direction: int):
+  values = {
+    'TIME_GAP': time_gap,
+    'DISTANCE_GAP': distance_gap,
+    'RELATIVE_SPEED': relative_speed,
+    'ARTIV_SENSOR_STATE': artiv_sensor_state,
+    'TARGET_DETECTED': target_detected,
+    'ARTIV_TARGET_CHANGE_INFO': artiv_target_change_info,
+    'TRAFFIC_DIRECTION': traffic_direction,
+  }
+  return packer.make_can_msg('HS2_DAT_ARTIV_V2_4F6', bus, values)
+
+
+def create_HS2_SUPV_ARTIV_796(packer, bus: int, *, fault_code: int, status_no_config: int,
+                            status_partial_wakeup_gmp: int, uce_electr_state: int):
+  values = {
+    'FAULT_CODE': fault_code,
+    'STATUS_NO_CONFIG': status_no_config,
+    'STATUS_PARTIAL_WAKEUP_GMP': status_partial_wakeup_gmp,
+    'UCE_ELECTR_STATE': uce_electr_state,
+  }
+  return packer.make_can_msg('HS2_SUPV_ARTIV_796', bus, values)
+
+
+def create_steering_hold(packer, lat_active: bool, is_dat_dira):
+  # set STEERWHL_HOLD_BY_DRV to keep EPS engaged when lat active
+  if lat_active:
+    is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1
+  return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
+
+def create_request_takeover(packer, HS2_DYN_MDD_ETAT_2F6, takeover_type):
+  HS2_DYN_MDD_ETAT_2F6['REQUEST_TAKEOVER'] = takeover_type
+  return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, HS2_DYN_MDD_ETAT_2F6)
+
+
+
+# ARTIV programming session request on 0x6B6 (ADAS bus); no keepalive, erase or write.
+def create_disable_radar():
+  # https://github.com/ludwig-v/arduino-psa-diag/blob/master/ECU_LIST.md
+  addr = 0x6B6
+  return CanData(addr, b'\x02\x10\x02', PSA_ADAS_BUS)

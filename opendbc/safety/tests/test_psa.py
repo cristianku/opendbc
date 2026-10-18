@@ -2,9 +2,18 @@
 import unittest
 
 from opendbc.car.structs import CarParams
+from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
 
 LANE_KEEP_ASSIST = 0x3F2
+IS_DAT_DIRA = 0x495
+STEERING = 0x2F5
+HS2_DYN_MDD_ETAT_2F6 = 0x2F6
+REQ_DIAG_ARTIV = 0x6B6
+HS2_DAT_MDD_CMD_452 = 0x452
+HS2_SUPV_ARTIV_796 = 0x796
+HS2_DAT_ARTIV_V2_4F6 = 0x4F6
+HS2_DYN1_MDD_ETAT_2B6 = 0x2B6
 
 
 class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
@@ -13,7 +22,17 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
 
   RELAY_MALFUNCTION_ADDRS = {0: (LANE_KEEP_ASSIST,)}
   FWD_BLACKLISTED_ADDRS = {2: [LANE_KEEP_ASSIST]}
-  TX_MSGS = [[1010, 0]]
+  TX_MSGS = [
+    [LANE_KEEP_ASSIST, 0],
+    [IS_DAT_DIRA, 2],
+    [STEERING, 0],
+    [HS2_DYN_MDD_ETAT_2F6, 1],
+    [REQ_DIAG_ARTIV, 1],
+    [HS2_DAT_MDD_CMD_452, 1],
+    [HS2_SUPV_ARTIV_796, 1],
+    [HS2_DAT_ARTIV_V2_4F6, 1],
+    [HS2_DYN1_MDD_ETAT_2B6, 1],
+  ]
 
   MAIN_BUS = 0
   ADAS_BUS = 1
@@ -70,6 +89,83 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     # write to unused payload byte
     msg[0].data[6] = 0xAB
     self.assertTrue(self._rx(msg))
+
+  # [artiv probe] - START
+  def test_artiv_neutral_messages(self):
+    from opendbc.can.packer import CANPacker
+    from opendbc.car.psa import psacan
+
+    packer = CANPacker('psa_aee2010_r3')
+    for controls_allowed in (False, True):
+      self.safety.set_controls_allowed(controls_allowed)
+      for counter in range(16):
+        messages = [
+          psacan.create_HS2_DYN1_MDD_ETAT_2B6(
+            packer, self.ADAS_BUS, mdd_desired_deceleration=2.05, potential_wheel_torque_request=0,
+            min_time_for_desired_gear=0, gmp_potential_wheel_torque=-4000, acc_status=2, gmp_wheel_torque=-4000,
+            wheel_torque_request=0, auto_braking_status=3, mdd_decel_type=0, mdd_decel_control_req=0,
+            gear_type=counter & 1, prefill_request=0, counter=counter,
+          ),
+          psacan.create_HS2_DYN_MDD_ETAT_2F6(
+            packer, self.ADAS_BUS, target_detected=0, request_takeover=0, blind_sensor=0,
+            req_visual_coll_alert_arc=0, req_audio_coll_alert_arc=0, req_haptic_coll_alert_arc=0,
+            inter_vehicle_distance=255.5, arc_status=6, auto_braking_in_progress=0, aeb_enabled=0,
+            drive_away_request=0, display_intervehicle_time=6.2, mdd_decel_control_req=0,
+            auto_braking_status=3, counter=counter, target_position=0,
+          ),
+          psacan.create_HS2_DAT_ARTIV_V2_4F6(
+            packer, self.ADAS_BUS, time_gap=25.5, distance_gap=254, relative_speed=93.8,
+            artiv_sensor_state=2, target_detected=0, artiv_target_change_info=0, traffic_direction=0,
+          ),
+          psacan.create_HS2_SUPV_ARTIV_796(
+            packer, self.ADAS_BUS, fault_code=0, status_no_config=0, status_partial_wakeup_gmp=0, uce_electr_state=0,
+          ),
+        ]
+        for address, data, bus in messages:
+          self.assertTrue(self._tx(libsafety_py.make_CANPacket(address, bus, data)))
+
+  def test_artiv_short_tester_present(self):
+    for controls_allowed in (False, True):
+      self.safety.set_controls_allowed(controls_allowed)
+      for bus in range(3):
+        for subfunction in range(256):
+          dat = bytes((2, 0x3E, subfunction))
+          self.assertEqual(self._tx(common.make_msg(bus, REQ_DIAG_ARTIV, dat=dat)),
+                           bus == self.ADAS_BUS and subfunction == 0)
+
+    for dat in (b"\x02\x10\x03", b"\x02\x27\x01",
+                b"\x01\x3E\x00", b"\x02\x3E", b"\x02\x3E\x00\x00"):
+      self.assertFalse(self._tx(common.make_msg(self.ADAS_BUS, REQ_DIAG_ARTIV, dat=dat)), dat.hex())
+
+  def test_artiv_short_programming_session(self):
+    for controls_allowed in (False, True):
+      self.safety.set_controls_allowed(controls_allowed)
+      for bus in range(3):
+        for subfunction in range(256):
+          dat = bytes((2, 0x10, subfunction))
+          self.assertEqual(self._tx(common.make_msg(bus, REQ_DIAG_ARTIV, dat=dat)),
+                           bus == self.ADAS_BUS and subfunction == 2)
+    for dat in (b"\x01\x10\x02", b"\x02\x10", b"\x02\x10\x02\x00"):
+      self.assertFalse(self._tx(common.make_msg(self.ADAS_BUS, REQ_DIAG_ARTIV, dat=dat)), dat.hex())
+  # [artiv probe] - END
+
+  def test_artiv_diagnostics(self):
+    allowed = (
+      b"\x02\x10\x02\x00\x00\x00\x00\x00",  # programming session
+      b"\x02\x3E\x00\x00\x00\x00\x00\x00",  # TesterPresent with response
+      b"\x02\x3E\x80\x00\x00\x00\x00\x00",  # TesterPresent, suppress positive response
+    )
+    for dat in allowed:
+      self.assertTrue(self._tx(common.make_msg(self.ADAS_BUS, REQ_DIAG_ARTIV, dat=dat)), dat.hex())
+
+    blocked = (
+      b"\x02\x10\x01\x00\x00\x00\x00\x00",  # default session
+      b"\x02\x10\x03\x00\x00\x00\x00\x00",  # extended session
+      b"\x02\x27\x01\x00\x00\x00\x00\x00",  # SecurityAccess
+      b"\x02\x10\x02\x80\x00\x00\x00\x00",  # non-zero padding
+    )
+    for dat in blocked:
+      self.assertFalse(self._tx(common.make_msg(self.ADAS_BUS, REQ_DIAG_ARTIV, dat=dat)), dat.hex())
 
 
 class TestPsaStockSafety(TestPsaSafetyBase):

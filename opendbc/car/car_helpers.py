@@ -6,7 +6,10 @@ from opendbc.car.can_definitions import CanRecvCallable, CanSendCallable
 from opendbc.car.carlog import carlog
 from opendbc.car.structs import CarParams, CarParamsT
 from opendbc.car.fingerprints import eliminate_incompatible_cars, all_legacy_fingerprint_cars
-from opendbc.car.fw_versions import ObdCallback, get_fw_versions_ordered, get_present_ecus, match_fw_to_car
+# [psa fingerprint] - START
+from opendbc.car.fw_versions import ObdCallback, get_fw_versions, get_fw_versions_ordered, get_present_ecus, match_fw_to_car
+from opendbc.car.psa.values import CAR as PSA
+# [psa fingerprint] - END
 from opendbc.car.mock.values import CAR as MOCK
 from opendbc.car.values import BRANDS
 from opendbc.car.vin import get_vin, is_valid_vin, VIN_UNKNOWN
@@ -98,13 +101,22 @@ def fingerprint(can_recv: CanRecvCallable, can_send: CanSendCallable, set_obd_mu
       cached = True
     else:
       carlog.warning("Getting VIN & FW versions")
-      # enable OBD multiplexing for VIN query
-      # NOTE: this takes ~0.1s and is relied on to allow sendcan subscriber to connect in time
-      set_obd_multiplexing(True)
-      # VIN query only reliably works through OBDII
-      vin_rx_addr, vin_rx_bus, vin = get_vin(can_recv, can_send, (0, 1))
-      ecu_rx_addrs = get_present_ecus(can_recv, can_send, set_obd_multiplexing)
-      car_fw = get_fw_versions_ordered(can_recv, can_send, set_obd_multiplexing, vin, ecu_rx_addrs)
+      # [psa fingerprint] - START
+      if fixed_fingerprint == PSA.PSA_PEUGEOT_3008:
+        # Keep the radar bus connected during identification of a selected 3008.
+        set_obd_multiplexing(False)
+        time.sleep(0.1)  # Allow the sendcan subscriber to connect without switching the radar bus.
+        vin_rx_addr, vin_rx_bus, vin = get_vin(can_recv, can_send, (0,))
+        car_fw = get_fw_versions(can_recv, can_send, set_obd_multiplexing, query_brand='psa')
+      else:
+        # enable OBD multiplexing for VIN query
+        # NOTE: this takes ~0.1s and is relied on to allow sendcan subscriber to connect in time
+        set_obd_multiplexing(True)
+        # VIN query only reliably works through OBDII
+        vin_rx_addr, vin_rx_bus, vin = get_vin(can_recv, can_send, (0, 1))
+        ecu_rx_addrs = get_present_ecus(can_recv, can_send, set_obd_multiplexing)
+        car_fw = get_fw_versions_ordered(can_recv, can_send, set_obd_multiplexing, vin, ecu_rx_addrs)
+      # [psa fingerprint] - END
       cached = False
 
     exact_fw_match, fw_candidates = match_fw_to_car(car_fw, vin)

@@ -1,30 +1,59 @@
 from opendbc.car import structs, get_safety_config
+from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.carstate import CarState
-
-TransmissionType = structs.CarParams.TransmissionType
-
+from opendbc.car.psa.values import CAR, LKAS_LIMITS
+from opendbc.car.psa.values import PSA_LONG_CONTROL
 
 class CarInterface(CarInterfaceBase):
   CarState = CarState
   CarController = CarController
+
+  def update(self, can_packets):
+    can_packets = self.CC.process_radar_can(can_packets)
+    ret = super().update(can_packets)
+    if self.CC.longitudinal_profile:
+      if not self.CC.longitudinal_enabled or not self.CC.radar_active:
+        # Gate longitudinal engagement only, not cruise main.
+        ret.cruiseState.enabled = False
+      ret.accFaulted = ret.accFaulted or self.CC.radar_stop_reason is not None
+    return ret
 
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
     ret.brand = 'psa'
 
     ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.psa)]
-
+    # Dashcam mode while recording human driving for openpilot.distill: openpilot cannot engage.
     ret.dashcamOnly = True
 
-    ret.steerActuatorDelay = 0.3
-    ret.steerLimitTimer = 0.1
-    ret.steerAtStandstill = True
+    if candidate in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER):
+      CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+      ret.steerControlType = structs.CarParams.SteerControlType.torque
+      ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
+      # ~140 ms torque-to-rate lag, route 00000029--0f498d7077.
+      ret.steerActuatorDelay = 0.15
+      ret.steerLimitTimer = 0.1
+      ret.steerAtStandstill = False
+    else:
+      ret.steerAtStandstill = True
+      ret.steerLimitTimer = 0.1
+      ret.steerControlType = structs.CarParams.SteerControlType.angle
 
-    ret.steerControlType = structs.CarParams.SteerControlType.angle
     ret.radarUnavailable = True
 
-    ret.alphaLongitudinalAvailable = False
+    ret.alphaLongitudinalAvailable = candidate in (
+      CAR.PSA_PEUGEOT_3008,
+      CAR.PSA_CITROEN_C4_SPACETOURER,
+    )
+    # openpilot longitudinal only if supported and opted in; engagement comes from the BSI.
+    ret.openpilotLongitudinalControl = ret.alphaLongitudinalAvailable and alpha_long
+    if ret.openpilotLongitudinalControl:
+      ret.safetyConfigs[0].safetyParam |= PSA_LONG_CONTROL
+      # ~0.65 s command-to-aEgo brake lag measured on routes 118/119.
+      ret.longitudinalActuatorDelay = 0.45
+      # Announce ACC Waiting from 1 km/h raw Dyn4_FRE speed, with the brake released.
+      ret.minEnableSpeed = 1.0 * CV.KPH_TO_MS
 
     return ret
