@@ -147,6 +147,10 @@ class CarController(CarControllerBase):
 
     self.longitudinal_wheel_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_min_time = 0.0
+    if self.car_fingerprint == CAR.PSA_CITROEN_C4_SPACETOURER:
+      self.min_time_gmp_even = LongitudinalParams.MIN_TIME_GMP_EVEN_C4_SPACETOURER
+    else:
+      self.min_time_gmp_even = LongitudinalParams.MIN_TIME_GMP_EVEN_3008
     self.artiv_programming_requested = False
     self.artiv_probe_last_frame = 0
     # Radar session may run while moving; actuation is gated by longitudinal_enabled.
@@ -216,6 +220,14 @@ class CarController(CarControllerBase):
       self.potential_torque_filter.x = potential_torque
 
     return wheel_torque, potential_torque
+
+  def _min_time_for_desired_gear(self, counter):
+    # 0 when not in GMP; otherwise the stock odd/even pair, selected by COUNTER parity (= GEAR_TYPE).
+    if self.longitudinal_min_time == 0.0:
+      return 0.0
+    if counter & 1:
+      return LongitudinalParams.MIN_TIME_GMP_ODD
+    return self.min_time_gmp_even
 
   def _reset_longitudinal_filters(self):
     self._reset_longitudinal_torque_filters()
@@ -430,7 +442,7 @@ class CarController(CarControllerBase):
       self.longitudinal_wheel_torque, self.longitudinal_potential_torque = self._filter_longitudinal_torque(
         requested_wheel_torque, requested_potential_torque,
       )
-      self.longitudinal_min_time = LongitudinalParams.MIN_TIME_GMP_EXPERIMENTAL
+      self.longitudinal_min_time = LongitudinalParams.MIN_TIME_GMP_ODD
 
   def _update_lead_display(self, CC, CS):
     """Return one coherent lead for both 0x2F6 and 0x4F6 and update the cluster target bucket."""
@@ -750,7 +762,7 @@ class CarController(CarControllerBase):
             self.packer, PSA_ADAS_BUS,
             mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
             potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
-            min_time_for_desired_gear=self.longitudinal_min_time,
+            min_time_for_desired_gear=self._min_time_for_desired_gear(counter_2b6),
             gmp_potential_wheel_torque=self.longitudinal_potential_torque,
             acc_status=acc_status,
             gmp_wheel_torque=self.longitudinal_wheel_torque,
@@ -835,7 +847,7 @@ class CarController(CarControllerBase):
             self.packer, PSA_ADAS_BUS,
             mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
             potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
-            min_time_for_desired_gear=self.longitudinal_min_time,
+            min_time_for_desired_gear=self._min_time_for_desired_gear(counter),
             gmp_potential_wheel_torque=self.longitudinal_potential_torque,
             # Waiting is announced before the BSI requests ACC; it authorizes nothing.
             acc_status=acc_status,

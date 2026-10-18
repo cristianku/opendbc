@@ -1,0 +1,1 @@
+- [C4 stock ACC semantics](c4-stock-acc-semantics.md) — 2B6 GEAR_TYPE mux of MIN_TIME, drag-floor handover GMP<->brake, MDD=total decel, C4 torque/accel fit

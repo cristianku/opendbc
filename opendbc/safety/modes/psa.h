@@ -220,10 +220,17 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     // Suspended carries no actuation, including across pedal release/disengagement.
     const bool inactive = no_torque && no_decel && (potential_req == 0U) &&
                           (min_time == 0U) && ((status == 2U) || (status == 3U) || (psa_long_control && (status == 5U)));
+    // Stock GMP pair by GEAR_TYPE: odd 6.2 s; even 1.5 s (3008) or 3.6 s (C4 SpaceTourer).
+    bool gmp_min_time = false;
+    if (gear_type == 1U) {
+      gmp_min_time = (min_time == 62U);
+    } else {
+      gmp_min_time = (min_time == 15U) || (min_time == 36U);
+    }
     // Bounds of the offline Elkoled-derived prototype, not calibrated vehicle limits.
     const bool gmp = (potential_req == 1U) && (wheel_req == 1U) && no_decel &&
                      (potential >= 900U) && (potential <= 1250U) &&
-                     (wheel >= 3600U) && (wheel <= 5000U) && (min_time == 62U);
+                     (wheel >= 3600U) && (wheel <= 5000U) && gmp_min_time;
     // -2 .. 0 m/s^2, including light braking/speed holding. Provisional service-brake
     // limit, matching LongitudinalParams.BRAKE_MIN_ACCEL; all actuation gates apply.
     const bool braking = (potential_req == 2U) && no_torque && (min_time == 0U) &&
