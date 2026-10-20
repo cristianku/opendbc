@@ -141,11 +141,11 @@ class TestPsaLongitudinalSafety(unittest.TestCase):
       # Legacy DRIVER traffic must neither replace nor refresh the physical pedal check.
       self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x56E, 2, bytes(5)))
       self.safety.set_controls_allowed(True)
-      self.safety.safety_tick_current_safety_config()
+      self.safety.safety_tick()
       self.assertFalse(self.safety.safety_config_valid())
       self.assertFalse(self.safety.get_controls_allowed())
       self.assertTrue(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x228, 0, bytes(8))))
-      self.safety.safety_tick_current_safety_config()
+      self.safety.safety_tick()
       self.assertTrue(self.safety.safety_config_valid())
 
   def test_wrong_bus_or_length_cannot_release_physical_pedal(self):

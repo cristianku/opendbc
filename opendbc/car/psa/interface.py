@@ -36,7 +36,6 @@ class CarInterface(CarInterfaceBase):
       ret.steerActuatorDelay = 0.15
       ret.steerLimitTimer = 0.1
       ret.steerAtStandstill = False
-      ret.enableBsm = True
     else:
       ret.steerAtStandstill = True
       ret.steerLimitTimer = 0.1

@@ -13,7 +13,6 @@ from unittest.mock import patch
 from numpy import interp
 
 from opendbc.can.packer import CANPacker
-from opendbc.can.parser import get_raw_value
 from opendbc.car import Bus, structs
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa import psacan
@@ -72,7 +71,7 @@ class LongitudinalHarness:
     return output, {}
 
   def decode(self, address, data):
-    return {name: round(get_raw_value(data, sig) * sig.factor + sig.offset, 6)
+    return {name: round(sig.get_raw_value(data) * sig.factor + sig.offset, 6)
             for name, sig in self.packer.dbc.addr_to_msg[address].sigs.items()}
 
 

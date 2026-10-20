@@ -306,8 +306,8 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
         tx = false;
       }
     } else if (GET_LEN(msg) == 8) {
-      uint32_t first_word = GET_BYTES(msg, 0, 4);
-      bool zero_padding = GET_BYTES(msg, 4, 4) == 0x0U;
+      uint32_t first_word = GET_BYTES_LE(msg, 0, 4);
+      bool zero_padding = GET_BYTES_LE(msg, 4, 4) == 0x0U;
       bool is_programming_session = first_word == 0x00021002U;       // 02 10 02 00
       bool is_tester_present = (first_word == 0x00003E02U) ||        // 02 3E 00 00
                                (first_word == 0x00803E02U);          // 02 3E 80 00

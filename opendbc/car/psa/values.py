@@ -106,21 +106,21 @@ class PSAPlatformConfig(PlatformConfig):
 class CAR(Platforms):
   PSA_PEUGEOT_208 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 208 2019-25")],
-    CarSpecs(mass=1530, wheelbase=2.73, steerRatio=17.6), # TODO: these are set to live learned Berlingo values
+    CarSpecs(wheelbase=2.73, steerRatio=17.6), # TODO: these are set to live learned Berlingo values
   )
   PSA_PEUGEOT_508 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 508 2019-23")],
-    CarSpecs(mass=1720, wheelbase=2.79, steerRatio=17.6), # TODO: set steerRatio
+    CarSpecs(wheelbase=2.79, steerRatio=17.6), # TODO: set steerRatio
   )
   PSA_PEUGEOT_3008 = PSAPlatformConfig(
     [PSACarDocs("PEUGEOT 3008 2016-29")],
     # https://www.auto-data.net/en/peugeot-3008-ii-phase-i-2016-1.6-puretech-180hp-automatic-s-s-34446#google_vignette
-    CarSpecs(mass=1577, wheelbase=2.675, steerRatio=17.69, tireStiffnessFactor=0.996044),
+    CarSpecs(wheelbase=2.675, steerRatio=17.69, tireStiffnessFactor=0.996044),
   )
   PSA_CITROEN_C4_SPACETOURER = PSAPlatformConfig(
     [PSACarDocs("CITROEN C4 SPACETOURER 2018-22")],
     # https://www.auto-data.net/en/citroen-c4-spacetourer-phase-i-2018-2.0-bluehdi-163hp-automatic-34644
-    CarSpecs(mass=1517, wheelbase=2.785, steerRatio=17.69, tireStiffnessFactor=0.996044),
+    CarSpecs(wheelbase=2.785, steerRatio=17.69, tireStiffnessFactor=0.996044),
   )
 
 
