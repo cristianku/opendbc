@@ -229,6 +229,14 @@ struct CarState {
   fuelGauge @41 :Float32; # battery or fuel tank level from [0.0, 1.0]
   charging @43 :Bool;
 
+  # Passive OEM forward-radar/ARTIV telemetry for logged training data.
+  # Default-invalid on unsupported vehicles and in old rlogs. Not a 3D radar track.
+  stockRadarLeadDistance @62 :Float32;        # m, longitudinal lead gap
+  stockRadarLeadRelativeSpeed @63 :Float32;   # m/s, valid only when stockRadarRelativeSpeedValid
+  stockRadarLeadValid @64 :Bool;              # distance measured and fresh
+  stockRadarMeasurementTimeNanos @65 :UInt64; # original CAN sample timestamp (monotonic)
+  stockRadarRelativeSpeedValid @66 :Bool;     # separate validity for 0x4F6 motion
+
   struct WheelSpeeds {
     # optional wheel speeds
     fl @0 :Float32;
