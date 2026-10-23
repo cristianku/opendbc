@@ -2,6 +2,7 @@ from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams
+from opendbc.car.psa.radar_observation import decode_stock_artiv_lead
 from opendbc.car.interfaces import CarStateBase
 import copy
 import math
@@ -108,6 +109,24 @@ class CarState(CarStateBase):
     self.steering = copy.copy(cp.vl['STEERING'])
     self.HS2_DYN_MDD_ETAT_2F6 =copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
 
+    # Observe genuine ARTIV RX in passive/stock-longitudinal configurations.
+    # In experimental openpilot longitudinal, the controller may replace these
+    # CAN frames with vision-derived estimates. Never mislabel those as OEM radar.
+    if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER) and (
+        self.CP.dashcamOnly or not self.CP.openpilotLongitudinalControl):
+      stock_lead = decode_stock_artiv_lead(
+        cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'],
+        cp_adas.ts_nanos['HS2_DYN_MDD_ETAT_2F6']['INTER_VEHICLE_DISTANCE'],
+        cp_adas.vl['HS2_DAT_ARTIV_V2_4F6'],
+        cp_adas.ts_nanos['HS2_DAT_ARTIV_V2_4F6']['RELATIVE_SPEED'],
+        cp_adas._last_update_nanos,
+      )
+      ret.stockRadarLeadValid = stock_lead.distance_valid
+      ret.stockRadarLeadDistance = stock_lead.distance_m
+      ret.stockRadarRelativeSpeedValid = stock_lead.relative_speed_valid
+      ret.stockRadarLeadRelativeSpeed = stock_lead.relative_speed_mps
+      ret.stockRadarMeasurementTimeNanos = stock_lead.measurement_time_nanos
+
     # ARTIV diagnostic reply on 0x696 (50 xx or 7F 10 <NRC>).
 
     # cruise
@@ -169,6 +188,11 @@ class CarState(CarStateBase):
     return {
       Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
       # math.nan: parsed but not required for canValid.
-      Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [("Rep_Diag_ARTIV", math.nan)], 1),
+      Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [
+        ("Rep_Diag_ARTIV", math.nan),
+        # Observe the stock ARTIV summaries without affecting canValid.
+        ("HS2_DYN_MDD_ETAT_2F6", math.nan),
+        ("HS2_DAT_ARTIV_V2_4F6", math.nan),
+      ], 1),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, 2),
     }
