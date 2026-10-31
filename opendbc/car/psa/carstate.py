@@ -1,7 +1,7 @@
-from opendbc.car import structs, Bus
+from opendbc.car import structs, Bus, create_button_events
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.psa.values import CAR, DBC, CarControllerParams
+from opendbc.car.psa.values import CAR, DBC, CarControllerParams, CruiseButtons
 from opendbc.car.psa.radar_observation import decode_stock_artiv_lead
 from opendbc.car.interfaces import CarStateBase
 import copy
@@ -14,6 +14,20 @@ GearShifter = structs.CarState.GearShifter
 TransmissionType = structs.CarParams.TransmissionType
 ButtonType = structs.CarState.ButtonEvent.Type
 
+BUTTONS_DICT = {
+  CruiseButtons.ACCEL: ButtonType.accelCruise,
+  CruiseButtons.DECEL: ButtonType.decelCruise,
+  CruiseButtons.SET: ButtonType.setCruise,
+  CruiseButtons.RESUME: ButtonType.resumeCruise,
+  CruiseButtons.CANCEL: ButtonType.cancel,
+  CruiseButtons.MAIN: ButtonType.mainCruise,
+}
+SETPOINT_OFF = 255
+SETPOINT_MIN_KPH = 27  # 30 km/h on the cluster, which shows the setpoint + 3
+SET_SPEED_TOLERANCE_KPH = 2.5  # SET takes the current speed; seen within 2.2 km/h of vEgoRaw
+BRAKE_CANCEL_FRAMES = 50  # a brake in the last 0.5 s explains the drop to 255 (seen 50-210 ms before it)
+BUTTON_HOLD_FRAMES = 15  # one press over the limiter's 50 ms ramps; taps (>= 0.2 s apart) stay separate
+
 
 class CarState(CarStateBase):
   # Low-pass of the noisy DRIVER_TORQUE, feeds steeringPressed only.
@@ -24,14 +38,39 @@ class CarState(CarStateBase):
     self.stock_lka_unknown2 = 24  # Preserve the existing payload until the first camera sample.
     self.speed_kph = 0.0
     self.actual_gear = 0
-    self.synthetic_cruise_kph = None
-    self.synthetic_cruise_button_pressed = False
-    self.synthetic_cruise_button_type = ButtonType.unknown
-    self.cruise_enabled_prev = False
+    self.cruise_buttons = CruiseButtons.NONE
+    self.held_cruise_button = CruiseButtons.NONE
+    self.cruise_button_frames = 0
+    self.prev_setpoint: int | None = None
+    self.prev_regulation_type: int | None = None
+    self.frames_since_brake = BRAKE_CANCEL_FRAMES + 1
 
+  def update_cruise_buttons(self, setpoints, regulation_types, brake_pressed: bool, v_ego_kph: float) -> int:
+    # The stalk action the BSI applied in this update's 0x452 frames (see CruiseButtons).
+    self.frames_since_brake = 0 if brake_pressed else self.frames_since_brake + 1
+    for setpoint, regulation_type in zip(map(int, setpoints), map(int, regulation_types), strict=True):
+      button = CruiseButtons.NONE
+      if self.prev_setpoint is None:
+        pass
+      elif regulation_type != self.prev_regulation_type:
+        button = CruiseButtons.MAIN
+      elif setpoint != self.prev_setpoint:
+        if self.prev_setpoint == SETPOINT_OFF:
+          at_speed = abs(setpoint - v_ego_kph) <= SET_SPEED_TOLERANCE_KPH or (setpoint == SETPOINT_MIN_KPH and v_ego_kph < setpoint)
+          button = CruiseButtons.SET if at_speed else CruiseButtons.RESUME
+        elif setpoint == SETPOINT_OFF:
+          # A brake cancel is already brakePressed, not a button.
+          button = CruiseButtons.CANCEL if self.frames_since_brake > BRAKE_CANCEL_FRAMES else CruiseButtons.NONE
+        else:
+          button = CruiseButtons.ACCEL if setpoint > self.prev_setpoint else CruiseButtons.DECEL
+      self.prev_setpoint, self.prev_regulation_type = setpoint, regulation_type
+      if button != CruiseButtons.NONE:
+        self.held_cruise_button, self.cruise_button_frames = button, BUTTON_HOLD_FRAMES
 
-
-
+    if self.cruise_button_frames > 0:
+      self.cruise_button_frames -= 1
+      return self.held_cruise_button
+    return CruiseButtons.NONE
 
   def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
     cp = can_parsers[Bus.main]
@@ -144,6 +183,15 @@ class CarState(CarStateBase):
     ret.cruiseState.standstill = False # not available for CC-only
     ret.accFaulted = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['ACC_ETAT_DECEL_OR_ESP_STATUS'] == 3
     self.hs2_dat_mdd_cmd_452 = copy.copy(cp_adas.vl['HS2_DAT_MDD_CMD_452'])
+
+    # buttons: the stalk is not on our buses, so read the BSI's response to it in 0x452
+    prev_cruise_buttons = self.cruise_buttons
+    self.cruise_buttons = self.update_cruise_buttons(
+      cp_adas.vl_all['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'],
+      cp_adas.vl_all['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'],
+      ret.brakePressed, ret.vEgoRaw * CV.MS_TO_KPH,
+    )
+    ret.buttonEvents = create_button_events(self.cruise_buttons, prev_cruise_buttons, BUTTONS_DICT)
 
     # gear
     if bool(cp_cam.vl['Dat_BSI']['P103_Com_bRevGear']):

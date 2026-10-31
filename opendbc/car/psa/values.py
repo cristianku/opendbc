@@ -141,6 +141,20 @@ class LKAS_LIMITS:
   ENABLE_SPEED = 51     # kph
 
 
+class CruiseButtons:
+  # The cruise stalk is wired to the BSI and never reaches the comma's buses (no frame on bus 0/1/2
+  # follows a press, routes 0x12a-0x154). These are the stalk actions read back from what the BSI applied
+  # to HS2_DAT_MDD_CMD_452. The comma only sends 0x452 as a copy of the BSI's frame (create_resume_acc,
+  # stop and go) with the same setpoint and regulation type, so every change there comes from the driver.
+  NONE = 0
+  ACCEL = 1   # setpoint up: +1 per tap, +5 (to the next 5 on the cluster) every 0.4 s while held
+  DECEL = 2
+  SET = 3     # 255 -> setpoint at the current speed (27 = 30 on the cluster below that)
+  RESUME = 4  # 255 -> any other setpoint (the memorised one)
+  CANCEL = 5  # setpoint -> 255 without the brake
+  MAIN = 6    # LONGITUDINAL_REGULATION_TYPE changed (stalk wheel: off / limiter / cruise)
+
+
 FW_QUERY_CONFIG = FwQueryConfig(
   fw_version_regex=br"(?:[A-Z0-9 ]{13,20}|[\x00-\xff]{24})",
   requests=[request for bus in (0, 1, 2) for request in [

@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
-from opendbc.car import Bus, structs
+from opendbc.car import Bus, create_button_events, structs
 from opendbc.car.psa import carcontroller as psa_carcontroller
 from opendbc.car.psa.carcontroller import should_preempt_eps_rearm
-from opendbc.car.psa.carstate import CarState
+from opendbc.car.psa.carstate import BUTTON_HOLD_FRAMES, BUTTONS_DICT, CarState
 from opendbc.car.psa.interface import CarInterface
 from opendbc.car.psa.psacan import create_disable_radar
 from opendbc.car.psa.values import CAR, CarControllerParams, PSA_ADAS_BUS
@@ -18,37 +18,38 @@ def test_icbm_unavailable_with_stock_longitudinal():
   assert cp_sp.pcmCruiseSpeed
 
 
-def test_synthetic_cruise_button_events_follow_stock_setpoint():
-  cs = CarState.__new__(CarState)
-  cs.synthetic_cruise_kph = None
-  cs.synthetic_cruise_button_pressed = False
-  cs.synthetic_cruise_button_type = structs.CarState.ButtonEvent.Type.unknown
-  cs.cruise_enabled_prev = False
+def _stalk_events(frames, brake=False, v_ego_kph=50.0):
+  # One 100 Hz update per item; an item is a (setpoint, regulation type) 0x452 frame or None.
+  cs = CarState(CarInterface.get_non_essential_params(CAR.PSA_PEUGEOT_3008), structs.CarParamsSP())
+  out = []
+  for i, frame in enumerate(frames):
+    prev = cs.cruise_buttons
+    sp, reg = ([frame[0]], [frame[1]]) if frame else ([], [])
+    cs.cruise_buttons = cs.update_cruise_buttons(sp, reg, brake(i) if callable(brake) else brake, v_ego_kph)
+    out += [(i, e.type, e.pressed) for e in create_button_events(cs.cruise_buttons, prev, BUTTONS_DICT)]
+  return out
 
-  assert cs._update_cruise_button_events(60, True) == []
 
-  events = cs._update_cruise_button_events(62, True)
-  assert [(event.type, event.pressed) for event in events] == [
-    (structs.CarState.ButtonEvent.Type.accelCruise, True),
-  ]
-  events = cs._update_cruise_button_events(62, True)
-  assert [(event.type, event.pressed) for event in events] == [
-    (structs.CarState.ButtonEvent.Type.accelCruise, False),
-  ]
-  assert cs.synthetic_cruise_kph == 61
-
-  events = cs._update_cruise_button_events(60, True)
-  assert [(event.type, event.pressed) for event in events] == [
-    (structs.CarState.ButtonEvent.Type.decelCruise, True),
-  ]
-  events = cs._update_cruise_button_events(60, True)
-  assert [(event.type, event.pressed) for event in events] == [
-    (structs.CarState.ButtonEvent.Type.decelCruise, False),
-  ]
-  assert cs.synthetic_cruise_kph == 60
-
-  assert cs._update_cruise_button_events(255, False) == []
-  assert cs.synthetic_cruise_kph is None
+def test_stalk_buttons_from_bsi_setpoint():
+  BT = structs.CarState.ButtonEvent.Type
+  # +1 tap: one press, released after BUTTON_HOLD_FRAMES
+  assert _stalk_events([(52, 3), None, None, None, None, (53, 3)] + [None] * 20) == [
+    (5, BT.accelCruise, True), (5 + BUTTON_HOLD_FRAMES, BT.accelCruise, False)]
+  # limiter hold ramps +2, +2, +1 every 50 ms: still one press
+  assert [e for e in _stalk_events([(77, 2), None, None, None, None, (79, 2)] + [None] * 4 + [(81, 2)] + [None] * 4 +
+                                   [(82, 2)] + [None] * 20) if e[2]] == [(5, BT.accelCruise, True)]
+  assert _stalk_events([(53, 3), (52, 3)])[0][1:] == (BT.decelCruise, True)
+  # drop to 255: cancel without the brake, nothing with it
+  assert _stalk_events([(54, 3), (255, 3)])[0][1:] == (BT.cancel, True)
+  assert _stalk_events([(54, 3), None, None, (255, 3)], brake=lambda i: i == 1) == []
+  # 255 -> setpoint: set at the current speed (or 27 below it), resume otherwise
+  assert _stalk_events([(255, 3), (46, 3)], v_ego_kph=46.1)[0][1:] == (BT.setCruise, True)
+  assert _stalk_events([(255, 3), (27, 3)], v_ego_kph=14.3)[0][1:] == (BT.setCruise, True)
+  assert _stalk_events([(255, 3), (47, 3)], v_ego_kph=29.6)[0][1:] == (BT.resumeCruise, True)
+  # stalk wheel off / limiter / cruise: main, even when the setpoint drops to 255 with it
+  assert _stalk_events([(77, 2), (255, 0)])[0][1:] == (BT.mainCruise, True)
+  # the first frame seen is never a press
+  assert _stalk_events([(46, 3)]) == []
 
 
 # [artiv probe] - START
