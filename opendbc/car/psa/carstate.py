@@ -86,11 +86,11 @@ class CarState(CarStateBase):
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
       ret.genericToggle = (int(cp.vl["IS_DAT_DIRA"]["ETAT_DA_DYN"]) == 1) # 0 = Normal, 1 = Dynamic/Sport, 2 = Adjustable
 
-      ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE'] * 3
-      ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE'] * 10 * 3
+      ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE'] * 30
+      ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['DRIVER_TORQUE'] * 10 * 3
     else:
-      ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
-      ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
+      ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['DRIVER_TORQUE']
+      ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE'] * 10
 
     driver_torque_filtered = self.driver_torque_filter.update(ret.steeringTorque)
     ret.steeringPressed = self.update_steering_pressed(abs(driver_torque_filtered) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)

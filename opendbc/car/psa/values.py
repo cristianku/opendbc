@@ -53,7 +53,7 @@ class CarControllerParams:
     STEER_DELTA_DOWN = 8  # per 10 ms frame: 800/s (was 38 per 50 ms = 760/s)
     EPS_LADDER_STEP = 5  # activation ladder and rearm checks stay at 20 Hz
 
-    # CarState.steeringTorque units (3008: raw DRIVER_TORQUE * 3).
+    # CarState.steeringTorque units: DBC DRIVER_TORQUE in Nm * 10, the raw value (3008: * 30, raw * 3).
     STEER_DRIVER_MULTIPLIER = 1
     STEER_DRIVER_ALLOWANCE = 50
     STEER_DRIVER_FACTOR = 1  # How strongly driver torque reduces assist torque (higher = more sensitive to driver)

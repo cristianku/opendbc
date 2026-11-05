@@ -167,6 +167,31 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     for dat in blocked:
       self.assertFalse(self._tx(common.make_msg(self.ADAS_BUS, REQ_DIAG_ARTIV, dat=dat)), dat.hex())
 
+  def _ign_msg(self, bus, counter, ign):
+    return common.make_msg(bus, 0x432, dat=bytes([0, counter, 0, 0, 0, 0, ign, 0]))
+
+  def test_ignition_on(self):
+    for bus in (0, 2):
+      for i in range(16):
+        self.safety.init_tests()
+        self.safety.ignition_can_hook(self._ign_msg(bus, i, 1))
+        self.assertFalse(self.safety.get_ignition_can())
+        self.safety.ignition_can_hook(self._ign_msg(bus, (i + 1) % 16, 1))
+        self.assertTrue(self.safety.get_ignition_can())
+
+  def test_ignition_off(self):
+    for bus in (0, 2):
+      self.safety.ignition_can_hook(self._ign_msg(bus, 0, 1))
+      self.safety.ignition_can_hook(self._ign_msg(bus, 1, 1))
+      self.assertTrue(self.safety.get_ignition_can())
+      self.safety.ignition_can_hook(self._ign_msg(bus, 2, 0))
+      self.assertFalse(self.safety.get_ignition_can())
+
+  def test_ignition_engine_running(self):
+    for running, ign in ((0x2, True), (0x4, True), (0x0, False)):
+      self.safety.ignition_can_hook(common.make_msg(0, 0x348, dat=bytes([0, 0, 0, 0, 0, running, 0, 0])))
+      self.assertEqual(self.safety.get_ignition_can(), ign)
+
 
 class TestPsaStockSafety(TestPsaSafetyBase):
   pass

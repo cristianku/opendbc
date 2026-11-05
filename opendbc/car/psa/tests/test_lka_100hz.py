@@ -49,7 +49,7 @@ class ReleaseHarness:
     frame = self.controller.frame
     self.safety.set_timer(frame * 10_000)
     raw = self.cs.steering['DRIVER_TORQUE']
-    addr, data, bus = self.packer.make_can_msg('STEERING', 0, {'DRIVER_TORQUE': raw})
+    addr, data, bus = self.packer.make_can_msg('STEERING', 0, {'DRIVER_TORQUE': raw * 0.1})
     self.test.assertTrue(self.safety.safety_rx_hook(libsafety_py.make_CANPacket(addr, bus, data)))
     brake = 1 if self.cs.out.brakePressed else 0
     addr, data, bus = self.packer.make_can_msg('Dat_BSI', 2, {'P013_MainBrake': brake})
