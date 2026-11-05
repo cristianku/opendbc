@@ -211,6 +211,8 @@ bool safety_rx_hook(const CANPacket_t *msg) {
   // Handles gas, brake, and regen paddle
   generic_rx_checks();
 
+  mads_state_update(vehicle_moving, acc_main_on, controls_allowed, brake_pressed || regen_braking, steering_disengage);
+
   // the relay malfunction hook runs on all incoming rx messages.
   // check all applicable tx msgs for liveness on sending bus.
   // used to detect a relay malfunction or control messages from disabled ECUs like the radar
@@ -340,7 +342,7 @@ void safety_tick(void) {
     }
 
     // enforce minimum frequency for safety-relevant messages
-    bool frequency_invalid = frequency < 10U;
+    bool frequency_invalid = !current_safety_config.rx_checks[i].msg[current_safety_config.rx_checks[i].status.index].ignore_frequency_check && (frequency < 10U);
     if (lagging || frequency_invalid || !is_msg_valid(current_safety_config.rx_checks, i)) {
       rx_checks_invalid = true;
       controls_allowed = false;
@@ -384,7 +386,6 @@ static void stock_ecu_check(bool stock_ecu_detected) {
   if ((safety_mode_cnt > RELAY_TRNS_TIMEOUT) && stock_ecu_detected) {
     relay_malfunction_set();
   }
-  mads_state_update(vehicle_moving, acc_main_on, controls_allowed, brake_pressed || regen_braking, steering_disengage);
 }
 
 static void relay_malfunction_reset(void) {
