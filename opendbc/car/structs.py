@@ -166,11 +166,3 @@ class CarControlSP:
 @auto_dataclass
 class CarStateSP:
   speedLimit: float = auto_field()
-  frontWipers: 'CarStateSP.FrontWipers' = field(default_factory=lambda: CarStateSP.FrontWipers.unknown)
-
-  class FrontWipers(StrEnum):
-    unknown = auto()  # a car that does not say
-    off = auto()
-    on = auto()  # on, the speed not said
-    low = auto()
-    high = auto()

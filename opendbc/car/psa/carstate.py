@@ -13,9 +13,7 @@ from opendbc.car import DT_CTRL
 GearShifter = structs.CarState.GearShifter
 TransmissionType = structs.CarParams.TransmissionType
 ButtonType = structs.CarState.ButtonEvent.Type
-FrontWipers = structs.CarStateSP.FrontWipers
 
-FRONT_WIPERS = (FrontWipers.off, FrontWipers.on, FrontWipers.low, FrontWipers.high)  # FRONT_WIPER_STATUS of 0x452
 BUTTONS_DICT = {
   CruiseButtons.ACCEL: ButtonType.accelCruise,
   CruiseButtons.DECEL: ButtonType.decelCruise,
@@ -185,7 +183,6 @@ class CarState(CarStateBase):
     ret.cruiseState.standstill = False # not available for CC-only
     ret.accFaulted = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['ACC_ETAT_DECEL_OR_ESP_STATUS'] == 3
     self.hs2_dat_mdd_cmd_452 = copy.copy(cp_adas.vl['HS2_DAT_MDD_CMD_452'])
-    ret_sp.frontWipers = FRONT_WIPERS[int(cp_adas.vl['HS2_DAT_MDD_CMD_452']['FRONT_WIPER_STATUS'])]
 
     # buttons: the stalk is not on our buses, so read the BSI's response to it in 0x452
     prev_cruise_buttons = self.cruise_buttons
