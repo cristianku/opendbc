@@ -24,6 +24,9 @@ BUTTONS_DICT = {
 }
 SETPOINT_OFF = 255
 SETPOINT_MIN_KPH = 27  # 30 km/h on the cluster, which shows the setpoint + 3
+# 3008 / C4 SpaceTourer: the cluster shows the setpoint + 3 km/h, and SET takes the current wheel speed, so the
+# speedometer is taken to read the wheel speed + 3 too. Its own value is not on the bus; not yet checked on the needle.
+DASH_OFFSET_KPH = 3.0
 SET_SPEED_TOLERANCE_KPH = 2.5  # SET takes the current speed; seen within 2.2 km/h of vEgoRaw
 BRAKE_CANCEL_FRAMES = 50  # a brake in the last 0.5 s explains the drop to 255 (seen 50-210 ms before it)
 BUTTON_HOLD_FRAMES = 15  # one press over the limiter's 50 ms ramps; taps (>= 0.2 s apart) stay separate
@@ -44,6 +47,8 @@ class CarState(CarStateBase):
     self.prev_setpoint: int | None = None
     self.prev_regulation_type: int | None = None
     self.frames_since_brake = BRAKE_CANCEL_FRAMES + 1
+    if CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
+      self.cluster_min_speed = CV.KPH_TO_MS / 2.
 
   def update_cruise_buttons(self, setpoints, regulation_types, brake_pressed: bool, v_ego_kph: float) -> int:
     # The stalk action the BSI applied in this update's 0x452 frames (see CruiseButtons).
@@ -90,6 +95,7 @@ class CarState(CarStateBase):
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008, CAR.PSA_CITROEN_C4_SPACETOURER):
       ret.standstill = ret.vEgoRaw <= 0.1 * CV.KPH_TO_MS
       self.speed_kph = ret.vEgoRaw * CV.MS_TO_KPH
+      ret.vEgoCluster = ret.vEgo + DASH_OFFSET_KPH * CV.KPH_TO_MS
     else:
       # versione elkoled
       ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
@@ -175,7 +181,7 @@ class CarState(CarStateBase):
     # Display matches the cluster; control keeps the raw 0x452 setpoint.
     ret.cruiseState.speedCluster = ret.cruiseState.speed
     if self.CP.carFingerprint in (CAR.PSA_PEUGEOT_3008,CAR.PSA_CITROEN_C4_SPACETOURER) and 0 < cruise_speed_kph < 255:
-      ret.cruiseState.speedCluster += 3.0 * CV.KPH_TO_MS
+      ret.cruiseState.speedCluster += DASH_OFFSET_KPH * CV.KPH_TO_MS
     # Cruise main: RVV or ACC selected; same as acc_main_on in the safety.
     ret.cruiseState.available = cp_adas.vl['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'] in (1, 3)
     ret.cruiseState.nonAdaptive = False # not available for CC-only

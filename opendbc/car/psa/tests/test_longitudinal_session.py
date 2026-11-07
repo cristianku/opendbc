@@ -24,6 +24,22 @@ class TestLongitudinalSession(unittest.TestCase):
           self.assertAlmostEqual(state.cruiseState.speedCluster * CV.MS_TO_KPH, cluster_kph, places=4)
           self.assertEqual(interface.CS.hs2_dat_mdd_cmd_452['SPEED_SETPOINT'], can_kph)
 
+  def test_peugeot_cluster_speed_is_wheel_speed_plus_offset(self):
+    h = LongitudinalHarness(experimental=False)
+    interface = CarInterface(h.controller.CP, h.controller.CP_SP)
+    interface.update([(1, [])])  # Register the lazily subscribed CAN signals.
+    frame = 1
+    for wheel_kph, offset_kph in ((0., 0.), (80., 3.), (0.3, 0.)):
+      with self.subTest(wheel_kph=wheel_kph):
+        for _ in range(300):
+          msg = h.packer.make_can_msg('Dyn4_FRE', 0, {f'P26{i}_VehV_VPsvValWhl{w}': wheel_kph
+                                                      for i, w in zip(range(3, 7), ('FrtL', 'FrtR', 'BckL', 'BckR'))})
+          state, _ = interface.update([(frame * 10_000_000, [msg])])
+          frame += 1
+        self.assertGreater(state.vEgo * CV.MS_TO_KPH, wheel_kph - 0.1)
+        self.assertAlmostEqual(state.vEgoCluster * CV.MS_TO_KPH, state.vEgo * CV.MS_TO_KPH + offset_kph if offset_kph else 0.,
+                               places=4)
+
   # [radar optin] - START
   def test_confirmed_session_can_move_with_cruise_engaged_or_disengaged(self):
     for engaged in (True, False):
