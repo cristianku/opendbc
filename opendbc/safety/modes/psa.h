@@ -26,7 +26,6 @@
 #define PSA_CAM_BUS  2U
 
 #define PSA_LONG_CONTROL 1U  // safetyParam; matches opendbc/car/psa/values.py
-static bool psa_long_control = false;
 // Shared checks; the gas source is selected separately for each profile.
 #define PSA_COMMON_RX_CHECKS \
   {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, {0}, {0}}}, \
@@ -136,8 +135,8 @@ static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
 static void psa_rx_hook(const CANPacket_t *msg) {
 
   if (msg->bus == PSA_MAIN_BUS) {
-    if (psa_long_control && (msg->addr == PSA_DYN5_CMM)) {
-      gas_pressed = msg->data[2] > 0U; // P334_ACCPed_Position, same source as carstate.py
+    if (safety_setup.psa_long_control && (msg->addr == PSA_DYN5_CMM)) {
+      safety.gas_pressed = msg->data[2] > 0U; // P334_ACCPed_Position, same source as carstate.py
     }
     // Wheel speeds from Dyn4_FRE - calculate average like carstate.py parse_wheel_speeds
     if (msg->addr == PSA_DYN4_FRE) {
@@ -147,7 +146,7 @@ static void psa_rx_hook(const CANPacket_t *msg) {
       int rr = (msg->data[6] << 8) | msg->data[7];  // P266_VehV_VPsvValWhlBckR
       // Average of 4 wheel speeds, scale 0.01 km/h, convert to m/s (use float division)
       float speed_ms = (fl + fr + rl + rr) * 0.0025 * KPH_TO_MS;
-      vehicle_moving = speed_ms > 0.1 * KPH_TO_MS;
+      safety.vehicle_moving = speed_ms > 0.1 * KPH_TO_MS;
       UPDATE_VEHICLE_SPEED(speed_ms);
 
     }
@@ -157,7 +156,7 @@ static void psa_rx_hook(const CANPacket_t *msg) {
     if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
       // LONGITUDINAL_REGULATION_TYPE: 0 off, 1 RVV, 2 limiter, 3 ACC.
       const unsigned int regulation_type = msg->data[0] & 3U;
-      acc_main_on = (regulation_type == 1U) || (regulation_type == 3U);
+      safety.acc_main_on = (regulation_type == 1U) || (regulation_type == 3U);
       pcm_cruise_check((msg->data[2U] >> 7U) & 1U); // RVV_ACC_ACTIVATION_REQ
     }
   }
@@ -165,24 +164,24 @@ static void psa_rx_hook(const CANPacket_t *msg) {
 
   if (msg->bus == PSA_CAM_BUS) {
     // [acc hold] - START
-    if (!psa_long_control && (msg->addr == PSA_DRIVER)) {
-      gas_pressed = msg->data[3] > 0U; // GAS_PEDAL
+    if (!safety_setup.psa_long_control && (msg->addr == PSA_DRIVER)) {
+      safety.gas_pressed = msg->data[3] > 0U; // GAS_PEDAL
     }
     // [acc hold] - END
     if (msg->addr == PSA_DAT_BSI) {
-      brake_pressed = (msg->data[0U] >> 5U) & 1U; // P013_MainBrake
+      safety.brake_pressed = (msg->data[0U] >> 5U) & 1U; // P013_MainBrake
     }
   }
 
   // CAN0 or CAN2
   if (msg->addr == PSA_STEERING_ALT) {
     int angle_meas_new = to_signed((msg->data[0] << 8) | msg->data[1], 16); // ANGLE
-    update_sample(&angle_meas, angle_meas_new);
+    update_sample(&safety.angle_meas, angle_meas_new);
   }
 
   if ((msg->bus == PSA_MAIN_BUS) && (msg->addr == PSA_STEERING)) {
     int driver_torque = to_signed(msg->data[1], 8);
-    update_sample(&torque_driver, driver_torque);
+    update_sample(&safety.torque_driver, driver_torque);
   }
 }
 
@@ -200,7 +199,7 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
   };
 
   // [psa longitudinal] - START
-  const bool longitudinal_allowed = psa_long_control && get_longitudinal_allowed() && !brake_pressed_prev;
+  const bool longitudinal_allowed = safety_setup.psa_long_control && get_longitudinal_allowed() && !safety.brake_pressed_prev;
   if (msg->addr == PSA_HS2_DYN1_MDD_ETAT_2B6) {
     const unsigned int accel = msg->data[0];                       // raw * 0.05 - 10.65 m/s^2
     const unsigned int potential_req = msg->data[1] & 3U;
@@ -219,7 +218,7 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     const bool no_decel = (accel == 254U) && (decel_type == 0U) && !decel_req;
     // Suspended carries no actuation, including across pedal release/disengagement.
     const bool inactive = no_torque && no_decel && (potential_req == 0U) &&
-                          (min_time == 0U) && ((status == 2U) || (status == 3U) || (psa_long_control && (status == 5U)));
+                          (min_time == 0U) && ((status == 2U) || (status == 3U) || (safety_setup.psa_long_control && (status == 5U)));
     // Stock GMP pair by GEAR_TYPE: odd 6.2 s; even 1.5 s (3008) or 3.6 s (C4 SpaceTourer).
     bool gmp_min_time = false;
     if (gear_type == 1U) {
@@ -271,26 +270,26 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
                        (torque_factor <= 100U) && (lka_active || (desired_torque == 0));
     // Zero torque is an immediate release (driver override, rearm, disengage).
     if (shape_valid && (desired_torque == 0)) {
-      desired_torque_last = 0;
-      rt_torque_last = 0;
-      ts_torque_check_last = microsecond_timer_get();
+      safety.desired_torque_last = 0;
+      safety.rt_torque_last = 0;
+      safety.ts_torque_check_last = microsecond_timer_get();
     }
     // The generic driver check permits faster decreases absent opposition;
     // also enforce the controller's normal 8/38 envelope in effective units.
-    int highest = desired_torque_last > 0 ? desired_torque_last + PSA_STEERING_LIMITS.max_rate_up :
-                  SAFETY_MIN(desired_torque_last + PSA_STEERING_LIMITS.max_rate_down, PSA_STEERING_LIMITS.max_rate_up);
-    int lowest = desired_torque_last > 0 ?
-                 SAFETY_MAX(desired_torque_last - PSA_STEERING_LIMITS.max_rate_down, -PSA_STEERING_LIMITS.max_rate_up) :
-                 desired_torque_last - PSA_STEERING_LIMITS.max_rate_up;
+    int highest = safety.desired_torque_last > 0 ? safety.desired_torque_last + PSA_STEERING_LIMITS.max_rate_up :
+                  SAFETY_MIN(safety.desired_torque_last + PSA_STEERING_LIMITS.max_rate_down, PSA_STEERING_LIMITS.max_rate_up);
+    int lowest = safety.desired_torque_last > 0 ?
+                 SAFETY_MAX(safety.desired_torque_last - PSA_STEERING_LIMITS.max_rate_down, -PSA_STEERING_LIMITS.max_rate_up) :
+                 safety.desired_torque_last - PSA_STEERING_LIMITS.max_rate_up;
     bool violation = safety_max_limit_check(effective_torque, highest, lowest);
     violation |= steer_torque_cmd_checks(effective_torque, lka_active, PSA_STEERING_LIMITS);
 
     tx = shape_valid && !violation &&
-         ((desired_torque == 0) || (controls_allowed && !brake_pressed_prev));
+         ((desired_torque == 0) || (safety.controls_allowed && !safety.brake_pressed_prev));
     if (!tx) {
-      desired_torque_last = 0;
-      rt_torque_last = 0;
-      ts_torque_check_last = microsecond_timer_get();
+      safety.desired_torque_last = 0;
+      safety.rt_torque_last = 0;
+      safety.ts_torque_check_last = microsecond_timer_get();
     }
   }
 
@@ -324,7 +323,7 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
 }
 
 static safety_config psa_init(uint16_t param) {
-  psa_long_control = GET_FLAG(param, PSA_LONG_CONTROL);
+  safety_setup.psa_long_control = GET_FLAG(param, PSA_LONG_CONTROL);
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
     {PSA_IS_DAT_DIRA, PSA_CAM_BUS, 4, .check_relay = false}, // hold steering wheel
@@ -354,7 +353,7 @@ static safety_config psa_init(uint16_t param) {
     }},
   };
 
-  return psa_long_control ? BUILD_SAFETY_CFG(psa_long_rx_checks, PSA_TX_MSGS) : BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
+  return safety_setup.psa_long_control ? BUILD_SAFETY_CFG(psa_long_rx_checks, PSA_TX_MSGS) : BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
 }
 
 const safety_hooks psa_hooks = {
