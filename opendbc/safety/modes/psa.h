@@ -272,7 +272,7 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     if (shape_valid && (desired_torque == 0)) {
       safety.desired_torque_last = 0;
       safety.rt_torque_last = 0;
-      safety.ts_torque_check_last = microsecond_timer_get();
+      safety.ts_torque_check_last = safety_ts;
     }
     // The generic driver check permits faster decreases absent opposition;
     // also enforce the controller's normal 8/38 envelope in effective units.
@@ -289,7 +289,7 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     if (!tx) {
       safety.desired_torque_last = 0;
       safety.rt_torque_last = 0;
-      safety.ts_torque_check_last = microsecond_timer_get();
+      safety.ts_torque_check_last = safety_ts;
     }
   }
 
