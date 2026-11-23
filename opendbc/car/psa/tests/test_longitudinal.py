@@ -418,6 +418,7 @@ class TestLongitudinalCommands(unittest.TestCase):
         self.assertAlmostEqual(values[0x2B6]['MDD_DESIRED_DECELERATION'], accel)
 
   def test_positive_target_releases_brake_immediately(self):
+    self.h.cs.out.vEgo = 5.0  # moving: under LAUNCH_SPEED the torque goes with a decel request
     self.h.cc.actuators.accel = -0.75
     self.h.emission()
     for accel in (0.01, 0):
@@ -431,6 +432,7 @@ class TestLongitudinalCommands(unittest.TestCase):
       with self.subTest(reason=reason):
         self.h = LongitudinalHarness()
         self.h.activate()
+        self.h.cs.out.vEgo = 5.0  # moving: under LAUNCH_SPEED the torque goes with a decel request
         self.h.cc.actuators.accel = -0.75
         self.h.emission()
         obj, field, value = {
@@ -488,6 +490,7 @@ class TestLongitudinalCommands(unittest.TestCase):
         self.h = LongitudinalHarness()
         self.h.activate()
         # [light braking] - END
+        self.h.cs.out.vEgo = 5.0  # moving: under LAUNCH_SPEED the torque goes with a decel request
         self.h.cc.actuators.accel = accel
         # [brake filter] - START
         if braking:
@@ -601,6 +604,48 @@ class TestLongitudinalCommands(unittest.TestCase):
       self.assertEqual(values[0x2F6]['REQUEST_TAKEOVER'], takeover)
       self.assertEqual(values[0x2B6]['MDD_DECEL_CONTROL_REQ'], 1)
       self.assertEqual(values[0x2F6]['MDD_DECEL_CONTROL_REQ'], 1)
+
+  # [stop and go] - START
+  def test_stopped_car_is_held_by_the_esp(self):
+    self.h.cc.actuators.longControlState = structs.CarControl.Actuators.LongControlState.stopping
+    self.h.cc.actuators.accel = -0.5
+    for v_ego, hold in ((0.0, True), (0.29, True), (0.31, False), (2.0, False)):  # vEgo is float32
+      with self.subTest(v_ego=v_ego):
+        self.h.cs.out.vEgo = v_ego
+        output, values = self.h.emission()
+        b6, f6 = values[0x2B6], values[0x2F6]
+        self.assertEqual(b6['MDD_DECEL_CONTROL_REQ'], 1)
+        self.assertEqual(f6['MDD_DECEL_CONTROL_REQ'], 1)
+        self.assertEqual(b6['MDD_DECEL_TYPE'], 1)
+        self.assertEqual(b6['POTENTIAL_WHEEL_TORQUE_REQUEST'], 2)
+        self.assertEqual(b6['WHEEL_TORQUE_REQUEST'], 0)
+        self.assertEqual(b6['GMP_WHEEL_TORQUE'], -4000)
+        self.assertEqual(b6['ACC_STATUS'], 4)
+        self.assertAlmostEqual(b6['MDD_DESIRED_DECELERATION'], -10.65 if hold else -0.55)
+        self.assertAlmostEqual(output.accel, -2 if hold else -0.55)
+
+  def test_launch_keeps_the_esp_until_walking_pace(self):
+    self.h.cc.actuators.longControlState = structs.CarControl.Actuators.LongControlState.stopping
+    self.h.emission()
+    self.assertTrue(self.h.controller.longitudinal_hold)
+    self.h.cc.actuators.longControlState = structs.CarControl.Actuators.LongControlState.pid
+    self.h.cc.actuators.accel = 0.5
+    for v_ego, launch in ((0.0, True), (1.29, True), (1.31, False), (5.0, False)):  # vEgo is float32
+      with self.subTest(v_ego=v_ego):
+        self.h.cs.out.vEgo = v_ego
+        for _ in range(200):  # the harness keeps the radar session only briefly: settle the ramp directly
+          self.h.controller._update_longitudinal(self.h.cc.as_reader(), self.h.cs)
+        _, values = self.h.emission()
+        b6, f6 = values[0x2B6], values[0x2F6]
+        self.assertEqual(b6['WHEEL_TORQUE_REQUEST'], 1)
+        self.assertEqual(b6['POTENTIAL_WHEEL_TORQUE_REQUEST'], 1)
+        self.assertGreater(b6['GMP_WHEEL_TORQUE'], 300)
+        self.assertIn(b6['MIN_TIME_FOR_DESIRED_GEAR'], (1.5, 6.2))
+        self.assertEqual(b6['MDD_DECEL_CONTROL_REQ'], int(launch))
+        self.assertEqual(b6['MDD_DECEL_TYPE'], int(launch))
+        self.assertEqual(f6['MDD_DECEL_CONTROL_REQ'], int(launch))
+        self.assertAlmostEqual(b6['MDD_DESIRED_DECELERATION'], 2.0 if launch else 2.05)
+  # [stop and go] - END
 
   def test_no_radar_session_no_substitute_frames_and_no_reported_actuation(self):
     h = LongitudinalHarness()

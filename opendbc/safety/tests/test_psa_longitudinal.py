@@ -291,6 +291,66 @@ class TestPsaLongitudinalSafety(unittest.TestCase):
       self.assertFalse(self.tx((address, message[1], 0)))
       self.assertFalse(self.tx((address, message[1][:-1], 1)))
 
+  # [stop and go] - START
+  def set_speed(self, speed_ms):
+    raw = round(speed_ms * 3.6 / 0.01)  # Dyn4_FRE wheel speeds, 0.01 km/h
+    self.safety.safety_rx_hook(libsafety_py.make_CANPacket(0x30D, 0, raw.to_bytes(2, 'big') * 4))
+
+  def test_hold_only_when_stopped_and_allowed(self):
+    hold = dict(self.braking, MDD_DESIRED_DECELERATION=-10.65)
+    for speed, ok in ((0.0, True), (0.9, True), (1.1, False)):
+      with self.subTest(speed=speed):
+        self.configure()
+        self.set_speed(speed)
+        self.assertEqual(self.tx(self.message(0x2B6, hold)), ok)
+    self.configure(controls=False)
+    self.assertFalse(self.tx(self.message(0x2B6, hold)))
+    self.configure()
+    for changes in ({'WHEEL_TORQUE_REQUEST': 1}, {'POTENTIAL_WHEEL_TORQUE_REQUEST': 1}, {'MDD_DECEL_CONTROL_REQ': 0},
+                    {'MDD_DESIRED_DECELERATION': -10.6}):
+      self.assertFalse(self.tx(self.message(0x2B6, dict(hold, **changes))), changes)
+
+  def test_launch_only_at_walking_pace_and_allowed(self):
+    launch = dict(self.gmp, MDD_DECEL_TYPE=1, MDD_DECEL_CONTROL_REQ=1, MDD_DESIRED_DECELERATION=2.0)
+    for speed, ok in ((0.0, True), (2.9, True), (3.1, False)):
+      with self.subTest(speed=speed):
+        self.configure()
+        self.set_speed(speed)
+        self.assertEqual(self.tx(self.message(0x2B6, launch)), ok)
+    self.configure(controls=False)
+    self.assertFalse(self.tx(self.message(0x2B6, launch)))
+    self.configure()
+    for changes in ({'MDD_DESIRED_DECELERATION': 1.95}, {'MDD_DESIRED_DECELERATION': -0.5}, {'MDD_DECEL_TYPE': 2},
+                    {'GMP_WHEEL_TORQUE': 1001}, {'WHEEL_TORQUE_REQUEST': 0}):
+      self.assertFalse(self.tx(self.message(0x2B6, dict(launch, **changes))), changes)
+
+  def test_controller_stop_hold_and_launch_pass_safety(self):
+    LongCtrlState = structs.CarControl.Actuators.LongControlState
+    # (state, accel, speed) -> (MDD_DESIRED_DECELERATION, WHEEL_TORQUE_REQUEST)
+    for state, accel, speed, expected in ((LongCtrlState.stopping, -0.5, 0.0, (-10.65, 0)),
+                                          (LongCtrlState.pid, 0.8, 0.0, (2.0, 1)),
+                                          (LongCtrlState.pid, 0.8, 1.0, (2.0, 1)),
+                                          (LongCtrlState.pid, 0.8, 2.0, (2.05, 1))):
+      with self.subTest(state=state, speed=speed):
+        self.configure()
+        self.set_speed(speed)
+        h = LongitudinalHarness()
+        h.activate()
+        h.cs.out.vEgo = speed
+        h.cc.actuators.longControlState = state
+        h.cc.actuators.accel = accel
+        h.step()
+        for _ in range(200):
+          h.controller._update_longitudinal(h.cc.as_reader(), h.cs)
+        _, messages = h.step(), h.step()
+        radar = [m for step in (messages,) for m in step[1] if m[0] in RADAR_IDS]
+        b6 = [h.decode(a, d) for a, d, _ in radar if a == 0x2B6]
+        self.assertTrue(b6)
+        self.assertEqual((b6[0]['MDD_DESIRED_DECELERATION'], b6[0]['WHEEL_TORQUE_REQUEST']), expected)
+        for message in radar:
+          self.assertTrue(self.tx(message), (message[0], message[1].hex()))
+  # [stop and go] - END
+
   def test_controller_frames_pass_and_keep_order_through_transitions(self):
     h = LongitudinalHarness()
     h.activate()

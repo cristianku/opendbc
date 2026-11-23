@@ -235,9 +235,18 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     // limit, matching LongitudinalParams.BRAKE_MIN_ACCEL; all actuation gates apply.
     const bool braking = (potential_req == 2U) && no_torque && (min_time == 0U) &&
                          (decel_type == 1U) && decel_req && (accel >= 173U) && (accel <= 213U);
+    // Stop and go as the stock radar (LongitudinalParams.HOLD_* / LAUNCH_*): the lowest decel holds the
+    // stopped car, sent from 0.3 m/s, 1 m/s leaves margin for the speed window; the launch adds +2.0 to GMP.
+    const float speed_max = (float)vehicle_speed.max / VEHICLE_SPEED_FACTOR;
+    const bool hold = (potential_req == 2U) && no_torque && (min_time == 0U) &&
+                      (decel_type == 1U) && decel_req && (accel == 0U) && (speed_max < 1.0f);
+    const bool launch = (potential_req == 1U) && (wheel_req == 1U) &&
+                        (decel_type == 1U) && decel_req && (accel == 253U) && (speed_max < 3.0f) &&
+                        (potential >= 900U) && (potential <= 1250U) &&
+                        (wheel >= 3600U) && (wheel <= 5000U) && gmp_min_time;
     tx = !prefill && (auto_braking_status == 3U) && (gear_type == (psa_get_counter(msg) & 1U)) &&
          (psa_get_checksum(msg) == psa_compute_checksum(msg)) &&
-         (inactive || (longitudinal_allowed && (status == 4U) && (gmp || braking)));
+         (inactive || (longitudinal_allowed && (status == 4U) && (gmp || braking || hold || launch)));
   }
 
   if (msg->addr == PSA_HS2_DYN_MDD_ETAT_2F6) {

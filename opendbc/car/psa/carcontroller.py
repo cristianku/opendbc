@@ -20,6 +20,8 @@ from numpy import interp
 from opendbc.car.psa.values import LongitudinalParams, PSA_LONG_CONTROL
 from opendbc.car.common.filter_simple import FirstOrderFilter
 
+LongCtrlState = structs.CarControl.Actuators.LongControlState
+
 try:
   import openpilot.cereal.messaging as messaging
 except ImportError:
@@ -344,6 +346,8 @@ class CarController(CarControllerBase):
     self.longitudinal_potential_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_wheel_torque = LongitudinalParams.INACTIVE_TORQUE
     self.longitudinal_min_time = 0.0
+    self.longitudinal_hold = False
+    self.longitudinal_launch = False
 
     # Configuration and radar session must permit experimental control.
     if not self.longitudinal_enabled or not self.radar_active:
@@ -407,6 +411,17 @@ class CarController(CarControllerBase):
     else:
       braking = requested_accel <= 0.0 and requested_equivalent_accel < LongitudinalParams.BRAKE_ENTER_ACCEL
 
+    # Stopped: the ESP holds the car, as the stock radar does. It counts as braking for the hysteresis.
+    if CC.actuators.longControlState == LongCtrlState.stopping and CS.out.vEgo < LongitudinalParams.HOLD_SPEED:
+      self._reset_longitudinal_torque_filters()
+      self.brake_accel_filter.x = LongitudinalParams.BRAKE_MIN_ACCEL
+      self.longitudinal_accel_limited = LongitudinalParams.BRAKE_MIN_ACCEL
+      self.longitudinal_active = True
+      self.longitudinal_braking = True
+      self.longitudinal_hold = True
+      self.longitudinal_accel = LongitudinalParams.BRAKE_MIN_ACCEL
+      return
+
     # The torque map needs a valid grade; braking does not use it in the command.
     if not braking and not self.pitch_valid:
       self.longitudinal_accel_limited = 0.0
@@ -443,6 +458,18 @@ class CarController(CarControllerBase):
         requested_wheel_torque, requested_potential_torque,
       )
       self.longitudinal_min_time = LongitudinalParams.MIN_TIME_GMP_ODD
+      # Pulling away at walking pace the ESP keeps control too: torque alone faults it.
+      self.longitudinal_launch = CS.out.vEgo < LongitudinalParams.LAUNCH_SPEED
+
+  def _longitudinal_decel(self):
+    """MDD_DESIRED_DECELERATION and the decel request of 0x2B6/0x2F6 for this cycle."""
+    if self.longitudinal_hold:
+      return LongitudinalParams.HOLD_DECEL, True
+    if self.longitudinal_launch:
+      return LongitudinalParams.LAUNCH_DECEL, True
+    if self.longitudinal_braking:
+      return self.longitudinal_accel, True
+    return LongitudinalParams.INACTIVE_ACCEL, False
 
   def _update_lead_display(self, CC, CS):
     """Return one coherent lead for both 0x2F6 and 0x4F6 and update the cluster target bucket."""
@@ -739,6 +766,7 @@ class CarController(CarControllerBase):
 
       self._update_radar_session(now_nanos, CS.out.canValid)
       self._update_longitudinal(CC, CS)
+      mdd_decel, mdd_decel_req = self._longitudinal_decel()
       if self.radar_phase_handover and self.radar_request_nanos is not None and self.radar_stop_reason is None:
         due_2b6 = self._radar_message_due(0x2B6, now_nanos)
         due_2f6 = self._radar_message_due(0x2F6, now_nanos)
@@ -760,7 +788,7 @@ class CarController(CarControllerBase):
           counter_2b6 = self._next_radar_counter(0x2B6)
           can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
             self.packer, PSA_ADAS_BUS,
-            mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
+            mdd_desired_deceleration=mdd_decel,
             potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
             min_time_for_desired_gear=self._min_time_for_desired_gear(counter_2b6),
             gmp_potential_wheel_torque=self.longitudinal_potential_torque,
@@ -768,8 +796,8 @@ class CarController(CarControllerBase):
             gmp_wheel_torque=self.longitudinal_wheel_torque,
             wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
             auto_braking_status=3,
-            mdd_decel_type=int(self.longitudinal_braking),
-            mdd_decel_control_req=int(self.longitudinal_braking),
+            mdd_decel_type=int(mdd_decel_req),
+            mdd_decel_control_req=int(mdd_decel_req),
             gear_type=counter_2b6 & 1,
             prefill_request=0,
             counter=counter_2b6,
@@ -792,7 +820,7 @@ class CarController(CarControllerBase):
             aeb_enabled=0,
             drive_away_request=0,
             display_intervehicle_time=lead_data['display_time'] if lead_detected else 6.2,
-            mdd_decel_control_req=int(self.longitudinal_braking),
+            mdd_decel_control_req=int(mdd_decel_req),
             auto_braking_status=3,
             counter=counter_2f6,
             target_position=self.bars if lead_detected else 0,
@@ -845,7 +873,7 @@ class CarController(CarControllerBase):
             acc_status = 2  # Inhibited
           can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(
             self.packer, PSA_ADAS_BUS,
-            mdd_desired_deceleration=self.longitudinal_accel if self.longitudinal_braking else LongitudinalParams.INACTIVE_ACCEL,
+            mdd_desired_deceleration=mdd_decel,
             potential_wheel_torque_request=(2 if self.longitudinal_braking else 1) if self.longitudinal_active else 0,
             min_time_for_desired_gear=self._min_time_for_desired_gear(counter),
             gmp_potential_wheel_torque=self.longitudinal_potential_torque,
@@ -854,8 +882,8 @@ class CarController(CarControllerBase):
             gmp_wheel_torque=self.longitudinal_wheel_torque,
             wheel_torque_request=int(self.longitudinal_active and not self.longitudinal_braking),
             auto_braking_status=3,
-            mdd_decel_type=int(self.longitudinal_braking),
-            mdd_decel_control_req=int(self.longitudinal_braking),
+            mdd_decel_type=int(mdd_decel_req),
+            mdd_decel_control_req=int(mdd_decel_req),
             gear_type=counter & 1,  # observed alternating bit; its DBC name is unverified
             prefill_request=0,
             counter=counter,
@@ -874,7 +902,7 @@ class CarController(CarControllerBase):
             aeb_enabled=0,
             drive_away_request=0,
             display_intervehicle_time=lead_data['display_time'] if lead_detected else 6.2,
-            mdd_decel_control_req=int(self.longitudinal_braking),
+            mdd_decel_control_req=int(mdd_decel_req),
             auto_braking_status=3,
             counter=counter,
             target_position=self.bars if lead_detected else 0,

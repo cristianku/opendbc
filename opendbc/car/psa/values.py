@@ -41,6 +41,13 @@ class LongitudinalParams:
   MIN_TIME_GMP_EVEN_C4_SPACETOURER = 3.6  # even frames: stock C4 always 3.6
   INACTIVE_ACCEL = 2.05
   INACTIVE_TORQUE = -4000
+  # Stop and go as the stock radar does it, from elkoled/openpilot psa (208, 508; not yet seen on the 3008).
+  # Stopping under HOLD_SPEED the ESP is asked to hold the car with the lowest decel (raw 0).
+  # Pulling away under LAUNCH_SPEED the torque goes with a decel request of +2.0: torque alone faults the ESP.
+  HOLD_SPEED = 0.3  # m/s
+  LAUNCH_SPEED = 1.3  # m/s
+  HOLD_DECEL = -10.65  # m/s^2, MDD_DESIRED_DECELERATION raw 0
+  LAUNCH_DECEL = 2.0  # m/s^2, MDD_DESIRED_DECELERATION raw 253
 
 
 class CarControllerParams:
