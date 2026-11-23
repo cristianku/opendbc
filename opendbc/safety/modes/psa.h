@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SAFETY_MODES_PSA_H
+#define SAFETY_MODES_PSA_H
 
 // #include "opendbc/safety/declarations.h"
 
@@ -261,7 +262,7 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     // The legacy controller limits effective torque, then divides by factor.
     // E.g. raw 448 at factor 25 is effective 112, a valid release from 150.
     int product = desired_torque * torque_factor;
-    int effective_torque = (SAFETY_ABS(product) + 50) / 100;
+    int effective_torque = (((product < 0) ? -product : product) + 50) / 100;
     if (product < 0) {
       effective_torque = -effective_torque;
     }
@@ -277,9 +278,9 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     // The generic driver check permits faster decreases absent opposition;
     // also enforce the controller's normal 8/38 envelope in effective units.
     int highest = safety.desired_torque_last > 0 ? safety.desired_torque_last + PSA_STEERING_LIMITS.max_rate_up :
-                  SAFETY_MIN(safety.desired_torque_last + PSA_STEERING_LIMITS.max_rate_down, PSA_STEERING_LIMITS.max_rate_up);
+                  safety_min_int(safety.desired_torque_last + PSA_STEERING_LIMITS.max_rate_down, PSA_STEERING_LIMITS.max_rate_up);
     int lowest = safety.desired_torque_last > 0 ?
-                 SAFETY_MAX(safety.desired_torque_last - PSA_STEERING_LIMITS.max_rate_down, -PSA_STEERING_LIMITS.max_rate_up) :
+                 safety_max_int(safety.desired_torque_last - PSA_STEERING_LIMITS.max_rate_down, -PSA_STEERING_LIMITS.max_rate_up) :
                  safety.desired_torque_last - PSA_STEERING_LIMITS.max_rate_up;
     bool violation = safety_max_limit_check(effective_torque, highest, lowest);
     violation |= steer_torque_cmd_checks(effective_torque, lka_active, PSA_STEERING_LIMITS);
@@ -364,3 +365,5 @@ const safety_hooks psa_hooks = {
   .get_checksum = psa_get_checksum,
   .compute_checksum = psa_compute_checksum,
 };
+
+#endif
